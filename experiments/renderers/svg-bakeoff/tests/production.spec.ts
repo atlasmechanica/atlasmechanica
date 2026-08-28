@@ -47,15 +47,32 @@ test('production invalid parameter drag keeps the last valid crossed-belt state'
   await expect(page.locator('#distance-output')).toHaveText('180 mm');
 
   const beforePath = await page.locator('#production-host [data-primitive="belt-path"] .atlas-visible').getAttribute('points');
-  const svg = await page.locator('#production-host svg').boundingBox();
   const handle = await page.locator('#production-host [data-primitive="belt-distance-handle"] .atlas-hit-fill').boundingBox();
-  if (!svg || !handle) throw new Error('Missing production SVG or parameter handle');
+  if (!handle) throw new Error('Missing production parameter handle');
+
+  // The production renderer preserves aspect ratio and may letterbox inside its
+  // CSS box. Aim at 80 mm in world space using the same viewport/viewBox mapping
+  // that the renderer reverses during pointer interaction.
+  const target = await page.locator('#production-host svg').evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const viewBoxWidth = 640;
+    const viewBoxHeight = 400;
+    const scale = Math.min(rect.width / viewBoxWidth, rect.height / viewBoxHeight);
+    const renderedWidth = viewBoxWidth * scale;
+    const renderedHeight = viewBoxHeight * scale;
+    const offsetX = (rect.width - renderedWidth) / 2;
+    const offsetY = (rect.height - renderedHeight) / 2;
+    const tx = (0.08 - (-0.06)) / (0.285 - (-0.06));
+    const ty = (0.13 - 0) / (0.13 - (-0.13));
+    return {
+      x: rect.left + offsetX + tx * renderedWidth,
+      y: rect.top + offsetY + ty * renderedHeight,
+    };
+  });
 
   await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
   await page.mouse.down();
-  const targetX = svg.x + ((0.08 - (-0.06)) / (0.285 - (-0.06))) * svg.width;
-  const targetY = svg.y + svg.height / 2;
-  await page.mouse.move(targetX, targetY, { steps: 5 });
+  await page.mouse.move(target.x, target.y, { steps: 5 });
   await page.mouse.up();
 
   await expect(page.locator('#status')).toContainText('Invalid geometry');
