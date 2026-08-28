@@ -1,28 +1,18 @@
 import {
   canonicalNumber,
-  isParameterReference,
   validateSimulationModel,
-  type BodyId,
   type BodyState,
   type CompiledModel,
   type ConfigurationId,
-  type CoordinateId,
   type CoordinateState,
   type Diagnostic,
   type EvaluationRequest,
-  type FeatureRef,
-  type JointDefinition,
   type ModelCapabilities,
   type ModelSession,
   type ModelState,
   type ParameterId,
-  type PlanarPoseValue,
-  type PointFeatureDefinition,
   type Pose2D,
-  type QuantityKind,
   type QuantityValue,
-  type RigidBodyDefinition,
-  type ScalarSource,
   type SessionOptions,
   type SessionSnapshot,
   type SignalValue,
@@ -31,6 +21,22 @@ import {
   type Vector2,
 } from '@atlasmechanica/model';
 import {
+  circleIntersections,
+  solveFourBarAcceleration,
+  solveFourBarVelocity,
+} from './fourBarMath.js';
+import {
+  branchSign,
+  configurationBranchSign,
+  discoverFourBar,
+  getPointFeature,
+  poseSeed,
+  resolveParameters,
+  resolvePoint,
+  resolvePose,
+  type FourBarContext,
+} from './fourBarTopology.js';
+import {
   add2,
   alignTwoPoints2,
   angularCross,
@@ -38,7 +44,6 @@ import {
   bodyOriginVelocityFromPoint,
   bodyPointAcceleration,
   bodyPointVelocity,
-  cross2,
   magnitude2,
   rotate2,
   scale2,
@@ -56,36 +61,6 @@ const CAPABILITIES: ModelCapabilities = {
 };
 
 const GEOMETRY_EPSILON = 1e-12;
-const SINGULARITY_EPSILON = 1e-12;
-
-interface ResolvedParameter {
-  value: number;
-  kind: QuantityKind;
-}
-
-type ParameterValues = Record<ParameterId, ResolvedParameter>;
-
-interface FourBarContext {
-  inputCoordinate: CoordinateId;
-  groundBody: BodyId;
-  crankBody: BodyId;
-  couplerBody: BodyId;
-  rockerBody: BodyId;
-  groundInput: FeatureRef;
-  crankInput: FeatureRef;
-  crankCoupler: FeatureRef;
-  couplerCrank: FeatureRef;
-  couplerRocker: FeatureRef;
-  rockerCoupler: FeatureRef;
-  groundOutput: FeatureRef;
-  rockerGround: FeatureRef;
-  tracer?: FeatureRef;
-}
-
-interface CircleIntersectionResult {
-  points: Vector2[];
-  tangent: boolean;
-}
 
 function errorDiagnostic(
   code: Diagnostic['code'],
@@ -131,385 +106,8 @@ function vector(value: Vector2, unit: 'm' | 'm/s' | 'm/s^2'): SignalValue {
   return { type: 'vector2', value, unit };
 }
 
-function resolveScalar(
-  source: ScalarSource,
-  parameters: ParameterValues,
-  kind: QuantityKind,
-): number {
-  if (isParameterReference(source)) {
-    const resolved = parameters[source.parameter];
-    if (resolved === undefined) {
-      throw new TypeError(`Missing resolved parameter ${source.parameter}`);
-    }
-    if (resolved.kind !== kind) {
-      throw new TypeError(
-        `Parameter ${source.parameter} is ${resolved.kind}, not ${kind}`,
-      );
-    }
-    return resolved.value;
-  }
-
-  return canonicalNumber(source, kind);
-}
-
-function resolveParameters(
-  model: SimulationModel,
-  overrides: Partial<Record<ParameterId, QuantityValue>>,
-): ParameterValues {
-  const values: ParameterValues = {};
-
-  for (const [id, definition] of Object.entries(model.parameters)) {
-    const authored = overrides[id] ?? definition.default;
-    const value = canonicalNumber(authored, definition.kind);
-
-    if (definition.domain?.min !== undefined) {
-      const minimum = canonicalNumber(definition.domain.min, definition.kind);
-      if (value < minimum) {
-        throw new RangeError(`${id} must be >= ${minimum} in canonical units`);
-      }
-    }
-
-    if (definition.domain?.max !== undefined) {
-      const maximum = canonicalNumber(definition.domain.max, definition.kind);
-      if (value > maximum) {
-        throw new RangeError(`${id} must be <= ${maximum} in canonical units`);
-      }
-    }
-
-    values[id] = { value, kind: definition.kind };
-  }
-
-  return values;
-}
-
-function resolvePose(
-  body: RigidBodyDefinition,
-  parameters: ParameterValues,
-): Pose2D {
-  return {
-    x: resolveScalar(body.referencePose.x, parameters, 'length'),
-    y: resolveScalar(body.referencePose.y, parameters, 'length'),
-    angle: resolveScalar(body.referencePose.angle, parameters, 'angle'),
-  };
-}
-
-function resolvePoseValue(value: PlanarPoseValue): Pose2D {
-  return {
-    x: canonicalNumber(value.x, 'length'),
-    y: canonicalNumber(value.y, 'length'),
-    angle: canonicalNumber(value.angle, 'angle'),
-  };
-}
-
-function resolvePoint(
-  feature: PointFeatureDefinition,
-  parameters: ParameterValues,
-): Vector2 {
-  return {
-    x: resolveScalar(feature.position.x, parameters, 'length'),
-    y: resolveScalar(feature.position.y, parameters, 'length'),
-  };
-}
-
-function getPointFeature(
-  model: SimulationModel,
-  ref: FeatureRef,
-): PointFeatureDefinition | undefined {
-  const feature = model.systems.mechanical?.bodies[ref.body]?.features[ref.feature];
-  return feature?.type === 'point' ? feature : undefined;
-}
-
-function otherBody(joint: JointDefinition, body: BodyId): BodyId | undefined {
-  if (joint.parent.body === body) return joint.child.body;
-  if (joint.child.body === body) return joint.parent.body;
-  return undefined;
-}
-
-function featureForBody(
-  joint: JointDefinition,
-  body: BodyId,
-): FeatureRef | undefined {
-  if (joint.parent.body === body) return joint.parent;
-  if (joint.child.body === body) return joint.child;
-  return undefined;
-}
-
-function jointsForBody(
-  joints: Record<string, JointDefinition>,
-  body: BodyId,
-): JointDefinition[] {
-  return Object.values(joints).filter(
-    (joint) => joint.parent.body === body || joint.child.body === body,
-  );
-}
-
-function discoverFourBar(model: SimulationModel): FourBarContext | undefined {
-  const mechanical = model.systems.mechanical;
-  if (mechanical === undefined || mechanical.dimensionality !== 'planar') {
-    return undefined;
-  }
-  if (Object.keys(mechanical.bodies).length !== 4) return undefined;
-  if (Object.keys(mechanical.joints).length !== 4) return undefined;
-  if (Object.keys(mechanical.couplings).length !== 0) return undefined;
-
-  const inputs = Object.values(model.coordinates).filter(
-    (coordinate) => coordinate.role === 'input' && coordinate.joint !== undefined,
-  );
-  if (inputs.length !== 1) return undefined;
-
-  const inputCoordinate = inputs[0];
-  if (inputCoordinate === undefined || inputCoordinate.joint === undefined) {
-    return undefined;
-  }
-
-  const inputJoint = mechanical.joints[inputCoordinate.joint];
-  if (inputJoint === undefined) return undefined;
-
-  const groundBody = mechanical.referenceBody;
-  const crankBody = otherBody(inputJoint, groundBody);
-  if (crankBody === undefined) return undefined;
-
-  const crankOtherJoints = jointsForBody(mechanical.joints, crankBody).filter(
-    (joint) => joint.id !== inputJoint.id,
-  );
-  if (crankOtherJoints.length !== 1) return undefined;
-  const crankCouplerJoint = crankOtherJoints[0];
-  if (crankCouplerJoint === undefined) return undefined;
-  const couplerBody = otherBody(crankCouplerJoint, crankBody);
-  if (couplerBody === undefined || couplerBody === groundBody) return undefined;
-
-  const groundOtherJoints = jointsForBody(mechanical.joints, groundBody).filter(
-    (joint) => joint.id !== inputJoint.id,
-  );
-  if (groundOtherJoints.length !== 1) return undefined;
-  const groundRockerJoint = groundOtherJoints[0];
-  if (groundRockerJoint === undefined) return undefined;
-  const rockerBody = otherBody(groundRockerJoint, groundBody);
-  if (
-    rockerBody === undefined ||
-    rockerBody === crankBody ||
-    rockerBody === couplerBody
-  ) {
-    return undefined;
-  }
-
-  const couplerRockerJoint = Object.values(mechanical.joints).find(
-    (joint) =>
-      joint.id !== inputJoint.id &&
-      joint.id !== crankCouplerJoint.id &&
-      joint.id !== groundRockerJoint.id &&
-      otherBody(joint, couplerBody) === rockerBody,
-  );
-  if (couplerRockerJoint === undefined) return undefined;
-
-  const groundInput = featureForBody(inputJoint, groundBody);
-  const crankInput = featureForBody(inputJoint, crankBody);
-  const crankCoupler = featureForBody(crankCouplerJoint, crankBody);
-  const couplerCrank = featureForBody(crankCouplerJoint, couplerBody);
-  const couplerRocker = featureForBody(couplerRockerJoint, couplerBody);
-  const rockerCoupler = featureForBody(couplerRockerJoint, rockerBody);
-  const groundOutput = featureForBody(groundRockerJoint, groundBody);
-  const rockerGround = featureForBody(groundRockerJoint, rockerBody);
-
-  if (
-    groundInput === undefined ||
-    crankInput === undefined ||
-    crankCoupler === undefined ||
-    couplerCrank === undefined ||
-    couplerRocker === undefined ||
-    rockerCoupler === undefined ||
-    groundOutput === undefined ||
-    rockerGround === undefined
-  ) {
-    return undefined;
-  }
-
-  const jointFeatureIds = new Set([couplerCrank.feature, couplerRocker.feature]);
-  const tracerFeature = Object.values(mechanical.bodies[couplerBody]?.features ?? {}).find(
-    (feature) => feature.type === 'point' && !jointFeatureIds.has(feature.id),
-  );
-
-  const context: FourBarContext = {
-    inputCoordinate: inputCoordinate.id,
-    groundBody,
-    crankBody,
-    couplerBody,
-    rockerBody,
-    groundInput,
-    crankInput,
-    crankCoupler,
-    couplerCrank,
-    couplerRocker,
-    rockerCoupler,
-    groundOutput,
-    rockerGround,
-  };
-
-  if (tracerFeature !== undefined) {
-    context.tracer = { body: couplerBody, feature: tracerFeature.id };
-  }
-
-  for (const ref of [
-    context.groundInput,
-    context.crankInput,
-    context.crankCoupler,
-    context.couplerCrank,
-    context.couplerRocker,
-    context.rockerCoupler,
-    context.groundOutput,
-    context.rockerGround,
-  ]) {
-    if (getPointFeature(model, ref) === undefined) return undefined;
-  }
-
-  return context;
-}
-
-function circleIntersections(
-  centerA: Vector2,
-  radiusA: number,
-  centerB: Vector2,
-  radiusB: number,
-): CircleIntersectionResult | undefined {
-  const centerDelta = subtract2(centerB, centerA);
-  const distance = magnitude2(centerDelta);
-
-  if (radiusA <= 0 || radiusB <= 0 || distance <= GEOMETRY_EPSILON) {
-    return undefined;
-  }
-
-  if (
-    distance > radiusA + radiusB + GEOMETRY_EPSILON ||
-    distance < Math.abs(radiusA - radiusB) - GEOMETRY_EPSILON
-  ) {
-    return undefined;
-  }
-
-  const x =
-    (radiusA ** 2 - radiusB ** 2 + distance ** 2) / (2 * distance);
-  const heightSquared = radiusA ** 2 - x ** 2;
-  if (heightSquared < -GEOMETRY_EPSILON) return undefined;
-
-  const direction = scale2(centerDelta, 1 / distance);
-  const base = add2(centerA, scale2(direction, x));
-  const height = Math.sqrt(Math.max(0, heightSquared));
-  if (height <= GEOMETRY_EPSILON) {
-    return { points: [base], tangent: true };
-  }
-
-  const perpendicular = { x: -direction.y, y: direction.x };
-  const offset = scale2(perpendicular, height);
-  return {
-    points: [add2(base, offset), subtract2(base, offset)],
-    tangent: false,
-  };
-}
-
-function solve2x2(
-  a11: number,
-  a12: number,
-  a21: number,
-  a22: number,
-  b1: number,
-  b2: number,
-): readonly [number, number] | undefined {
-  const determinant = a11 * a22 - a12 * a21;
-  if (Math.abs(determinant) <= SINGULARITY_EPSILON) return undefined;
-
-  return [
-    (b1 * a22 - a12 * b2) / determinant,
-    (a11 * b2 - b1 * a21) / determinant,
-  ];
-}
-
-function angleOf(vector: Vector2): number {
-  return Math.atan2(vector.y, vector.x);
-}
-
-function signedBranch(
-  inputPivot: Vector2,
-  outputPivot: Vector2,
-  movingPivot: Vector2,
-): number {
-  return Math.sign(
-    cross2(
-      subtract2(outputPivot, inputPivot),
-      subtract2(movingPivot, inputPivot),
-    ),
-  );
-}
-
-function poseSeed(
-  model: SimulationModel,
-  configuration: ConfigurationId,
-  body: BodyId,
-  parameters: ParameterValues,
-): Pose2D | undefined {
-  const configPose = model.configurations[configuration]?.bodyPoses?.[body];
-  if (configPose !== undefined) return resolvePoseValue(configPose);
-
-  const definition = model.systems.mechanical?.bodies[body];
-  return definition === undefined ? undefined : resolvePose(definition, parameters);
-}
-
-function computeConfigurationBranchSign(
-  model: SimulationModel,
-  configuration: ConfigurationId,
-  context: FourBarContext,
-): number {
-  const parameters = resolveParameters(model, {});
-  const groundDefinition = model.systems.mechanical?.bodies[context.groundBody];
-  const crankDefinition = model.systems.mechanical?.bodies[context.crankBody];
-  const couplerDefinition = model.systems.mechanical?.bodies[context.couplerBody];
-  if (
-    groundDefinition === undefined ||
-    crankDefinition === undefined ||
-    couplerDefinition === undefined
-  ) {
-    throw new TypeError('Four-bar configuration references missing bodies');
-  }
-
-  const groundPose = poseSeed(
-    model,
-    configuration,
-    context.groundBody,
-    parameters,
-  );
-  const crankPose = poseSeed(
-    model,
-    configuration,
-    context.crankBody,
-    parameters,
-  );
-  const couplerPose = poseSeed(
-    model,
-    configuration,
-    context.couplerBody,
-    parameters,
-  );
-  if (groundPose === undefined || crankPose === undefined || couplerPose === undefined) {
-    throw new TypeError(`Configuration ${configuration} is missing body pose seeds`);
-  }
-
-  const groundOutputFeature = getPointFeature(model, context.groundOutput);
-  const crankCouplerFeature = getPointFeature(model, context.crankCoupler);
-  const couplerRockerFeature = getPointFeature(model, context.couplerRocker);
-  if (
-    groundOutputFeature === undefined ||
-    crankCouplerFeature === undefined ||
-    couplerRockerFeature === undefined
-  ) {
-    throw new TypeError('Four-bar configuration is missing point features');
-  }
-
-  const A = worldPoint2(crankPose, resolvePoint(crankCouplerFeature, parameters));
-  const O4 = worldPoint2(groundPose, resolvePoint(groundOutputFeature, parameters));
-  const B = worldPoint2(couplerPose, resolvePoint(couplerRockerFeature, parameters));
-  const sign = signedBranch(A, O4, B);
-  if (sign === 0) {
-    throw new TypeError(`Configuration ${configuration} does not identify an assembly branch`);
-  }
-  return sign;
+function angleOf(vectorValue: Vector2): number {
+  return Math.atan2(vectorValue.y, vectorValue.x);
 }
 
 function nearestPoint(points: Vector2[], target: Vector2): Vector2 {
@@ -531,8 +129,8 @@ class AnalyticFourBarSession implements ModelSession {
   private configuration: ConfigurationId;
   private readonly defaultConfiguration: ConfigurationId;
   private readonly parameters: Partial<Record<ParameterId, QuantityValue>>;
-  private branchSign: number;
-  private previousB?: Vector2;
+  private branch: number;
+  private previousB: Vector2 | undefined;
 
   constructor(
     private readonly compiled: AnalyticFourBarCompiledModel,
@@ -550,11 +148,20 @@ class AnalyticFourBarSession implements ModelSession {
     this.configuration = configuration;
     this.defaultConfiguration = configuration;
     this.parameters = { ...(options.parameters ?? {}) };
-    this.branchSign = computeConfigurationBranchSign(
+    this.branch = configurationBranchSign(
       compiled.model,
       configuration,
       compiled.context,
     );
+  }
+
+  private assemblyLabel(): string {
+    const label = this.compiled.model.configurations[this.configuration]?.modes?.assembly;
+    return typeof label === 'string'
+      ? label
+      : this.branch > 0
+        ? 'positive'
+        : 'negative';
   }
 
   evaluate(request: EvaluationRequest = {}): ModelState {
@@ -565,7 +172,7 @@ class AnalyticFourBarSession implements ModelSession {
       throw new TypeError(`Unknown configuration ${this.configuration}`);
     }
 
-    let parameters: ParameterValues;
+    let parameters;
     try {
       parameters = resolveParameters(model, {
         ...this.parameters,
@@ -600,6 +207,7 @@ class AnalyticFourBarSession implements ModelSession {
       inputAngle = canonicalNumber(inputSource, 'angle');
       const rateSource = request.rates?.[context.inputCoordinate];
       const accelerationSource = request.accelerations?.[context.inputCoordinate];
+
       if (rateSource !== undefined) {
         inputRate = canonicalNumber(rateSource, 'angular-velocity');
       }
@@ -673,13 +281,17 @@ class AnalyticFourBarSession implements ModelSession {
     let localCouplerRocker: Vector2;
     let localRockerGround: Vector2;
     let localRockerCoupler: Vector2;
+
     try {
       groundPose = resolvePose(ground, parameters);
       referenceCrankPose =
         poseSeed(model, this.configuration, context.crankBody, parameters) ??
         resolvePose(crank, parameters);
       referenceInput = canonicalNumber(
-        configuration.coordinates[context.inputCoordinate] ?? { value: 0, unit: 'rad' },
+        configuration.coordinates[context.inputCoordinate] ?? {
+          value: 0,
+          unit: 'rad',
+        },
         'angle',
       );
       localGroundInput = resolvePoint(groundInputFeature, parameters);
@@ -727,25 +339,22 @@ class AnalyticFourBarSession implements ModelSession {
       );
     }
 
-    const intersections = circleIntersections(A, couplerLength, O4, rockerLength);
-    const coordinates: ModelState['coordinates'] = {
-      [context.inputCoordinate]: {
-        position: { value: inputAngle, unit: 'rad' },
-      },
+    const inputCoordinate: CoordinateState = {
+      position: { value: inputAngle, unit: 'rad' },
     };
-    const inputCoordinateState = coordinates[context.inputCoordinate];
-    if (inputCoordinateState !== undefined) {
-      if (inputRate !== undefined) {
-        inputCoordinateState.velocity = { value: inputRate, unit: 'rad/s' };
-      }
-      if (inputAcceleration !== undefined) {
-        inputCoordinateState.acceleration = {
-          value: inputAcceleration,
-          unit: 'rad/s^2',
-        };
-      }
+    if (inputRate !== undefined) {
+      inputCoordinate.velocity = { value: inputRate, unit: 'rad/s' };
+    }
+    if (inputAcceleration !== undefined) {
+      inputCoordinate.acceleration = {
+        value: inputAcceleration,
+        unit: 'rad/s^2',
+      };
     }
 
+    const coordinates: ModelState['coordinates'] = {
+      [context.inputCoordinate]: inputCoordinate,
+    };
     const groundState: BodyState = { pose: groundPose };
     const crankState: BodyState = { pose: crankPose };
     const bodies: ModelState['bodies'] = {
@@ -756,17 +365,11 @@ class AnalyticFourBarSession implements ModelSession {
     const setSignal = (id: string, signal: SignalValue): void => {
       if (model.signals[id] !== undefined) signals[id] = signal;
     };
-    setSignal('point-a-position', vector(A, 'm'));
-    setSignal('assembly-branch', {
-      type: 'text',
-      value:
-        typeof configuration.modes?.assembly === 'string'
-          ? configuration.modes.assembly
-          : this.branchSign > 0
-            ? 'positive'
-            : 'negative',
-    });
 
+    setSignal('point-a-position', vector(A, 'm'));
+    setSignal('assembly-branch', { type: 'text', value: this.assemblyLabel() });
+
+    const intersections = circleIntersections(A, couplerLength, O4, rockerLength);
     if (intersections === undefined) {
       this.previousB = undefined;
       return {
@@ -775,9 +378,7 @@ class AnalyticFourBarSession implements ModelSession {
         coordinates,
         bodies,
         signals,
-        modes: {
-          assembly: this.branchSign > 0 ? 'positive' : 'negative',
-        },
+        modes: { assembly: this.assemblyLabel() },
         diagnostics: [
           errorDiagnostic(
             'invalid-geometry',
@@ -796,7 +397,7 @@ class AnalyticFourBarSession implements ModelSession {
       B = onlyPoint;
     } else {
       const matching = intersections.points.filter(
-        (point) => signedBranch(A, O4, point) === this.branchSign,
+        (point) => branchSign(A, O4, point) === this.branch,
       );
       if (matching.length === 1) {
         const match = matching[0];
@@ -811,7 +412,7 @@ class AnalyticFourBarSession implements ModelSession {
           coordinates,
           bodies,
           signals,
-          modes: {},
+          modes: { assembly: this.assemblyLabel() },
           diagnostics: [
             errorDiagnostic(
               'branch-ambiguity',
@@ -865,7 +466,7 @@ class AnalyticFourBarSession implements ModelSession {
       );
     }
 
-    const zero = { x: 0, y: 0 };
+    const zero: Vector2 = { x: 0, y: 0 };
     if (inputRate !== undefined) {
       groundState.linearVelocity = zero;
       groundState.angularVelocity = 0;
@@ -877,16 +478,17 @@ class AnalyticFourBarSession implements ModelSession {
         inputRate,
       );
 
-      const velocitySolution = solve2x2(
-        -couplerLength * Math.sin(theta3),
-        rockerLength * Math.sin(theta4),
-        couplerLength * Math.cos(theta3),
-        -rockerLength * Math.cos(theta4),
-        crankLength * Math.sin(theta2) * inputRate,
-        -crankLength * Math.cos(theta2) * inputRate,
+      const velocity = solveFourBarVelocity(
+        crankLength,
+        couplerLength,
+        rockerLength,
+        theta2,
+        theta3,
+        theta4,
+        inputRate,
       );
 
-      if (velocitySolution === undefined) {
+      if (velocity === undefined) {
         diagnostics.push(
           warningDiagnostic(
             'physical-singularity',
@@ -894,27 +496,32 @@ class AnalyticFourBarSession implements ModelSession {
           ),
         );
       } else {
-        const [omega3, omega4] = velocitySolution;
         const crankRadius = subtract2(A, O2);
         const velocityA = angularCross(inputRate, crankRadius);
 
-        couplerState.angularVelocity = omega3;
+        couplerState.angularVelocity = velocity.coupler;
         couplerState.linearVelocity = bodyOriginVelocityFromPoint(
           couplerPose,
           localCouplerCrank,
           velocityA,
-          omega3,
+          velocity.coupler,
         );
-        rockerState.angularVelocity = omega4;
+        rockerState.angularVelocity = velocity.rocker;
         rockerState.linearVelocity = bodyOriginVelocityFromPoint(
           rockerPose,
           localRockerGround,
           zero,
-          omega4,
+          velocity.rocker,
         );
 
-        setSignal('coupler-angular-velocity', scalar(omega3, 'rad/s'));
-        setSignal('rocker-angular-velocity', scalar(omega4, 'rad/s'));
+        setSignal(
+          'coupler-angular-velocity',
+          scalar(velocity.coupler, 'rad/s'),
+        );
+        setSignal(
+          'rocker-angular-velocity',
+          scalar(velocity.rocker, 'rad/s'),
+        );
 
         if (inputAcceleration !== undefined) {
           groundState.linearAcceleration = zero;
@@ -928,22 +535,20 @@ class AnalyticFourBarSession implements ModelSession {
             inputAcceleration,
           );
 
-          const accelerationSolution = solve2x2(
-            -couplerLength * Math.sin(theta3),
-            rockerLength * Math.sin(theta4),
-            couplerLength * Math.cos(theta3),
-            -rockerLength * Math.cos(theta4),
-            crankLength * Math.cos(theta2) * inputRate ** 2 +
-              crankLength * Math.sin(theta2) * inputAcceleration +
-              couplerLength * Math.cos(theta3) * omega3 ** 2 -
-              rockerLength * Math.cos(theta4) * omega4 ** 2,
-            crankLength * Math.sin(theta2) * inputRate ** 2 -
-              crankLength * Math.cos(theta2) * inputAcceleration +
-              couplerLength * Math.sin(theta3) * omega3 ** 2 -
-              rockerLength * Math.sin(theta4) * omega4 ** 2,
+          const acceleration = solveFourBarAcceleration(
+            crankLength,
+            couplerLength,
+            rockerLength,
+            theta2,
+            theta3,
+            theta4,
+            inputRate,
+            velocity.coupler,
+            velocity.rocker,
+            inputAcceleration,
           );
 
-          if (accelerationSolution === undefined) {
+          if (acceleration === undefined) {
             diagnostics.push(
               warningDiagnostic(
                 'physical-singularity',
@@ -951,31 +556,36 @@ class AnalyticFourBarSession implements ModelSession {
               ),
             );
           } else {
-            const [alpha3, alpha4] = accelerationSolution;
             const accelerationA = add2(
               angularCross(inputAcceleration, crankRadius),
               scale2(crankRadius, -(inputRate ** 2)),
             );
 
-            couplerState.angularAcceleration = alpha3;
+            couplerState.angularAcceleration = acceleration.coupler;
             couplerState.linearAcceleration = bodyOriginAccelerationFromPoint(
               couplerPose,
               localCouplerCrank,
               accelerationA,
-              omega3,
-              alpha3,
+              velocity.coupler,
+              acceleration.coupler,
             );
-            rockerState.angularAcceleration = alpha4;
+            rockerState.angularAcceleration = acceleration.rocker;
             rockerState.linearAcceleration = bodyOriginAccelerationFromPoint(
               rockerPose,
               localRockerGround,
               zero,
-              omega4,
-              alpha4,
+              velocity.rocker,
+              acceleration.rocker,
             );
 
-            setSignal('coupler-angular-acceleration', scalar(alpha3, 'rad/s^2'));
-            setSignal('rocker-angular-acceleration', scalar(alpha4, 'rad/s^2'));
+            setSignal(
+              'coupler-angular-acceleration',
+              scalar(acceleration.coupler, 'rad/s^2'),
+            );
+            setSignal(
+              'rocker-angular-acceleration',
+              scalar(acceleration.rocker, 'rad/s^2'),
+            );
           }
         }
       }
@@ -989,10 +599,12 @@ class AnalyticFourBarSession implements ModelSession {
           'coupler-point-position',
           vector(worldPoint2(couplerState.pose, localTracer), 'm'),
         );
+
         const tracerVelocity = bodyPointVelocity(couplerState, localTracer);
         if (tracerVelocity !== undefined) {
           setSignal('coupler-point-velocity', vector(tracerVelocity, 'm/s'));
         }
+
         const tracerAcceleration = bodyPointAcceleration(couplerState, localTracer);
         if (tracerAcceleration !== undefined) {
           setSignal(
@@ -1009,14 +621,7 @@ class AnalyticFourBarSession implements ModelSession {
       coordinates,
       bodies,
       signals,
-      modes: {
-        assembly:
-          typeof configuration.modes?.assembly === 'string'
-            ? configuration.modes.assembly
-            : this.branchSign > 0
-              ? 'positive'
-              : 'negative',
-      },
+      modes: { assembly: this.assemblyLabel() },
       diagnostics,
     };
   }
@@ -1026,7 +631,7 @@ class AnalyticFourBarSession implements ModelSession {
       throw new TypeError(`Unknown configuration ${configuration}`);
     }
     this.configuration = configuration;
-    this.branchSign = computeConfigurationBranchSign(
+    this.branch = configurationBranchSign(
       this.compiled.model,
       configuration,
       this.compiled.context,
@@ -1039,14 +644,8 @@ class AnalyticFourBarSession implements ModelSession {
       configuration: this.configuration,
       parameters: { ...this.parameters },
       modes: {
-        assembly:
-          typeof this.compiled.model.configurations[this.configuration]?.modes?.assembly ===
-          'string'
-            ? (this.compiled.model.configurations[this.configuration]?.modes?.assembly as string)
-            : this.branchSign > 0
-              ? 'positive'
-              : 'negative',
-        branchSign: this.branchSign,
+        assembly: this.assemblyLabel(),
+        branchSign: this.branch,
       },
     };
   }
@@ -1086,7 +685,7 @@ export const analyticFourBarAdapter: SimulationAdapter = {
     }
 
     for (const configuration of Object.keys(model.configurations)) {
-      computeConfigurationBranchSign(model, configuration, context);
+      configurationBranchSign(model, configuration, context);
     }
 
     return new AnalyticFourBarCompiledModel(model, context);
