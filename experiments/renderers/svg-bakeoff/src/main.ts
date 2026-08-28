@@ -42,21 +42,18 @@ interface BenchmarkMetric {
   focusableNodes: number;
 }
 
-const mechanismSelect = document.querySelector<HTMLSelectElement>('#mechanism');
-const playButton = document.querySelector<HTMLButtonElement>('#play');
-const angleInput = document.querySelector<HTMLInputElement>('#angle');
-const angleOutput = document.querySelector<HTMLOutputElement>('#angle-output');
-const distanceControl = document.querySelector<HTMLElement>('#distance-control');
-const distanceInput = document.querySelector<HTMLInputElement>('#distance');
-const distanceOutput = document.querySelector<HTMLOutputElement>('#distance-output');
-const statusElement = document.querySelector<HTMLElement>('#status');
-const selectionElement = document.querySelector<HTMLElement>('#selection');
-const nativeHost = document.querySelector<HTMLElement>('#native-host');
-const svgJsHost = document.querySelector<HTMLElement>('#svgjs-host');
-const jsxGraphHost = document.querySelector<HTMLElement>('#jsxgraph-host');
-if (!mechanismSelect || !playButton || !angleInput || !angleOutput || !distanceControl || !distanceInput || !distanceOutput || !statusElement || !selectionElement || !nativeHost || !svgJsHost || !jsxGraphHost) {
-  throw new Error('Renderer bake-off markup is incomplete');
-}
+const mechanismSelect = document.querySelector<HTMLSelectElement>('#mechanism')!;
+const playButton = document.querySelector<HTMLButtonElement>('#play')!;
+const angleInput = document.querySelector<HTMLInputElement>('#angle')!;
+const angleOutput = document.querySelector<HTMLOutputElement>('#angle-output')!;
+const distanceControl = document.querySelector<HTMLElement>('#distance-control')!;
+const distanceInput = document.querySelector<HTMLInputElement>('#distance')!;
+const distanceOutput = document.querySelector<HTMLOutputElement>('#distance-output')!;
+const statusElement = document.querySelector<HTMLElement>('#status')!;
+const selectionElement = document.querySelector<HTMLElement>('#selection')!;
+const nativeHost = document.querySelector<HTMLElement>('#native-host')!;
+const svgJsHost = document.querySelector<HTMLElement>('#svgjs-host')!;
+const jsxGraphHost = document.querySelector<HTMLElement>('#jsxgraph-host')!;
 
 const fourBarCompiled = analyticFourBarAdapter.compile(canonicalFourBarModel);
 const beltCompiled = {
