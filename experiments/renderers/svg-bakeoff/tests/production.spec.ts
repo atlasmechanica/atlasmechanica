@@ -46,6 +46,11 @@ test('production invalid parameter drag keeps the last valid crossed-belt state'
   await page.locator('#mechanism').selectOption('belt-crossed');
   await expect(page.locator('#distance-output')).toHaveText('180 mm');
 
+  const productionHost = page.locator('#production-host');
+  // Raw Playwright mouse coordinates do not auto-scroll. The production
+  // regression card sits below the three-candidate bake-off on the page, so
+  // explicitly bring its SVG into the viewport before using page.mouse.
+  await productionHost.scrollIntoViewIfNeeded();
   const beforePath = await page.locator('#production-host [data-primitive="belt-path"] .atlas-visible').getAttribute('points');
   const handle = await page.locator('#production-host [data-primitive="belt-distance-handle"] .atlas-hit-fill').boundingBox();
   if (!handle) throw new Error('Missing production parameter handle');
@@ -75,7 +80,6 @@ test('production invalid parameter drag keeps the last valid crossed-belt state'
   await page.mouse.move(target.x, target.y, { steps: 8 });
   await page.mouse.up();
 
-  const productionHost = page.locator('#production-host');
   await expect(productionHost).toHaveAttribute('data-parameter-drag-count', /[1-9][0-9]*/);
   await expect(productionHost).toHaveAttribute('data-last-parameter-validity', 'invalid');
   const candidate = Number(await productionHost.getAttribute('data-last-parameter-candidate-mm'));
