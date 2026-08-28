@@ -7,6 +7,8 @@ use serde::Serialize;
 
 use atlas_ezpz_spike::{Vec2, load_plan};
 
+const ATLAS_POSITION_TOLERANCE_M: f64 = 1e-8;
+
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct StrategyStats {
@@ -23,6 +25,7 @@ struct StrategyStats {
 #[serde(rename_all = "camelCase")]
 struct Report {
     model: &'static str,
+    atlas_position_tolerance_m: f64,
     geometry: GeometrySummary,
     previous_only: StrategyStats,
     linear_extrapolation: StrategyStats,
@@ -172,6 +175,14 @@ fn run(extrapolate: bool) -> StrategyStats {
     stats
 }
 
+fn accepted(stats: &StrategyStats) -> bool {
+    stats.failures == 0
+        && stats.nonconverged == 0
+        && stats.unsatisfied == 0
+        && stats.wrong_root_samples == 0
+        && stats.max_position_error_m <= ATLAS_POSITION_TOLERANCE_M
+}
+
 fn main() {
     let plan = load_plan();
     let ground_length = magnitude(sub(
@@ -182,6 +193,7 @@ fn main() {
 
     let report = Report {
         model: "derived exact parallelogram root-coalescence stress",
+        atlas_position_tolerance_m: ATLAS_POSITION_TOLERANCE_M,
         geometry: GeometrySummary {
             ground_length_m: ground_length,
             crank_length_m: crank_length,
@@ -199,4 +211,12 @@ fn main() {
         "{}",
         serde_json::to_string_pretty(&report).expect("coalescence report must serialize")
     );
+
+    if !accepted(&report.linear_extrapolation) {
+        eprintln!(
+            "linear-extrapolation continuation failed Atlas tolerance: {:?}",
+            report.linear_extrapolation
+        );
+        std::process::exit(1);
+    }
 }
