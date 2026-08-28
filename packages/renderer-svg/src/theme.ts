@@ -21,7 +21,7 @@ export const DEFAULT_SVG_RENDERER_THEME: SvgRendererTheme = {
 };
 
 export const SVG_RENDERER_STYLE = `
-.atlas-svg-root { background: var(--am-background); overflow: visible; }
+.atlas-svg-root { background: var(--am-background); overflow: visible; touch-action: none; }
 .atlas-layer { pointer-events: none; }
 .atlas-primitive { pointer-events: none; }
 .atlas-visible { vector-effect: non-scaling-stroke; fill: none; stroke: var(--am-foreground); }
@@ -37,11 +37,11 @@ export const SVG_RENDERER_STYLE = `
 .atlas-style-label { fill: var(--am-muted); stroke: none; font: 12px ui-sans-serif, system-ui, sans-serif; }
 .atlas-style-handle { stroke: var(--am-accent); fill: var(--am-background); }
 .atlas-style-invalid { stroke: var(--am-danger); fill: var(--am-background); stroke-dasharray: 4 3; }
-.atlas-selected { stroke: var(--am-accent); }
+.atlas-selected { stroke: var(--am-accent); filter: drop-shadow(0 0 1.5px var(--am-accent)); }
 .atlas-hit { stroke: transparent; fill: transparent; pointer-events: stroke; }
 .atlas-hit-fill { stroke: transparent; fill: transparent; pointer-events: all; }
 .atlas-interactive { pointer-events: all; cursor: pointer; }
-.atlas-interactive:focus .atlas-visible { stroke: var(--am-accent); }
+.atlas-interactive:focus .atlas-visible { stroke: var(--am-accent); filter: drop-shadow(0 0 2px var(--am-accent)); }
 .atlas-interactive:focus { outline: none; }
 .atlas-handle-visible { vector-effect: non-scaling-stroke; stroke-width: 2; }
 .atlas-dimension-text { fill: var(--am-muted); stroke: none; font: 12px ui-sans-serif, system-ui, sans-serif; }
