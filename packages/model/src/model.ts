@@ -36,6 +36,13 @@ export interface PlanarPoseDefinition extends LocalPoint2DDefinition {
   angle: ScalarSource;
 }
 
+/** Concrete authored pose used to seed a reproducible physical configuration. */
+export interface PlanarPoseValue {
+  x: QuantityValue;
+  y: QuantityValue;
+  angle: QuantityValue;
+}
+
 export interface ParameterDefinition {
   id: ParameterId;
   label: string;
@@ -140,7 +147,12 @@ export interface SignalDefinition {
 export interface ReferenceConfiguration {
   id: ConfigurationId;
   label: string;
-  coordinates: Record<CoordinateId, QuantityValue>;
+  coordinates: Partial<Record<CoordinateId, QuantityValue>>;
+  /**
+   * Optional concrete body poses used as solver seeds for assembly branches.
+   * These are physical reference states, not animation keyframes.
+   */
+  bodyPoses?: Partial<Record<BodyId, PlanarPoseValue>>;
   modes?: Record<string, string | boolean | number>;
 }
 
