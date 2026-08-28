@@ -23,7 +23,12 @@ test('renderer keyboard interaction nudges the shared input coordinate', async (
 
 test('selecting a rendered body is reflected across the shared controller', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#native-host [data-primitive="fourbar-crank"] .scene-visible').click();
+  const crank = page.locator('#native-host [data-primitive="fourbar-crank"] .scene-visible');
+  const box = await crank.boundingBox();
+  if (!box) throw new Error('Missing rendered crank stroke');
+  // SVG lines can have a zero-height DOM box, so click the geometric midpoint
+  // directly instead of asking Playwright to infer element actionability.
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await expect(page.locator('#selection')).toHaveText('Selected: crank');
   await expect(page.locator('#svgjs-host [data-select-id="crank"]')).toHaveCount(1);
 });
@@ -46,7 +51,7 @@ test('invalid crossed-belt parameter drag keeps the last geometrically valid mec
   const lastValidDistanceMm = Number(output?.replace(/[^0-9.-]/g, ''));
   expect(lastValidDistanceMm).toBeGreaterThanOrEqual(90);
   expect(lastValidDistanceMm).toBeLessThan(180);
-  await expect(page.locator('#native-host [data-handle="invalid"]')).toHaveCount(1);
+  await expect(page.locator('#native-host [data-primitive="belt-invalid-handle"]')).toHaveCount(1);
 });
 
 test('reduced motion keeps play paused while direct manipulation remains available', async ({ page }) => {
