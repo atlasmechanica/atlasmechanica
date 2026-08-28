@@ -33,6 +33,10 @@ export interface CoordinateState {
 
 export interface BodyState {
   pose: Pose2D;
+  /** Meters per second at the body-local origin. */
+  linearVelocity?: Vector2;
+  /** Meters per second squared at the body-local origin. */
+  linearAcceleration?: Vector2;
   /** Radians per second. */
   angularVelocity?: number;
   /** Radians per second squared. */
