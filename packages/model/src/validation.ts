@@ -2,11 +2,12 @@ import {
   SIMULATION_MODEL_SCHEMA_VERSION,
   isParameterReference,
   type FeatureRef,
+  type PlanarPoseValue,
   type ScalarSource,
   type SimulationModel,
 } from './model.js';
 import type { Diagnostic } from './runtime.js';
-import { quantityKind } from './units.js';
+import { quantityKind, type QuantityKind } from './units.js';
 
 function invalidModel(message: string, context?: Diagnostic['context']): Diagnostic {
   const diagnostic: Diagnostic = {
@@ -22,15 +23,40 @@ function invalidModel(message: string, context?: Diagnostic['context']): Diagnos
 function validateScalarSource(
   model: SimulationModel,
   source: ScalarSource,
+  expectedKind: QuantityKind,
   location: string,
   diagnostics: Diagnostic[],
 ): void {
-  if (!isParameterReference(source)) return;
+  if (isParameterReference(source)) {
+    const parameter = model.parameters[source.parameter];
+    if (parameter === undefined) {
+      diagnostics.push(
+        invalidModel(`Unknown parameter reference at ${location}`, {
+          parameter: source.parameter,
+        }),
+      );
+      return;
+    }
 
-  if (model.parameters[source.parameter] === undefined) {
+    if (parameter.kind !== expectedKind) {
+      diagnostics.push(
+        invalidModel(`Parameter reference has the wrong quantity kind at ${location}`, {
+          parameter: source.parameter,
+          expectedKind,
+          actualKind: parameter.kind,
+        }),
+      );
+    }
+    return;
+  }
+
+  const actualKind = quantityKind(source);
+  if (actualKind !== expectedKind) {
     diagnostics.push(
-      invalidModel(`Unknown parameter reference at ${location}`, {
-        parameter: source.parameter,
+      invalidModel(`Quantity has the wrong kind at ${location}`, {
+        expectedKind,
+        actualKind,
+        unit: source.unit,
       }),
     );
   }
@@ -60,6 +86,22 @@ function validateFeatureRef(
         feature: ref.feature,
       }),
     );
+  }
+}
+
+function validatePoseValue(
+  pose: PlanarPoseValue,
+  location: string,
+  diagnostics: Diagnostic[],
+): void {
+  if (quantityKind(pose.x) !== 'length') {
+    diagnostics.push(invalidModel(`Pose x must be a length at ${location}.x`));
+  }
+  if (quantityKind(pose.y) !== 'length') {
+    diagnostics.push(invalidModel(`Pose y must be a length at ${location}.y`));
+  }
+  if (quantityKind(pose.angle) !== 'angle') {
+    diagnostics.push(invalidModel(`Pose angle must be an angle at ${location}.angle`));
   }
 }
 
@@ -93,6 +135,22 @@ export function validateSimulationModel(model: SimulationModel): Diagnostic[] {
         }),
       );
     }
+
+    for (const [boundName, bound] of [
+      ['min', parameter.domain?.min],
+      ['max', parameter.domain?.max],
+    ] as const) {
+      if (bound !== undefined && quantityKind(bound) !== parameter.kind) {
+        diagnostics.push(
+          invalidModel('Parameter domain has the wrong quantity kind', {
+            parameter: parameterId,
+            bound: boundName,
+            expectedKind: parameter.kind,
+            unit: bound.unit,
+          }),
+        );
+      }
+    }
   }
 
   const mechanical = model.systems.mechanical;
@@ -116,11 +174,24 @@ export function validateSimulationModel(model: SimulationModel): Diagnostic[] {
       );
     }
 
-    validateScalarSource(model, body.referencePose.x, `${bodyId}.pose.x`, diagnostics);
-    validateScalarSource(model, body.referencePose.y, `${bodyId}.pose.y`, diagnostics);
+    validateScalarSource(
+      model,
+      body.referencePose.x,
+      'length',
+      `${bodyId}.pose.x`,
+      diagnostics,
+    );
+    validateScalarSource(
+      model,
+      body.referencePose.y,
+      'length',
+      `${bodyId}.pose.y`,
+      diagnostics,
+    );
     validateScalarSource(
       model,
       body.referencePose.angle,
+      'angle',
       `${bodyId}.pose.angle`,
       diagnostics,
     );
@@ -136,14 +207,32 @@ export function validateSimulationModel(model: SimulationModel): Diagnostic[] {
         );
       }
 
-      const point = feature.type === 'point' ? feature.position : feature.type === 'axis' ? feature.origin : feature.center;
-      validateScalarSource(model, point.x, `${bodyId}.${featureId}.x`, diagnostics);
-      validateScalarSource(model, point.y, `${bodyId}.${featureId}.y`, diagnostics);
+      const point =
+        feature.type === 'point'
+          ? feature.position
+          : feature.type === 'axis'
+            ? feature.origin
+            : feature.center;
+      validateScalarSource(
+        model,
+        point.x,
+        'length',
+        `${bodyId}.${featureId}.x`,
+        diagnostics,
+      );
+      validateScalarSource(
+        model,
+        point.y,
+        'length',
+        `${bodyId}.${featureId}.y`,
+        diagnostics,
+      );
 
       if (feature.type === 'pulley') {
         validateScalarSource(
           model,
           feature.pitchRadius,
+          'length',
           `${bodyId}.${featureId}.pitchRadius`,
           diagnostics,
         );
@@ -250,6 +339,19 @@ export function validateSimulationModel(model: SimulationModel): Diagnostic[] {
           }),
         );
       }
+    }
+
+    for (const [bodyId, pose] of Object.entries(configuration.bodyPoses ?? {})) {
+      if (mechanical.bodies[bodyId] === undefined) {
+        diagnostics.push(
+          invalidModel('Configuration references an unknown body pose', {
+            configuration: configurationId,
+            body: bodyId,
+          }),
+        );
+        continue;
+      }
+      validatePoseValue(pose, `${configurationId}.bodyPoses.${bodyId}`, diagnostics);
     }
   }
 
