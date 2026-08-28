@@ -1,0 +1,159 @@
+---
+import OpenBeltLab from '../../../components/OpenBeltLab.astro';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="Open Belt Drive"
+  description="Explore an open belt drive interactively: same-direction rotary transmission, speed ratio, belt speed, geometry, and Brown movement 001 context."
+  canonicalPath="/mechanisms/open-belt-drive/"
+>
+  <main class="page">
+    <div class="site-shell">
+      <nav class="breadcrumbs" aria-label="Breadcrumb">
+        <a href="/">Atlas</a><span class="sep">/</span>
+        <span>Mechanisms</span><span class="sep">/</span>
+        <span aria-current="page">Open Belt Drive</span>
+      </nav>
+
+      <header class="mechanism-heading">
+        <div>
+          <p class="eyebrow">Continuous rotary → continuous rotary</p>
+          <h1>Open Belt Drive</h1>
+          <p>
+            Two pulleys connected by an uncrossed belt transmit rotation between parallel shafts.
+            In the ideal no-slip case, the shafts turn in the same direction and pulley radii set the speed ratio.
+          </p>
+        </div>
+        <a class="collection-chip" href="#brown-001">
+          <span>Collection context</span>
+          <strong>Brown 001</strong>
+        </a>
+      </header>
+
+      <OpenBeltLab />
+
+      <div class="content-grid">
+        <article class="prose">
+          <section>
+            <p class="eyebrow">What it does</p>
+            <h2>Transmit rotation across a distance.</h2>
+            <p>
+              An open belt lets one rotating shaft drive another without placing their axes next to one another.
+              With no slip, every point on the belt has the same linear speed where it meets each pulley. That one
+              constraint determines the ideal angular-speed relationship.
+            </p>
+            <div class="formula">
+              ω₂ / ω₁ = r₁ / r₂
+              <small>
+                Ideal open belt: same rotation direction. Here r₁ and r₂ are the driver and driven pitch radii;
+                ω₁ and ω₂ are their angular velocities.
+              </small>
+            </div>
+            <div class="formula">
+              v = r₁ω₁ = r₂ω₂
+              <small>
+                The same ideal belt speed v passes both pulley pitch circles. Change the driver speed above and the
+                belt-speed readout updates from this relation.
+              </small>
+            </div>
+          </section>
+
+          <section>
+            <p class="eyebrow">Why it matters</p>
+            <h2>A simple transmission with useful freedom.</h2>
+            <p>
+              Belt drives can bridge more shaft spacing than meshing gears while keeping the transmission conceptually
+              simple. Changing pulley size changes speed ratio without changing the underlying motion type. That makes
+              this a useful first mechanism for separating <em>motion</em>, <em>geometry</em>, and <em>ratio</em>.
+            </p>
+            <h3>What the ideal model captures</h3>
+            <ul>
+              <li>same-direction rotation for an open belt;</li>
+              <li>constant angular-speed ratio from pulley pitch radii;</li>
+              <li>tangent belt geometry, wrap angle, belt length, and belt speed;</li>
+              <li>how center distance changes geometry without changing the ideal speed ratio.</li>
+            </ul>
+            <h3>What it intentionally leaves out</h3>
+            <p>
+              Real belts stretch, slip, bend, heat, and require tension. Available torque depends on friction, wrap,
+              tension, belt construction, and operating conditions. Atlas labels this model as ideal kinematics rather
+              than pretending those effects are already included.
+            </p>
+          </section>
+
+          <section id="brown-001">
+            <p class="eyebrow">Collection 001 · Henry T. Brown</p>
+            <h2>Brown begins with the basic idea.</h2>
+            <p>
+              In <em>507 Mechanical Movements</em>, this arrangement appears as movement 1. Brown's description focuses
+              on the two facts a learner should notice first: power is transmitted by the belt, and an open routing
+              preserves rotational direction.
+            </p>
+            <blockquote class="quote">
+              “Illustrates the transmission of power by simple pulleys and an open belt. In this case both of the pulleys rotate in the same direction.”
+              <cite>Henry T. Brown, movement 1 · online transcription reference</cite>
+            </blockquote>
+            <p style="margin-top: 16px">
+              <a href="https://507movements.com/mm_001.html">View the current 507movements.com reference ↗</a>
+            </p>
+          </section>
+
+          <section>
+            <p class="eyebrow">What changes next?</p>
+            <h2>Cross the belt and direction reverses.</h2>
+            <p>
+              Brown's next closely related arrangement crosses the belt before it reaches the driven pulley. The
+              pulley-size ratio can stay the same, but the output direction reverses. That makes the crossed belt a
+              particularly clean example of changing one geometric relationship while preserving the basic transmission
+              principle.
+            </p>
+            <div class="next-card" aria-label="Next concept: crossed belt drive">
+              <div class="next-card__number">002</div>
+              <div>
+                <strong>Crossed Belt Drive</strong>
+                <p>Same transmission idea · reversed output direction · next production mechanism.</p>
+              </div>
+              <div class="next-card__arrow" aria-hidden="true">→</div>
+            </div>
+          </section>
+        </article>
+
+        <aside class="side-facts" aria-label="Mechanism facts">
+          <div class="fact-group">
+            <h3>Functional signature</h3>
+            <p>continuous rotary → continuous rotary</p>
+          </div>
+          <div class="fact-group">
+            <h3>Ideal relationship</h3>
+            <p>Constant speed ratio; same direction</p>
+          </div>
+          <div class="fact-group">
+            <h3>Degrees of freedom</h3>
+            <p>1 prescribed input coordinate</p>
+          </div>
+          <div class="fact-group">
+            <h3>Components</h3>
+            <div class="fact-tags">
+              <span class="fact-tag">belt</span>
+              <span class="fact-tag">pulley</span>
+              <span class="fact-tag">shaft</span>
+            </div>
+          </div>
+          <div class="fact-group">
+            <h3>Atlas model</h3>
+            <p>Exact analytic planar kinematics</p>
+          </div>
+          <div class="fact-group">
+            <h3>Assumptions</h3>
+            <p>Massless, inextensible belt; no slip; fixed coplanar centers; pitch-circle geometry.</p>
+          </div>
+          <div class="fact-group">
+            <h3>Collection appearances</h3>
+            <p>Brown · 507 Mechanical Movements · 001</p>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </main>
+</BaseLayout>

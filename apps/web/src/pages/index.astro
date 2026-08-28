@@ -1,0 +1,43 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout>
+  <main class="page">
+    <div class="site-shell">
+      <p class="eyebrow">An interactive atlas of mechanisms and machines</p>
+      <h1 class="display">Understand how machines move.</h1>
+      <p class="lede">
+        Explore mechanical ideas through live models, mathematics, historical sources,
+        applications, and the relationships that connect one mechanism to the next.
+      </p>
+      <div class="hero-actions">
+        <a class="button button--primary" href="/mechanisms/open-belt-drive/">Explore the first mechanism</a>
+        <a class="button button--quiet" href="https://github.com/atlasmechanica/atlasmechanica">View the open-source project</a>
+      </div>
+
+      <section class="mode-grid" aria-label="Ways to explore Atlas Mechanica">
+        <a class="mode-card" href="/mechanisms/open-belt-drive/">
+          <span>01 / BROWSE</span>
+          <h2>Mechanisms</h2>
+          <p>Start with a machine element and inspect how motion, geometry, and parameters fit together.</p>
+        </a>
+        <a class="mode-card" id="learn" href="/mechanisms/open-belt-drive/">
+          <span>02 / LEARN</span>
+          <h2>Learning paths</h2>
+          <p>Follow curated progressions that explain what changes from one mechanical idea to the next.</p>
+        </a>
+        <a class="mode-card" id="collections" href="/mechanisms/open-belt-drive/">
+          <span>03 / COLLECTIONS</span>
+          <h2>Brown's 507</h2>
+          <p>Read historical collections as source context without making their numbering the atlas's canonical taxonomy.</p>
+        </a>
+        <div class="mode-card">
+          <span>04 / SOLVE</span>
+          <h2>By function</h2>
+          <p>Eventually: start with the motion transformation you need and compare mechanisms that can produce it.</p>
+        </div>
+      </section>
+    </div>
+  </main>
+</BaseLayout>
