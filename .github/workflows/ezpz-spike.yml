@@ -1,0 +1,97 @@
+name: ezpz spike
+
+on:
+  pull_request:
+    paths:
+      - 'experiments/solvers/ezpz/**'
+      - 'experiments/solvers/ezpz-wasm/**'
+      - 'packages/kinematics/src/fourBarConstraintPlan.ts'
+      - 'packages/kinematics/src/fourBarConstraintPlan.test.ts'
+      - 'packages/kinematics/src/fixtures/fourBarConstraintPlan.json'
+      - '.github/workflows/ezpz-spike.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  four-bar-kernel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            experiments/solvers/ezpz/target
+            experiments/solvers/ezpz-wasm/target
+          key: ${{ runner.os }}-cargo-ezpz-${{ hashFiles('experiments/solvers/ezpz/Cargo.toml', 'experiments/solvers/ezpz-wasm/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-ezpz-
+
+      - name: Test native spike
+        run: cargo test --release --manifest-path experiments/solvers/ezpz/Cargo.toml
+
+      - name: Run canonical four-bar benchmark
+        run: cargo run --release --quiet --manifest-path experiments/solvers/ezpz/Cargo.toml --bin atlas-ezpz-spike > /tmp/ezpz-report.json
+
+      - name: Run root-coalescence stress
+        run: cargo run --release --quiet --manifest-path experiments/solvers/ezpz/Cargo.toml --bin coalescence > /tmp/ezpz-coalescence.json
+
+      - name: Build raw WASM kernel
+        env:
+          CARGO_TARGET_DIR: experiments/solvers/ezpz-wasm/target
+        run: cargo build --release --target wasm32-unknown-unknown --manifest-path experiments/solvers/ezpz-wasm/Cargo.toml
+
+      - name: Validate and benchmark raw WASM kernel
+        run: node experiments/solvers/ezpz-wasm/bench.mjs > /tmp/ezpz-wasm.json
+
+      - name: Publish benchmark to pull request
+        uses: actions/github-script@v7
+        env:
+          REPORT_PATH: /tmp/ezpz-report.json
+          COALESCENCE_PATH: /tmp/ezpz-coalescence.json
+          WASM_PATH: /tmp/ezpz-wasm.json
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync(process.env.REPORT_PATH, 'utf8');
+            const coalescence = fs.readFileSync(process.env.COALESCENCE_PATH, 'utf8');
+            const wasm = fs.readFileSync(process.env.WASM_PATH, 'utf8');
+            const marker = '<!-- atlas-ezpz-spike -->';
+            const body = `${marker}\n## ezpz four-bar kernel spike\n\n### Canonical native crank-rocker\n\n\`\`\`json\n${report}\n\`\`\`\n\n### Native root-coalescence / exact parallelogram\n\n\`\`\`json\n${coalescence}\n\`\`\`\n\n### Raw WebAssembly / Node V8\n\n\`\`\`json\n${wasm}\n\`\`\``;
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const existing = comments.find(comment =>
+              comment.user?.type === 'Bot' && comment.body?.includes(marker)
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
