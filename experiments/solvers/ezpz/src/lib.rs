@@ -10,19 +10,6 @@ use serde::{Deserialize, Serialize};
 const PLAN_JSON: &str = include_str!(
     "../../../../packages/kinematics/src/fixtures/fourBarConstraintPlan.json"
 );
-const STRICT_CONFIG: Config = Config::new_for_atlas();
-
-trait AtlasConfigExt {
-    const fn new_for_atlas() -> Config;
-}
-
-impl AtlasConfigExt for Config {
-    const fn new_for_atlas() -> Config {
-        // Config's builder methods are not const, so this trait exists only to
-        // make the desired policy obvious. `atlas_config()` below constructs it.
-        Config::default()
-    }
-}
 
 fn atlas_config() -> Config {
     Config::default()
