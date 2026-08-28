@@ -264,9 +264,17 @@ function buildBelt(options: SceneBuildOptions): MechanismScene {
 }
 
 export function buildMechanismScene(options: SceneBuildOptions): MechanismScene {
-  const scene = options.model.subject === 'four-bar-linkage'
-    ? buildFourBar(options)
-    : buildBelt(options);
+  let scene: MechanismScene;
+  switch (options.model.subject) {
+    case 'four-bar-linkage':
+      scene = buildFourBar(options);
+      break;
+    case 'belt-drive':
+      scene = buildBelt(options);
+      break;
+    default:
+      throw new TypeError(`No production scene compiler for model subject ${options.model.subject}`);
+  }
   assertMechanismScene(scene);
   return scene;
 }
