@@ -1,0 +1,17 @@
+{
+  "name": "atlas-mechanica",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run test"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2",
+    "vitest": "^4.0.0"
+  }
+}
