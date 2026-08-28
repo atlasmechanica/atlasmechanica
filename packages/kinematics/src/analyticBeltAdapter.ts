@@ -1,17 +1,18 @@
 import {
   canonicalNumber,
-  hasErrors,
   isParameterReference,
   validateSimulationModel,
   type BeltCouplingDefinition,
   type BodyState,
   type CompiledModel,
   type ConfigurationId,
+  type CoordinateState,
   type Diagnostic,
   type EvaluationRequest,
   type MechanicalFeatureDefinition,
   type ModelCapabilities,
   type ModelSession,
+  type ModelState,
   type ParameterId,
   type Pose2D,
   type PulleyFeatureDefinition,
@@ -36,7 +37,12 @@ const CAPABILITIES: ModelCapabilities = {
   events: 'unavailable',
 };
 
-type ParameterValues = Record<ParameterId, number>;
+interface ResolvedParameter {
+  value: number;
+  kind: QuantityKind;
+}
+
+type ParameterValues = Record<ParameterId, ResolvedParameter>;
 
 interface BeltContext {
   coupling: BeltCouplingDefinition;
@@ -76,17 +82,38 @@ function errorDiagnostic(
   return diagnostic;
 }
 
+function invalidState(
+  model: SimulationModel,
+  configuration: ConfigurationId,
+  diagnostic: Diagnostic,
+): ModelState {
+  return {
+    model: model.id,
+    configuration,
+    coordinates: {},
+    bodies: {},
+    signals: {},
+    modes: {},
+    diagnostics: [diagnostic],
+  };
+}
+
 function resolveScalar(
   source: ScalarSource,
   parameters: ParameterValues,
   kind: QuantityKind,
 ): number {
   if (isParameterReference(source)) {
-    const value = parameters[source.parameter];
-    if (value === undefined) {
+    const resolved = parameters[source.parameter];
+    if (resolved === undefined) {
       throw new TypeError(`Missing resolved parameter ${source.parameter}`);
     }
-    return value;
+    if (resolved.kind !== kind) {
+      throw new TypeError(
+        `Parameter ${source.parameter} is ${resolved.kind}, not ${kind}`,
+      );
+    }
+    return resolved.value;
   }
 
   return canonicalNumber(source, kind);
@@ -116,7 +143,7 @@ function resolveParameters(
       }
     }
 
-    values[id] = value;
+    values[id] = { value, kind: definition.kind };
   }
 
   return values;
@@ -291,7 +318,7 @@ function getContext(model: SimulationModel): BeltContext | undefined {
 class AnalyticBeltSession implements ModelSession {
   private configuration: ConfigurationId;
   private readonly defaultConfiguration: ConfigurationId;
-  private parameters: Partial<Record<ParameterId, QuantityValue>>;
+  private readonly parameters: Partial<Record<ParameterId, QuantityValue>>;
 
   constructor(
     private readonly compiled: AnalyticBeltCompiledModel,
@@ -312,7 +339,7 @@ class AnalyticBeltSession implements ModelSession {
     this.parameters = { ...(options.parameters ?? {}) };
   }
 
-  evaluate(request: EvaluationRequest = {}): ReturnType<ModelSession['evaluate']> {
+  evaluate(request: EvaluationRequest = {}): ModelState {
     const model = this.compiled.model;
     const context = this.compiled.context;
     const configuration = model.configurations[this.configuration];
@@ -329,20 +356,14 @@ class AnalyticBeltSession implements ModelSession {
     try {
       parameters = resolveParameters(model, parameterOverrides);
     } catch (error) {
-      return {
-        model: model.id,
-        configuration: this.configuration,
-        coordinates: {},
-        bodies: {},
-        signals: {},
-        modes: {},
-        diagnostics: [
-          errorDiagnostic(
-            'invalid-input',
-            error instanceof Error ? error.message : 'Invalid parameter input',
-          ),
-        ],
-      };
+      return invalidState(
+        model,
+        this.configuration,
+        errorDiagnostic(
+          'invalid-input',
+          error instanceof Error ? error.message : 'Invalid parameter input',
+        ),
+      );
     }
 
     const inputId = context.coupling.inputCoordinate;
@@ -351,17 +372,11 @@ class AnalyticBeltSession implements ModelSession {
       request.coordinates?.[inputId] ?? configuration.coordinates[inputId];
 
     if (inputSource === undefined) {
-      return {
-        model: model.id,
-        configuration: this.configuration,
-        coordinates: {},
-        bodies: {},
-        signals: {},
-        modes: {},
-        diagnostics: [
-          errorDiagnostic('missing-input', `Missing coordinate ${inputId}`),
-        ],
-      };
+      return invalidState(
+        model,
+        this.configuration,
+        errorDiagnostic('missing-input', `Missing coordinate ${inputId}`),
+      );
     }
 
     let inputAngle: number;
@@ -378,32 +393,40 @@ class AnalyticBeltSession implements ModelSession {
         'angle',
       );
     } catch (error) {
-      return {
-        model: model.id,
-        configuration: this.configuration,
-        coordinates: {},
-        bodies: {},
-        signals: {},
-        modes: {},
-        diagnostics: [
-          errorDiagnostic(
-            'invalid-input',
-            error instanceof Error ? error.message : 'Invalid coordinate input',
-          ),
-        ],
-      };
+      return invalidState(
+        model,
+        this.configuration,
+        errorDiagnostic(
+          'invalid-input',
+          error instanceof Error ? error.message : 'Invalid coordinate input',
+        ),
+      );
     }
 
-    const driverRadius = resolveScalar(
-      context.driverPulley.pitchRadius,
-      parameters,
-      'length',
-    );
-    const drivenRadius = resolveScalar(
-      context.drivenPulley.pitchRadius,
-      parameters,
-      'length',
-    );
+    let driverRadius: number;
+    let drivenRadius: number;
+    try {
+      driverRadius = resolveScalar(
+        context.driverPulley.pitchRadius,
+        parameters,
+        'length',
+      );
+      drivenRadius = resolveScalar(
+        context.drivenPulley.pitchRadius,
+        parameters,
+        'length',
+      );
+    } catch (error) {
+      return invalidState(
+        model,
+        this.configuration,
+        errorDiagnostic(
+          'invalid-model',
+          error instanceof Error ? error.message : 'Invalid pulley geometry',
+        ),
+      );
+    }
+
     const direction = context.coupling.routing === 'open' ? 1 : -1;
     const signedRatio = direction * (driverRadius / drivenRadius);
     const phase = referenceOutput - signedRatio * referenceInput;
@@ -425,30 +448,35 @@ class AnalyticBeltSession implements ModelSession {
         );
       }
     } catch (error) {
-      return {
-        model: model.id,
-        configuration: this.configuration,
-        coordinates: {},
-        bodies: {},
-        signals: {},
-        modes: {},
-        diagnostics: [
-          errorDiagnostic(
-            'invalid-input',
-            error instanceof Error ? error.message : 'Invalid derivative input',
-          ),
-        ],
-      };
+      return invalidState(
+        model,
+        this.configuration,
+        errorDiagnostic(
+          'invalid-input',
+          error instanceof Error ? error.message : 'Invalid derivative input',
+        ),
+      );
     }
 
-    const bodyPoses: Record<string, Pose2D> = {};
     const mechanical = model.systems.mechanical;
     if (mechanical === undefined) {
       throw new TypeError('Compiled belt model lost its mechanical system');
     }
 
-    for (const [bodyId, body] of Object.entries(mechanical.bodies)) {
-      bodyPoses[bodyId] = resolvePose(body, parameters);
+    const bodyPoses: Record<string, Pose2D> = {};
+    try {
+      for (const [bodyId, body] of Object.entries(mechanical.bodies)) {
+        bodyPoses[bodyId] = resolvePose(body, parameters);
+      }
+    } catch (error) {
+      return invalidState(
+        model,
+        this.configuration,
+        errorDiagnostic(
+          'invalid-model',
+          error instanceof Error ? error.message : 'Invalid body geometry',
+        ),
+      );
     }
 
     const driverPose = bodyPoses[context.driverBody.id];
@@ -483,11 +511,24 @@ class AnalyticBeltSession implements ModelSession {
       context.coupling.routing,
     );
 
-    const coordinates: ReturnType<ModelSession['evaluate']>['coordinates'] = {
-      [inputId]: { position: { value: inputAngle, unit: 'rad' } },
+    const inputCoordinate: CoordinateState = {
+      position: { value: inputAngle, unit: 'rad' },
     };
-    const bodies: ReturnType<ModelSession['evaluate']>['bodies'] = {};
-    const signals: ReturnType<ModelSession['evaluate']>['signals'] = {
+    if (inputRate !== undefined) {
+      inputCoordinate.velocity = { value: inputRate, unit: 'rad/s' };
+    }
+    if (inputAcceleration !== undefined) {
+      inputCoordinate.acceleration = {
+        value: inputAcceleration,
+        unit: 'rad/s^2',
+      };
+    }
+
+    const coordinates: ModelState['coordinates'] = {
+      [inputId]: inputCoordinate,
+    };
+    const bodies: ModelState['bodies'] = {};
+    const signals: ModelState['signals'] = {
       'validity-margin': scalar(validityMargin, 'm'),
     };
 
@@ -522,19 +563,19 @@ class AnalyticBeltSession implements ModelSession {
       };
     }
 
-    const outputCoordinate = {
-      position: { value: outputAngle, unit: 'rad' as const },
+    const outputCoordinate: CoordinateState = {
+      position: { value: outputAngle, unit: 'rad' },
     };
     if (inputRate !== undefined) {
       outputCoordinate.velocity = {
         value: signedRatio * inputRate,
-        unit: 'rad/s' as const,
+        unit: 'rad/s',
       };
     }
     if (inputAcceleration !== undefined) {
       outputCoordinate.acceleration = {
         value: signedRatio * inputAcceleration,
-        unit: 'rad/s^2' as const,
+        unit: 'rad/s^2',
       };
     }
     coordinates[outputId] = outputCoordinate;
@@ -620,15 +661,7 @@ export const analyticBeltAdapter: SimulationAdapter = {
 
   compile(model): CompiledModel {
     const diagnostics = validateSimulationModel(model);
-    const state = {
-      model: model.id,
-      coordinates: {},
-      bodies: {},
-      signals: {},
-      modes: {},
-      diagnostics,
-    };
-    if (hasErrors(state)) {
+    if (diagnostics.some((diagnostic) => diagnostic.severity === 'error')) {
       throw new TypeError(
         diagnostics.map((diagnostic) => diagnostic.message).join('; '),
       );
