@@ -68,6 +68,7 @@ export type SignalValue =
 
 export type DiagnosticCode =
   | 'invalid-model'
+  | 'invalid-input'
   | 'invalid-geometry'
   | 'physical-singularity'
   | 'formulation-singularity'
