@@ -26,19 +26,24 @@ jobs:
       - name: Test native spike
         run: cargo test --release --manifest-path experiments/solvers/ezpz/Cargo.toml
 
-      - name: Run native benchmark
+      - name: Run canonical four-bar benchmark
         run: cargo run --release --quiet --manifest-path experiments/solvers/ezpz/Cargo.toml > /tmp/ezpz-report.json
+
+      - name: Run root-coalescence stress
+        run: cargo run --release --quiet --manifest-path experiments/solvers/ezpz/Cargo.toml --bin coalescence > /tmp/ezpz-coalescence.json
 
       - name: Publish benchmark to pull request
         uses: actions/github-script@v7
         env:
           REPORT_PATH: /tmp/ezpz-report.json
+          COALESCENCE_PATH: /tmp/ezpz-coalescence.json
         with:
           script: |
             const fs = require('fs');
             const report = fs.readFileSync(process.env.REPORT_PATH, 'utf8');
+            const coalescence = fs.readFileSync(process.env.COALESCENCE_PATH, 'utf8');
             const marker = '<!-- atlas-ezpz-spike -->';
-            const body = `${marker}\n## ezpz native four-bar spike\n\n\`\`\`json\n${report}\n\`\`\``;
+            const body = `${marker}\n## ezpz native four-bar spike\n\n### Canonical crank-rocker\n\n\`\`\`json\n${report}\n\`\`\`\n\n### Root-coalescence / exact parallelogram\n\n\`\`\`json\n${coalescence}\n\`\`\``;
             const { owner, repo } = context.repo;
             const issue_number = context.issue.number;
             const comments = await github.paginate(github.rest.issues.listComments, {
