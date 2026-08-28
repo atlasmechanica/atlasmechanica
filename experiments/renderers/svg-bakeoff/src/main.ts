@@ -25,8 +25,8 @@ interface UiState {
   mechanism: MechanismChoice;
   angleDeg: number;
   centerDistanceMm: number;
-  selectedId?: string;
-  invalidParameterHandle?: Vec2;
+  selectedId?: string | undefined;
+  invalidParameterHandle?: Vec2 | undefined;
   playing: boolean;
 }
 
@@ -83,6 +83,8 @@ const state: UiState = {
   mechanism: 'fourbar',
   angleDeg: 0,
   centerDistanceMm: 180,
+  selectedId: undefined,
+  invalidParameterHandle: undefined,
   playing: false,
 };
 
@@ -119,9 +121,7 @@ function normalizedDegrees(value: number): number {
   return Math.abs(result - 360) < 1e-9 ? 0 : result;
 }
 
-function setStatus(message: string): void {
-  statusElement.textContent = message;
-}
+function setStatus(message: string): void { statusElement.textContent = message; }
 
 function updateControls(): void {
   mechanismSelect.value = state.mechanism;
@@ -136,41 +136,21 @@ function updateControls(): void {
 
 function buildCurrentScene(): MechanismScene {
   if (state.mechanism === 'fourbar') {
-    currentModel = canonicalFourBarModel;
-    currentParameters = {};
-    currentModelState = evaluateFourBar(state.angleDeg);
+    currentModel = canonicalFourBarModel; currentParameters = {}; currentModelState = evaluateFourBar(state.angleDeg);
   } else {
     currentModel = beltModel(state.mechanism);
     currentParameters = { 'center-distance': quantity(state.centerDistanceMm, 'mm') };
     currentModelState = evaluateBelt(state.mechanism, state.angleDeg, state.centerDistanceMm);
     if (hasErrors(currentModelState)) throw new Error('Committed UI state must always be physically valid');
   }
-  return buildMechanismScene({
-    model: currentModel,
-    state: currentModelState,
-    parameters: currentParameters,
-    selectedId: state.selectedId,
-    fourBarTrace,
-    invalidParameterHandle: state.invalidParameterHandle,
-  });
+  return buildMechanismScene({ model: currentModel, state: currentModelState, parameters: currentParameters, selectedId: state.selectedId, fourBarTrace, invalidParameterHandle: state.invalidParameterHandle });
 }
 
 const callbacks: RendererCallbacks = {
-  onSelect(id) {
-    state.selectedId = id;
-    selectionElement.textContent = `Selected: ${id}`;
-    render();
-  },
-  onInputDrag(point) {
-    setAngle((Math.atan2(point.y, point.x) * 180) / Math.PI);
-  },
-  onParameterDrag(point) {
-    if (state.mechanism === 'fourbar') return;
-    tryCenterDistance(point.x * 1000, point);
-  },
-  onNudgeInput(deltaDegrees) {
-    setAngle(state.angleDeg + deltaDegrees);
-  },
+  onSelect(id) { state.selectedId = id; selectionElement.textContent = `Selected: ${id}`; render(); },
+  onInputDrag(point) { setAngle((Math.atan2(point.y, point.x) * 180) / Math.PI); },
+  onParameterDrag(point) { if (state.mechanism !== 'fourbar') tryCenterDistance(point.x * 1000, point); },
+  onNudgeInput(deltaDegrees) { setAngle(state.angleDeg + deltaDegrees); },
 };
 
 const candidates: Array<{ factory: RendererFactory; renderer: CandidateRenderer; host: HTMLElement }> = [
@@ -180,20 +160,11 @@ const candidates: Array<{ factory: RendererFactory; renderer: CandidateRenderer;
 ];
 
 function render(): void {
-  currentScene = buildCurrentScene();
-  updateControls();
-  for (const candidate of candidates) {
-    candidate.renderer.update(currentScene);
-    candidate.host.dataset.angle = String(state.angleDeg);
-    candidate.host.dataset.mechanism = state.mechanism;
-  }
+  currentScene = buildCurrentScene(); updateControls();
+  for (const candidate of candidates) { candidate.renderer.update(currentScene); candidate.host.dataset.angle = String(state.angleDeg); candidate.host.dataset.mechanism = state.mechanism; }
 }
 
-function setAngle(value: number): void {
-  state.angleDeg = normalizedDegrees(value);
-  state.invalidParameterHandle = undefined;
-  render();
-}
+function setAngle(value: number): void { state.angleDeg = normalizedDegrees(value); state.invalidParameterHandle = undefined; render(); }
 
 function tryCenterDistance(valueMm: number, proposedPoint?: Vec2): void {
   if (state.mechanism === 'fourbar') return;
@@ -202,57 +173,20 @@ function tryCenterDistance(valueMm: number, proposedPoint?: Vec2): void {
   if (hasErrors(candidateState)) {
     state.invalidParameterHandle = proposedPoint ?? { x: candidateDistance / 1000, y: 0 };
     const diagnostic = candidateState.diagnostics.find((item) => item.severity === 'error');
-    setStatus(`Invalid geometry: ${diagnostic?.message ?? 'no real belt tangent'}`);
-    render();
-    return;
+    setStatus(`Invalid geometry: ${diagnostic?.message ?? 'no real belt tangent'}`); render(); return;
   }
-  state.centerDistanceMm = candidateDistance;
-  state.invalidParameterHandle = undefined;
-  setStatus('Valid mechanism geometry');
-  render();
+  state.centerDistanceMm = candidateDistance; state.invalidParameterHandle = undefined; setStatus('Valid mechanism geometry'); render();
 }
 
 function setMechanism(choice: MechanismChoice): void {
-  state.mechanism = choice;
-  state.selectedId = undefined;
-  selectionElement.textContent = 'Nothing selected';
-  state.invalidParameterHandle = undefined;
-  if (choice !== 'fourbar' && hasErrors(evaluateBelt(choice, state.angleDeg, state.centerDistanceMm))) {
-    state.centerDistanceMm = 180;
-  }
-  setStatus(choice === 'fourbar' ? 'Analytic four-bar state' : 'Analytic belt state');
-  render();
+  state.mechanism = choice; state.selectedId = undefined; selectionElement.textContent = 'Nothing selected'; state.invalidParameterHandle = undefined;
+  if (choice !== 'fourbar' && hasErrors(evaluateBelt(choice, state.angleDeg, state.centerDistanceMm))) state.centerDistanceMm = 180;
+  setStatus(choice === 'fourbar' ? 'Analytic four-bar state' : 'Analytic belt state'); render();
 }
 
-function stopPlaying(): void {
-  state.playing = false;
-  cancelAnimationFrame(animationFrame);
-  updateControls();
-}
-
-function animationTick(time: number): void {
-  if (!state.playing) return;
-  const deltaSeconds = lastAnimationTime === 0 ? 0 : Math.min((time - lastAnimationTime) / 1000, .05);
-  lastAnimationTime = time;
-  state.angleDeg = normalizedDegrees(state.angleDeg + deltaSeconds * 45);
-  render();
-  animationFrame = requestAnimationFrame(animationTick);
-}
-
-function togglePlaying(): void {
-  if (state.playing) {
-    stopPlaying();
-    return;
-  }
-  if (reducedMotion.matches) {
-    setStatus('Reduced-motion preference: animation remains paused; scrub or drag instead.');
-    return;
-  }
-  state.playing = true;
-  lastAnimationTime = 0;
-  updateControls();
-  animationFrame = requestAnimationFrame(animationTick);
-}
+function stopPlaying(): void { state.playing = false; cancelAnimationFrame(animationFrame); updateControls(); }
+function animationTick(time: number): void { if (!state.playing) return; const deltaSeconds = lastAnimationTime === 0 ? 0 : Math.min((time - lastAnimationTime) / 1000, .05); lastAnimationTime = time; state.angleDeg = normalizedDegrees(state.angleDeg + deltaSeconds * 45); render(); animationFrame = requestAnimationFrame(animationTick); }
+function togglePlaying(): void { if (state.playing) { stopPlaying(); return; } if (reducedMotion.matches) { setStatus('Reduced-motion preference: animation remains paused; scrub or drag instead.'); return; } state.playing = true; lastAnimationTime = 0; updateControls(); animationFrame = requestAnimationFrame(animationTick); }
 
 mechanismSelect.addEventListener('change', () => setMechanism(mechanismSelect.value as MechanismChoice));
 playButton.addEventListener('click', togglePlaying);
@@ -261,89 +195,45 @@ distanceInput.addEventListener('input', () => tryCenterDistance(Number(distanceI
 reducedMotion.addEventListener('change', () => { if (reducedMotion.matches) stopPlaying(); });
 
 function benchmarkScenes(count: number): MechanismScene[] {
-  return Array.from({ length: count }, (_, index) => {
-    const angle = (index / count) * 360;
-    const modelState = evaluateFourBar(angle);
-    return buildMechanismScene({ model: canonicalFourBarModel, state: modelState, fourBarTrace });
-  });
+  return Array.from({ length: count }, (_, index) => buildMechanismScene({ model: canonicalFourBarModel, state: evaluateFourBar((index / count) * 360), fourBarTrace }));
 }
 
 function largeTraceScene(base: MechanismScene): MechanismScene {
   const points = Array.from({ length: 5000 }, (_, index) => fourBarTrace[index % fourBarTrace.length] ?? { x: 0, y: 0 });
-  return {
-    ...base,
-    primitives: base.primitives.map((primitive) => primitive.id === 'fourbar-trace' && primitive.type === 'polyline' ? { ...primitive, points } : primitive),
-  };
+  return { ...base, primitives: base.primitives.map((primitive) => primitive.id === 'fourbar-trace' && primitive.type === 'polyline' ? { ...primitive, points } : primitive) };
 }
 
 const noopCallbacks: RendererCallbacks = { onSelect() {}, onInputDrag() {}, onParameterDrag() {}, onNudgeInput() {} };
 
-async function benchmarkFactory(factory: RendererFactory, id: string): Promise<BenchmarkMetric> {
+async function benchmarkFactory(factory: RendererFactory): Promise<BenchmarkMetric> {
   const scenes = benchmarkScenes(180);
-  const benchRoot = document.createElement('div');
-  benchRoot.style.cssText = 'position:fixed;left:-12000px;top:0;width:420px;height:300px;';
-  document.body.append(benchRoot);
+  const benchRoot = document.createElement('div'); benchRoot.style.cssText = 'position:fixed;left:-12000px;top:0;width:420px;height:300px;'; document.body.append(benchRoot);
   const host = document.createElement('div'); host.className = 'renderer-host'; host.style.width = '400px'; host.style.height = '250px'; benchRoot.append(host);
-  const renderer = factory(host, noopCallbacks);
-  renderer.update(scenes[0] as MechanismScene);
-  const started = performance.now();
-  for (let cycle = 0; cycle < 3; cycle += 1) for (const scene of scenes) renderer.update(scene);
-  host.getBoundingClientRect();
-  const singleMs = performance.now() - started;
-  const singleUpdates = scenes.length * 3;
-  const domNodes = renderer.domNodeCount();
-  const exportSvg = renderer.exportSvg();
-  const focusableNodes = host.querySelectorAll('[tabindex="0"],button,[role="button"],[role="slider"]').length;
-
-  const large = largeTraceScene(scenes[0] as MechanismScene);
-  const traceStart = performance.now();
-  for (let index = 0; index < 20; index += 1) renderer.update(large);
-  host.getBoundingClientRect();
-  const largeTraceMs = performance.now() - traceStart;
-  renderer.destroy(); host.remove();
-
-  const thumbnailRoot = document.createElement('div'); thumbnailRoot.style.cssText = 'position:fixed;left:-12000px;top:0;width:320px;'; document.body.append(thumbnailRoot);
-  const thumbnails: CandidateRenderer[] = [];
-  for (let index = 0; index < 12; index += 1) {
-    const thumbHost = document.createElement('div'); thumbHost.className = 'renderer-host'; thumbHost.style.width = '240px'; thumbHost.style.height = '150px'; thumbnailRoot.append(thumbHost);
-    thumbnails.push(factory(thumbHost, noopCallbacks));
-  }
-  const thumbnailStart = performance.now();
-  for (let frame = 0; frame < 60; frame += 1) {
-    const scene = scenes[(frame * 3) % scenes.length] as MechanismScene;
-    for (const thumbnail of thumbnails) thumbnail.update(scene);
-  }
-  thumbnailRoot.getBoundingClientRect();
-  const thumbnailMs = performance.now() - thumbnailStart;
+  const renderer = factory(host, noopCallbacks); renderer.update(scenes[0] as MechanismScene);
+  const started = performance.now(); for (let cycle = 0; cycle < 3; cycle += 1) for (const scene of scenes) renderer.update(scene); host.getBoundingClientRect();
+  const singleMs = performance.now() - started; const singleUpdates = scenes.length * 3; const domNodes = renderer.domNodeCount(); const exportSvg = renderer.exportSvg(); const focusableNodes = host.querySelectorAll('[tabindex="0"],button,[role="button"],[role="slider"]').length;
+  const large = largeTraceScene(scenes[0] as MechanismScene); const traceStart = performance.now(); for (let index = 0; index < 20; index += 1) renderer.update(large); host.getBoundingClientRect(); const largeTraceMs = performance.now() - traceStart; renderer.destroy(); host.remove();
+  const thumbnailRoot = document.createElement('div'); thumbnailRoot.style.cssText = 'position:fixed;left:-12000px;top:0;width:320px;'; document.body.append(thumbnailRoot); const thumbnails: CandidateRenderer[] = [];
+  for (let index = 0; index < 12; index += 1) { const thumbHost = document.createElement('div'); thumbHost.className = 'renderer-host'; thumbHost.style.width = '240px'; thumbHost.style.height = '150px'; thumbnailRoot.append(thumbHost); thumbnails.push(factory(thumbHost, noopCallbacks)); }
+  const thumbnailStart = performance.now(); for (let frame = 0; frame < 60; frame += 1) { const frameScene = scenes[(frame * 3) % scenes.length] as MechanismScene; for (const thumbnail of thumbnails) thumbnail.update(frameScene); } thumbnailRoot.getBoundingClientRect(); const thumbnailMs = performance.now() - thumbnailStart;
   for (const thumbnail of thumbnails) thumbnail.destroy(); thumbnailRoot.remove(); benchRoot.remove();
-
   return { singleMs, singleUpdates, msPerUpdate: singleMs / singleUpdates, thumbnailMs, thumbnailUpdates: 12 * 60, largeTraceMs, domNodes, exportBytes: exportSvg === null ? null : new Blob([exportSvg]).size, focusableNodes };
 }
 
-async function benchmarkAll(): Promise<Record<string, BenchmarkMetric>> {
-  stopPlaying();
-  const output: Record<string, BenchmarkMetric> = {};
-  for (const candidate of candidates) output[candidate.renderer.id] = await benchmarkFactory(candidate.factory, candidate.renderer.id);
-  render();
-  return output;
-}
+async function benchmarkAll(): Promise<Record<string, BenchmarkMetric>> { stopPlaying(); const output: Record<string, BenchmarkMetric> = {}; for (const candidate of candidates) output[candidate.renderer.id] = await benchmarkFactory(candidate.factory); render(); return output; }
 
 declare global {
   interface Window {
     __atlasBakeoff: {
       benchmark(): Promise<Record<string, BenchmarkMetric>>;
-      snapshot(): { mechanism: MechanismChoice; angleDeg: number; centerDistanceMm: number; selectedId?: string; exports: Record<string, number | null> };
+      snapshot(): { mechanism: MechanismChoice; angleDeg: number; centerDistanceMm: number; selectedId?: string | undefined; exports: Record<string, number | null> };
     };
   }
 }
 
 window.__atlasBakeoff = {
   benchmark: benchmarkAll,
-  snapshot() {
-    const exports: Record<string, number | null> = {};
-    for (const candidate of candidates) { const markup = candidate.renderer.exportSvg(); exports[candidate.renderer.id] = markup === null ? null : new Blob([markup]).size; }
-    return { mechanism: state.mechanism, angleDeg: state.angleDeg, centerDistanceMm: state.centerDistanceMm, selectedId: state.selectedId, exports };
-  },
+  snapshot() { const exports: Record<string, number | null> = {}; for (const candidate of candidates) { const markup = candidate.renderer.exportSvg(); exports[candidate.renderer.id] = markup === null ? null : new Blob([markup]).size; } return { mechanism: state.mechanism, angleDeg: state.angleDeg, centerDistanceMm: state.centerDistanceMm, selectedId: state.selectedId, exports }; },
 };
 
 render();

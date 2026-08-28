@@ -1,9 +1,9 @@
-import JXGImport from 'jsxgraph';
+import * as JXGModule from 'jsxgraph';
 import 'jsxgraph/distrib/jsxgraph.css';
-import type { HandlePrimitive, MechanismScene, ScenePrimitive, Vec2 } from '../scene.js';
+import type { MechanismScene, ScenePrimitive, Vec2 } from '../scene.js';
 import type { CandidateRenderer, RendererCallbacks } from './types.js';
 
-const JXG = JXGImport as any;
+const JXG: any = (JXGModule as any).default ?? JXGModule;
 interface JxNode { object:any; type:ScenePrimitive['type']; }
 
 function circlePoints(center:Vec2,radius:number,samples=56):Vec2[]{return Array.from({length:samples+1},(_,i)=>{const angle=i/samples*Math.PI*2;return{x:center.x+radius*Math.cos(angle),y:center.y+radius*Math.sin(angle)};});}
@@ -11,7 +11,7 @@ function primitivePoints(primitive:ScenePrimitive):Vec2[]{if(primitive.type==='s
 
 export function createJsxGraphRenderer(host:HTMLElement,callbacks:RendererCallbacks):CandidateRenderer{
   host.tabIndex=0;host.setAttribute('role','group'); if(!host.id)host.id=`jsxgraph-${Math.random().toString(36).slice(2)}`;
-  let scene:MechanismScene|undefined; const nodes=new Map<string,JxNode>(); const primitiveById=new Map<string,ScenePrimitive>();
+  const nodes=new Map<string,JxNode>(); const primitiveById=new Map<string,ScenePrimitive>();
   const board=JXG.JSXGraph.initBoard(host.id,{boundingbox:[-.05,.13,.28,-.13],axis:false,showNavigation:false,showCopyright:false,keepaspectratio:false,pan:{enabled:false},zoom:{enabled:false},renderer:'svg'});
   const setViewport=(next:MechanismScene)=>{board.setBoundingBox([next.viewport.minX,next.viewport.maxY,next.viewport.maxX,next.viewport.minY],false);};
   const decorate=(object:any,primitive:ScenePrimitive)=>{const node=object.rendNode as SVGElement|undefined;if(!node)return;node.setAttribute('data-primitive',primitive.id);if(primitive.type==='handle')node.setAttribute('data-handle',primitive.handle);if(primitive.type==='handle')node.classList.add('interaction-handle');if(primitive.selectId)node.setAttribute('data-select-id',primitive.selectId);node.setAttribute('aria-label',primitive.ariaLabel??primitive.id);node.setAttribute('role',primitive.type==='handle'?'slider':primitive.selectId?'button':'presentation');if(primitive.selectId||(primitive.type==='handle'&&primitive.handle!=='invalid'))node.setAttribute('tabindex','0');};
@@ -30,5 +30,5 @@ export function createJsxGraphRenderer(host:HTMLElement,callbacks:RendererCallba
     decorate(node.object,primitive);
   };
   host.addEventListener('keydown',(event)=>{if(event.target!==host)return;if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();callbacks.onNudgeInput(event.key==='ArrowRight'?2:-2);}});
-  return{id:'jsxgraph',update(next){scene=next;host.dataset.scene=next.id;setViewport(next);board.suspendUpdate();const seen=new Set<string>();for(const primitive of next.primitives){seen.add(primitive.id);let node=nodes.get(primitive.id);if(!node||node.type!==primitive.type){if(node)board.removeObject(node.object);node=create(primitive);nodes.set(primitive.id,node);}updateNode(node,primitive,next);}for(const[id,node]of nodes)if(!seen.has(id)){board.removeObject(node.object);nodes.delete(id);primitiveById.delete(id);}board.unsuspendUpdate();},exportSvg:()=>host.querySelector('svg')?.outerHTML??null,domNodeCount:()=>host.querySelectorAll('*').length,destroy:()=>{JXG.JSXGraph.freeBoard(board);host.replaceChildren();nodes.clear();}};
+  return{id:'jsxgraph',update(next){host.dataset.scene=next.id;setViewport(next);board.suspendUpdate();const seen=new Set<string>();for(const primitive of next.primitives){seen.add(primitive.id);let node=nodes.get(primitive.id);if(!node||node.type!==primitive.type){if(node)board.removeObject(node.object);node=create(primitive);nodes.set(primitive.id,node);}updateNode(node,primitive,next);}for(const[id,node]of nodes)if(!seen.has(id)){board.removeObject(node.object);nodes.delete(id);primitiveById.delete(id);}board.unsuspendUpdate();},exportSvg:()=>host.querySelector('svg')?.outerHTML??null,domNodeCount:()=>host.querySelectorAll('*').length,destroy:()=>{JXG.JSXGraph.freeBoard(board);host.replaceChildren();nodes.clear();}};
 }

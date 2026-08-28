@@ -86,16 +86,16 @@ export interface MechanismScene {
   title: string;
   viewport: Viewport;
   primitives: ScenePrimitive[];
-  selectedId?: string;
+  selectedId?: string | undefined;
 }
 
 export interface SceneBuildOptions {
   model: SimulationModel;
   state: ModelState;
-  parameters?: Partial<Record<ParameterId, QuantityValue>>;
-  selectedId?: string;
-  fourBarTrace?: Vec2[];
-  invalidParameterHandle?: Vec2;
+  parameters?: Partial<Record<ParameterId, QuantityValue>> | undefined;
+  selectedId?: string | undefined;
+  fourBarTrace?: Vec2[] | undefined;
+  invalidParameterHandle?: Vec2 | undefined;
 }
 
 function resolveScalar(

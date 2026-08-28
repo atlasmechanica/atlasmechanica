@@ -3,7 +3,7 @@ import type { HandlePrimitive, MechanismScene, ScenePrimitive, Vec2 } from '../s
 import { SVG_HEIGHT, SVG_WIDTH, clientToWorld, project, sceneClassName, type CandidateRenderer, type RendererCallbacks } from './types.js';
 
 type AnySvg = any;
-interface SvgJsNode { group: AnySvg; visible: AnySvg; hit?: AnySvg; extras?: AnySvg[]; type: ScenePrimitive['type']; }
+interface SvgJsNode { group: AnySvg; visible: AnySvg; hit: AnySvg | undefined; extras: AnySvg[] | undefined; type: ScenePrimitive['type']; }
 
 export function createSvgJsRenderer(host: HTMLElement, callbacks: RendererCallbacks): CandidateRenderer {
   host.tabIndex = 0; host.setAttribute('role','group');
@@ -17,7 +17,7 @@ export function createSvgJsRenderer(host: HTMLElement, callbacks: RendererCallba
     else if (primitive.type==='polyline') visible=group.polyline();
     else if (primitive.type==='label') visible=group.text('');
     else { visible=group.line(); extras=[group.line(),group.line(),group.text('')]; }
-    const node={group,visible,hit,extras,type:primitive.type};
+    const node: SvgJsNode={group,visible,hit,extras,type:primitive.type};
     group.node.addEventListener('click',()=>{ const id=group.node.dataset.selectId; if(id) callbacks.onSelect(id); });
     group.node.addEventListener('keydown',(event:KeyboardEvent)=>{ const id=group.node.dataset.selectId; if(id&&(event.key==='Enter'||event.key===' ')){event.preventDefault();callbacks.onSelect(id);} const handle=group.node.dataset.handle; const point=handlePoints.get(primitive.id); if(point&&(event.key==='ArrowLeft'||event.key==='ArrowRight')){event.preventDefault();const sign=event.key==='ArrowRight'?1:-1;if(handle==='input')callbacks.onNudgeInput(sign*2);if(handle==='parameter')callbacks.onParameterDrag({x:point.x+sign*.005,y:point.y});} });
     group.node.addEventListener('pointerdown',(event:PointerEvent)=>{ const handle=group.node.dataset.handle as HandlePrimitive['handle']|undefined; if(!handle||handle==='invalid')return;event.preventDefault();active={id:primitive.id,handle,pointerId:event.pointerId};draw.node.setPointerCapture(event.pointerId); });
