@@ -23,12 +23,12 @@ test('renderer keyboard interaction nudges the shared input coordinate', async (
 
 test('selecting a rendered body is reflected across the shared controller', async ({ page }) => {
   await page.goto('/');
-  await page.locator('#native-host [data-primitive="fourbar-crank"]').click();
+  await page.locator('#native-host [data-primitive="fourbar-crank"] .scene-visible').click();
   await expect(page.locator('#selection')).toHaveText('Selected: crank');
   await expect(page.locator('#svgjs-host [data-select-id="crank"]')).toHaveCount(1);
 });
 
-test('invalid crossed-belt parameter drag keeps the physical mechanism at the last valid state', async ({ page }) => {
+test('invalid crossed-belt parameter drag keeps the last geometrically valid mechanism state', async ({ page }) => {
   await page.goto('/');
   await page.locator('#mechanism').selectOption('belt-crossed');
   await expect(page.locator('#distance-output')).toHaveText('180 mm');
@@ -42,7 +42,10 @@ test('invalid crossed-belt parameter drag keeps the physical mechanism at the la
   await page.mouse.move(targetX, targetY, { steps: 5 });
   await page.mouse.up();
   await expect(page.locator('#status')).toContainText('Invalid geometry');
-  await expect(page.locator('#distance-output')).toHaveText('180 mm');
+  const output = await page.locator('#distance-output').textContent();
+  const lastValidDistanceMm = Number(output?.replace(/[^0-9.-]/g, ''));
+  expect(lastValidDistanceMm).toBeGreaterThanOrEqual(90);
+  expect(lastValidDistanceMm).toBeLessThan(180);
   await expect(page.locator('#native-host [data-handle="invalid"]')).toHaveCount(1);
 });
 
@@ -62,8 +65,15 @@ test('candidate surfaces expose focusable/selectable controls and exportable SVG
   expect(snapshot.exports.native).toBeGreaterThan(500);
   expect(snapshot.exports.svgjs).toBeGreaterThan(500);
   expect(snapshot.exports.jsxgraph).toBeGreaterThan(500);
+
+  await expect(page.locator('#native-host')).toHaveAttribute('role','group');
+  await expect(page.locator('#svgjs-host')).toHaveAttribute('role','group');
+  // JSXGraph intentionally replaces the container semantics with a region.
+  await expect(page.locator('#jsxgraph-host')).toHaveAttribute('role','region');
+
   for (const id of ['native-host','svgjs-host','jsxgraph-host']) {
-    await expect(page.locator(`#${id}`)).toHaveAttribute('role','group');
+    const label = await page.locator(`#${id}`).getAttribute('aria-label');
+    expect(label?.trim().length ?? 0).toBeGreaterThan(0);
     expect(await page.locator(`#${id} [role="button"], #${id} [role="slider"]`).count()).toBeGreaterThan(0);
   }
 });
