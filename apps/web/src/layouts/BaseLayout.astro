@@ -1,0 +1,61 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+  canonicalPath?: string;
+}
+
+const {
+  title = 'Atlas Mechanica — Understand how machines move',
+  description = 'An open, interactive atlas of mechanisms and machines.',
+  canonicalPath = Astro.url.pathname,
+} = Astro.props;
+
+const canonical = new URL(canonicalPath, Astro.site ?? Astro.url.origin);
+const pageTitle = title === 'Atlas Mechanica — Understand how machines move'
+  ? title
+  : `${title} · Atlas Mechanica`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#f3f0e8" />
+    <link rel="canonical" href={canonical} />
+    <title>{pageTitle}</title>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={pageTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="site-shell site-header__inner">
+        <a class="wordmark" href="/" aria-label="Atlas Mechanica home">
+          <strong>ATLAS MECHANICA</strong>
+          <span>Understand how machines move</span>
+        </a>
+        <nav class="site-nav" aria-label="Primary navigation">
+          <a href="/mechanisms/open-belt-drive/">Browse</a>
+          <a href="/#learn">Learn</a>
+          <a href="/#collections">Collections</a>
+          <a href="https://github.com/atlasmechanica/atlasmechanica">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <slot />
+
+    <footer class="site-footer">
+      <div class="site-shell site-footer__inner">
+        <span>Atlas Mechanica · an open interactive atlas of mechanical movement</span>
+        <span>atlasmechanica.com</span>
+      </div>
+    </footer>
+  </body>
+</html>
