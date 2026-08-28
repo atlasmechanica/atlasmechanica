@@ -3,12 +3,14 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "experiments/renderers/*"
   ],
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "check": "npm run typecheck && npm run test"
+    "renderer:bakeoff:check": "npm run check --workspace @atlasmechanica/svg-bakeoff",
+    "check": "npm run typecheck && npm run test && npm run renderer:bakeoff:check"
   },
   "devDependencies": {
     "typescript": "^6.0.2",

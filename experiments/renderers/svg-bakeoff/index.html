@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Atlas Mechanica · SVG renderer bake-off</title>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="masthead">
+        <div>
+          <p class="eyebrow">Atlas Mechanica · foundation experiment #21</p>
+          <h1>Renderer bake-off</h1>
+          <p class="lede">One mechanism state. Three rendering foundations.</p>
+        </div>
+        <div class="status-block" aria-live="polite">
+          <span id="status">Ready</span>
+          <span id="selection">Nothing selected</span>
+        </div>
+      </header>
+
+      <section class="controls" aria-label="Shared mechanism controls">
+        <label>
+          Mechanism
+          <select id="mechanism">
+            <option value="fourbar">Four-bar · open assembly</option>
+            <option value="belt-open">Open belt drive</option>
+            <option value="belt-crossed">Crossed belt drive</option>
+          </select>
+        </label>
+        <button id="play" type="button" aria-pressed="false">Play</button>
+        <label class="scrubber">
+          Input angle
+          <input id="angle" type="range" min="0" max="360" step="0.5" value="0" />
+          <output id="angle-output" for="angle">0°</output>
+        </label>
+        <label id="distance-control" class="distance-control" hidden>
+          Center distance
+          <input id="distance" type="range" min="70" max="260" step="1" value="180" />
+          <output id="distance-output" for="distance">180 mm</output>
+        </label>
+      </section>
+
+      <section class="renderer-grid" aria-label="Renderer comparison">
+        <article class="renderer-card">
+          <div class="card-heading"><div><strong>Native SVG</strong><span>Atlas-owned keyed DOM</span></div><code>0 deps</code></div>
+          <div id="native-host" class="renderer-host" aria-label="Native SVG mechanism renderer"></div>
+        </article>
+        <article class="renderer-card">
+          <div class="card-heading"><div><strong>SVG.js</strong><span>Low-level SVG convenience API</span></div><code>3.2.8</code></div>
+          <div id="svgjs-host" class="renderer-host" aria-label="SVG.js mechanism renderer"></div>
+        </article>
+        <article class="renderer-card">
+          <div class="card-heading"><div><strong>JSXGraph</strong><span>Dynamic geometry board</span></div><code>1.13.2</code></div>
+          <div id="jsxgraph-host" class="renderer-host" aria-label="JSXGraph mechanism renderer"></div>
+        </article>
+      </section>
+
+      <footer class="notes">
+        Drag the orange driver handle to change the input coordinate. On belt drives, drag the square center handle to change center distance. Arrow keys on a focused renderer nudge the input angle.
+      </footer>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

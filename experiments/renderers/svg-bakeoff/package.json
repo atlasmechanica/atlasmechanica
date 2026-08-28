@@ -1,0 +1,25 @@
+{
+  "name": "@atlasmechanica/svg-bakeoff",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check": "npm run typecheck && npm run build",
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "bundle-report": "node scripts/bundle-report.mjs"
+  },
+  "dependencies": {
+    "@atlasmechanica/kinematics": "file:../../../packages/kinematics",
+    "@atlasmechanica/model": "file:../../../packages/model",
+    "@svgdotjs/svg.js": "3.2.8",
+    "jsxgraph": "1.13.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "vite": "8.2.2"
+  }
+}
