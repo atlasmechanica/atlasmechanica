@@ -120,6 +120,8 @@ export function createSvgMechanismRenderer(
   const originalTabIndex = host.getAttribute('tabindex');
   const originalRole = host.getAttribute('role');
   const originalAriaLabel = host.getAttribute('aria-label');
+  const originalDataRenderer = host.getAttribute('data-renderer');
+  const originalDataScene = host.getAttribute('data-scene');
 
   host.tabIndex = 0;
   host.setAttribute('role', 'group');
@@ -239,8 +241,10 @@ export function createSvgMechanismRenderer(
 
   const updateNode = (node: RenderNode, primitive: ScenePrimitive, scene: MechanismScene): void => {
     const group = node.group;
-    group.dataset.selectId = primitive.selectId ?? '';
-    group.dataset.handle = primitive.type === 'handle' ? primitive.handle : '';
+    if (primitive.selectId === undefined) delete group.dataset.selectId;
+    else group.dataset.selectId = primitive.selectId;
+    if (primitive.type === 'handle') group.dataset.handle = primitive.handle;
+    else delete group.dataset.handle;
     group.dataset.layer = primitive.layer;
     group.setAttribute('aria-label', primitive.ariaLabel ?? primitive.id);
     const focusable = primitive.selectId !== undefined || (primitive.type === 'handle' && primitive.handle !== 'invalid');
@@ -381,9 +385,22 @@ export function createSvgMechanismRenderer(
     }
   };
 
+  const ensureLayerOrder = (scene: MechanismScene, layer: SceneLayer): void => {
+    const root = layerRoot(layer);
+    let cursor = root.firstElementChild;
+    for (const primitive of scene.primitives) {
+      if (primitive.layer !== layer) continue;
+      const node = nodes.get(primitive.id);
+      if (node === undefined) continue;
+      if (node.group !== cursor) root.insertBefore(node.group, cursor);
+      cursor = node.group.nextElementSibling;
+    }
+  };
+
   svg.addEventListener('pointermove', pointerMove);
   svg.addEventListener('pointerup', releasePointer);
   svg.addEventListener('pointercancel', releasePointer);
+  svg.addEventListener('lostpointercapture', releasePointer);
   host.addEventListener('keydown', hostKeyDown);
 
   return {
@@ -419,14 +436,7 @@ export function createSvgMechanismRenderer(
         }
       }
 
-      for (const layer of SCENE_LAYER_ORDER) {
-        const root = layerRoot(layer);
-        for (const primitive of scene.primitives) {
-          if (primitive.layer !== layer) continue;
-          const node = nodes.get(primitive.id);
-          if (node !== undefined) root.append(node.group);
-        }
-      }
+      for (const layer of SCENE_LAYER_ORDER) ensureLayerOrder(scene, layer);
     },
 
     exportSvg() {
@@ -450,8 +460,8 @@ export function createSvgMechanismRenderer(
       restoreAttribute(host, 'tabindex', originalTabIndex);
       restoreAttribute(host, 'role', originalRole);
       restoreAttribute(host, 'aria-label', originalAriaLabel);
-      delete host.dataset.renderer;
-      delete host.dataset.scene;
+      restoreAttribute(host, 'data-renderer', originalDataRenderer);
+      restoreAttribute(host, 'data-scene', originalDataScene);
     },
   };
 }
