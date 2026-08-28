@@ -50,9 +50,9 @@ test('production invalid parameter drag keeps the last valid crossed-belt state'
   const handle = await page.locator('#production-host [data-primitive="belt-distance-handle"] .atlas-hit-fill').boundingBox();
   if (!handle) throw new Error('Missing production parameter handle');
 
-  // The production renderer preserves aspect ratio and may letterbox inside its
-  // CSS box. Aim at 80 mm in world space using the same viewport/viewBox mapping
-  // that the renderer reverses during pointer interaction.
+  // The renderer preserves aspect ratio and may letterbox inside its CSS box.
+  // Aim far inside the impossible crossed-belt region (50 mm) through the exact
+  // viewBox mapping so this exercises pointer capture + client-to-world mapping.
   const target = await page.locator('#production-host svg').evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const viewBoxWidth = 640;
@@ -62,7 +62,7 @@ test('production invalid parameter drag keeps the last valid crossed-belt state'
     const renderedHeight = viewBoxHeight * scale;
     const offsetX = (rect.width - renderedWidth) / 2;
     const offsetY = (rect.height - renderedHeight) / 2;
-    const tx = (0.08 - (-0.06)) / (0.285 - (-0.06));
+    const tx = (0.05 - (-0.06)) / (0.285 - (-0.06));
     const ty = (0.13 - 0) / (0.13 - (-0.13));
     return {
       x: rect.left + offsetX + tx * renderedWidth,
@@ -72,11 +72,17 @@ test('production invalid parameter drag keeps the last valid crossed-belt state'
 
   await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
   await page.mouse.down();
-  await page.mouse.move(target.x, target.y, { steps: 5 });
+  await page.mouse.move(target.x, target.y, { steps: 8 });
   await page.mouse.up();
 
+  const productionHost = page.locator('#production-host');
+  await expect(productionHost).toHaveAttribute('data-parameter-drag-count', /[1-9][0-9]*/);
+  await expect(productionHost).toHaveAttribute('data-last-parameter-validity', 'invalid');
+  const candidate = Number(await productionHost.getAttribute('data-last-parameter-candidate-mm'));
+  expect(candidate).toBeCloseTo(50, 3);
   await expect(page.locator('#status')).toContainText('Invalid geometry');
   await expect(page.locator('#production-host [data-primitive="belt-invalid-handle"]')).toHaveCount(1);
+
   const output = await page.locator('#distance-output').textContent();
   const lastValidDistance = Number(output?.replace(/[^0-9.-]/g, ''));
   expect(lastValidDistance).toBeGreaterThanOrEqual(90);
