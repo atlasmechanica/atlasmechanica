@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --exclude experiments/renderers/svg-bakeoff/tests/**",
+    "test": "vitest run --exclude 'experiments/renderers/svg-bakeoff/tests/**'",
     "renderer:bakeoff:check": "npm run check --workspace @atlasmechanica/svg-bakeoff",
     "check": "npm run typecheck && npm run test && npm run renderer:bakeoff:check"
   },
