@@ -26,6 +26,7 @@ const beltCompiled = {
 
 let selectedId: string | undefined;
 let invalidParameterHandle: Vec2 | undefined;
+let parameterDragCount = 0;
 
 function tracePoint(state: ModelState): Vec2 {
   const signal = state.signals['coupler-point-position'];
@@ -118,8 +119,13 @@ const renderer = createSvgMechanismRenderer(host, {
     onParameterDrag(point) {
       const current = choice();
       if (current === 'fourbar') return;
+      parameterDragCount += 1;
       const candidate = Math.max(50, Math.min(280, point.x * 1000));
       const candidateState = evaluateBelt(current, candidate);
+      host.dataset.parameterDragCount = String(parameterDragCount);
+      host.dataset.lastParameterWorldX = String(point.x);
+      host.dataset.lastParameterCandidateMm = String(candidate);
+      host.dataset.lastParameterValidity = hasErrors(candidateState) ? 'invalid' : 'valid';
       if (hasErrors(candidateState)) {
         invalidParameterHandle = point;
         const diagnostic = candidateState.diagnostics.find((item) => item.severity === 'error');
