@@ -32,8 +32,8 @@ test('production SVG has deterministic defs, layer order, hit targets and export
   expect(first).toBe(second);
   expect(first).toContain('id="renderer-v0-regression-arrow"');
 
-  const layers = await page.locator('#production-host [data-layer]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-layer')));
-  expect(layers.slice(0, 6)).toEqual(['background', 'trace', 'mechanism', 'annotation', 'interaction', 'feedback']);
+  const layers = await page.locator('#production-host .atlas-layer[data-layer]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('data-layer')));
+  expect(layers).toEqual(['background', 'trace', 'mechanism', 'annotation', 'interaction', 'feedback']);
 
   const crankHitWidth = Number(await page.locator('#production-host [data-primitive="fourbar-crank"] .atlas-hit').getAttribute('stroke-width'));
   expect(crankHitWidth).toBeGreaterThanOrEqual(20);
