@@ -125,8 +125,8 @@ describe('canonical four-bar fixture', () => {
     expect(Object.keys(mechanical?.joints ?? {})).toHaveLength(4);
     expect(Object.keys(mechanical?.couplings ?? {})).toHaveLength(0);
     expect(mechanical?.bodies.coupler?.features.tracer?.type).toBe('point');
-    expect(canonicalFourBarModel.configurations.open.bodyPoses?.coupler).toBeDefined();
-    expect(canonicalFourBarModel.configurations.crossed.bodyPoses?.coupler).toBeDefined();
+    expect(canonicalFourBarModel.configurations.open?.bodyPoses?.coupler).toBeDefined();
+    expect(canonicalFourBarModel.configurations.crossed?.bodyPoses?.coupler).toBeDefined();
   });
 });
 
@@ -310,7 +310,12 @@ describe('four-bar assembly branch/session behavior', () => {
     expect(changed.diagnostics.filter((item) => item.severity === 'error')).toEqual([]);
     const changedA = vectorSignal(changed, 'point-a-position');
     const changedB = vectorSignal(changed, 'point-b-position');
-    expect(cross(subtract({ x: 0.1, y: 0 }, changedA), subtract(changedB, changedA))).toBeGreaterThan(0);
+    expect(
+      cross(
+        subtract({ x: 0.1, y: 0 }, changedA),
+        subtract(changedB, changedA),
+      ),
+    ).toBeGreaterThan(0);
 
     const invalid = session.evaluate({
       coordinates: { 'driver-angle': quantity(0, 'deg') },
