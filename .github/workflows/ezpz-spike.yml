@@ -27,7 +27,7 @@ jobs:
         run: cargo test --release --manifest-path experiments/solvers/ezpz/Cargo.toml
 
       - name: Run canonical four-bar benchmark
-        run: cargo run --release --quiet --manifest-path experiments/solvers/ezpz/Cargo.toml > /tmp/ezpz-report.json
+        run: cargo run --release --quiet --manifest-path experiments/solvers/ezpz/Cargo.toml --bin atlas-ezpz-spike > /tmp/ezpz-report.json
 
       - name: Run root-coalescence stress
         run: cargo run --release --quiet --manifest-path experiments/solvers/ezpz/Cargo.toml --bin coalescence > /tmp/ezpz-coalescence.json
