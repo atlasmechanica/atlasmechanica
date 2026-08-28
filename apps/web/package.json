@@ -1,0 +1,22 @@
+{
+  "name": "@atlasmechanica/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "check": "astro check && astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@atlasmechanica/kinematics": "file:../../packages/kinematics",
+    "@atlasmechanica/model": "file:../../packages/model",
+    "@atlasmechanica/renderer-svg": "file:../../packages/renderer-svg",
+    "@atlasmechanica/scene": "file:../../packages/scene",
+    "astro": "7.2.9"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.10"
+  }
+}
