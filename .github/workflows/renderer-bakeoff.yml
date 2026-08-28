@@ -65,7 +65,7 @@ jobs:
           cat /tmp/renderer-vite.log
           exit 1
       - name: Bundle report
-        run: npm run bundle-report --workspace @atlasmechanica/svg-bakeoff > /tmp/renderer-bundle.json
+        run: node experiments/renderers/svg-bakeoff/scripts/bundle-report.mjs > /tmp/renderer-bundle.json
       - name: Browser benchmark and screenshots
         run: node scripts/browser-report.mjs > /tmp/renderer-browser.json
         working-directory: experiments/renderers/svg-bakeoff
