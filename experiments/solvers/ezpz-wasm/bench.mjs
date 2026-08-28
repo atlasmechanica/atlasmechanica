@@ -1,11 +1,14 @@
 import fs from 'node:fs';
 import { performance } from 'node:perf_hooks';
+import { brotliCompressSync, gzipSync } from 'node:zlib';
 
 const wasmPath = new URL(
   './target/wasm32-unknown-unknown/release/atlas_ezpz_wasm.wasm',
   import.meta.url,
 );
 const bytes = fs.readFileSync(wasmPath);
+const gzipBytes = gzipSync(bytes, { level: 9 }).length;
+const brotliBytes = brotliCompressSync(bytes).length;
 const { instance } = await WebAssembly.instantiate(bytes, {});
 
 const validate = instance.exports.atlas_validate;
@@ -37,6 +40,8 @@ console.log(
     {
       runtime: `Node ${process.version} / V8 ${process.versions.v8}`,
       wasmBytes: bytes.length,
+      gzipBytes,
+      brotliBytes,
       validationFailures,
       samples,
       elapsedMs,
