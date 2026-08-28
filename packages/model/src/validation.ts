@@ -342,6 +342,7 @@ export function validateSimulationModel(model: SimulationModel): Diagnostic[] {
     }
 
     for (const [bodyId, pose] of Object.entries(configuration.bodyPoses ?? {})) {
+      if (pose === undefined) continue;
       if (mechanical.bodies[bodyId] === undefined) {
         diagnostics.push(
           invalidModel('Configuration references an unknown body pose', {
