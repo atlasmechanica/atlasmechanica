@@ -12,6 +12,9 @@ export function createJsxGraphRenderer(host:HTMLElement,callbacks:RendererCallba
   host.tabIndex=0;host.setAttribute('role','group'); if(!host.id)host.id=`jsxgraph-${Math.random().toString(36).slice(2)}`;
   const nodes=new Map<string,JxNode>(); const primitiveById=new Map<string,ScenePrimitive>();
   const board=JXG.JSXGraph.initBoard(host.id,{boundingbox:[-.05,.13,.28,-.13],axis:false,showNavigation:false,showCopyright:false,keepaspectratio:false,pan:{enabled:false},zoom:{enabled:false},renderer:'svg'});
+  // JSXGraph rewrites the host to role="region" during init. Preserve that
+  // library behavior as bake-off evidence, but ensure the region is named.
+  host.setAttribute('aria-label','Atlas mechanism diagram rendered with JSXGraph');
   const setViewport=(next:MechanismScene)=>{board.setBoundingBox([next.viewport.minX,next.viewport.maxY,next.viewport.maxX,next.viewport.minY],false);};
   const decorate=(object:any,primitive:ScenePrimitive)=>{const node=object.rendNode as SVGElement|undefined;if(!node)return;node.setAttribute('data-primitive',primitive.id);if(primitive.type==='handle')node.setAttribute('data-handle',primitive.handle);if(primitive.type==='handle')node.classList.add('interaction-handle');if(primitive.selectId)node.setAttribute('data-select-id',primitive.selectId);node.setAttribute('aria-label',primitive.ariaLabel??primitive.id);node.setAttribute('role',primitive.type==='handle'?'slider':primitive.selectId?'button':'presentation');if(primitive.selectId||(primitive.type==='handle'&&primitive.handle!=='invalid'))node.setAttribute('tabindex','0');};
   const create=(primitive:ScenePrimitive):JxNode=>{
