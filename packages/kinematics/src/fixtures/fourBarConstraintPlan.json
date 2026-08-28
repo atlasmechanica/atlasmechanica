@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "model": "foundation:four-bar:crank-rocker",
+  "inputCoordinate": "driver-angle",
+  "geometry": {
+    "inputGroundPivot": { "x": 0, "y": 0 },
+    "outputGroundPivot": { "x": 0.1, "y": 0 },
+    "crankVector": { "x": 0.03, "y": 0 },
+    "couplerLength": 0.08,
+    "rockerLength": 0.07
+  },
+  "configurations": {
+    "open": {
+      "branchSign": 1,
+      "seedB": {
+        "x": 0.0757142857142857,
+        "y": 0.06565214453186319
+      },
+      "referenceInput": 0,
+      "referenceCrankAngle": 0
+    },
+    "crossed": {
+      "branchSign": -1,
+      "seedB": {
+        "x": 0.0757142857142857,
+        "y": -0.06565214453186319
+      },
+      "referenceInput": 0,
+      "referenceCrankAngle": 0
+    }
+  }
+}
