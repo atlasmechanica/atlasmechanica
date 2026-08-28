@@ -1,6 +1,10 @@
-import type { ConfigurationId, SimulationModel, Vector2 } from '@atlasmechanica/model';
 import {
-  branchSign,
+  canonicalNumber,
+  type ConfigurationId,
+  type SimulationModel,
+  type Vector2,
+} from '@atlasmechanica/model';
+import {
   configurationBranchSign,
   discoverFourBar,
   getPointFeature,
@@ -15,6 +19,7 @@ export interface FourBarConstraintConfiguration {
   branchSign: number;
   seedB: Vector2;
   referenceInput: number;
+  referenceCrankAngle: number;
 }
 
 /**
@@ -119,32 +124,32 @@ export function compileFourBarConstraintPlan(
       context.couplerBody,
       parameters,
     );
-    if (couplerPose === undefined) {
-      throw new TypeError(`Configuration ${configurationId} is missing a coupler pose seed`);
+    const crankPose = poseSeed(
+      model,
+      configurationId,
+      context.crankBody,
+      parameters,
+    );
+    if (couplerPose === undefined || crankPose === undefined) {
+      throw new TypeError(
+        `Configuration ${configurationId} is missing body pose seeds`,
+      );
     }
 
     const seedB = worldPoint2(
       couplerPose,
       resolvePoint(couplerRocker, parameters),
     );
-    const expectedSign = configurationBranchSign(
-      model,
-      configurationId,
-      context,
-    );
-
-    if (
-      branchSign(inputGroundPivot, outputGroundPivot, seedB) !== expectedSign &&
-      configuration.coordinates[context.inputCoordinate]?.value === 0
-    ) {
-      throw new TypeError(`Configuration ${configurationId} has inconsistent branch seed`);
-    }
+    const referenceInputValue = configuration.coordinates[context.inputCoordinate];
 
     configurations[configurationId] = {
-      branchSign: expectedSign,
+      branchSign: configurationBranchSign(model, configurationId, context),
       seedB,
       referenceInput:
-        configuration.coordinates[context.inputCoordinate]?.value ?? 0,
+        referenceInputValue === undefined
+          ? 0
+          : canonicalNumber(referenceInputValue, 'angle'),
+      referenceCrankAngle: crankPose.angle,
     };
   }
 
