@@ -1,5 +1,4 @@
 import * as JXGModule from 'jsxgraph';
-import 'jsxgraph/distrib/jsxgraph.css';
 import type { MechanismScene, ScenePrimitive, Vec2 } from '../scene.js';
 import type { CandidateRenderer, RendererCallbacks } from './types.js';
 
