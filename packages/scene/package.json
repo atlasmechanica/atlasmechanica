@@ -1,0 +1,15 @@
+{
+  "name": "@atlasmechanica/scene",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@atlasmechanica/model": "file:../model"
+  },
+  "devDependencies": {
+    "@atlasmechanica/kinematics": "file:../kinematics"
+  }
+}

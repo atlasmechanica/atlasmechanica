@@ -6,6 +6,8 @@ on:
       - 'experiments/renderers/svg-bakeoff/**'
       - 'packages/model/**'
       - 'packages/kinematics/**'
+      - 'packages/scene/**'
+      - 'packages/renderer-svg/**'
       - 'package.json'
       - '.github/workflows/renderer-bakeoff.yml'
 

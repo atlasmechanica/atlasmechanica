@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 test('all three candidates consume the same external state', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('.renderer-host svg')).toHaveCount(3);
+  await expect(page.locator('#native-host svg, #svgjs-host svg, #jsxgraph-host svg')).toHaveCount(3);
   await page.locator('#angle').fill('90');
   await expect(page.locator('#angle-output')).toHaveText('90°');
   for (const id of ['native-host','svgjs-host','jsxgraph-host']) await expect(page.locator(`#${id}`)).toHaveAttribute('data-angle','90');
