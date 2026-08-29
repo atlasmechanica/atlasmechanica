@@ -1,31 +1,70 @@
 name: conventional metadata
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, edited, synchronize, reopened]
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout pull request head
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
       - name: Validate PR title and commit subjects
-        run: node scripts/check-conventional-metadata.mjs
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const types = [
+              'build',
+              'chore',
+              'ci',
+              'docs',
+              'feat',
+              'fix',
+              'perf',
+              'refactor',
+              'revert',
+              'style',
+              'test',
+            ];
+            const typeAlternation = types.join('|');
+            const conventional = new RegExp(
+              `^(${typeAlternation})(\\([a-z0-9][a-z0-9._/-]*\\))?!?: \\S.*$`,
+            );
+            const failures = [];
+            const validate = (label, subject) => {
+              if (!conventional.test(subject)) failures.push(`${label}: ${JSON.stringify(subject)}`);
+            };
+
+            const pull = context.payload.pull_request;
+            validate('PR title', pull.title.trim());
+
+            const { owner, repo } = context.repo;
+            const commits = await github.paginate(github.rest.pulls.listCommits, {
+              owner,
+              repo,
+              pull_number: pull.number,
+              per_page: 100,
+            });
+            for (const commit of commits) {
+              const subject = commit.commit.message.split('\n', 1)[0].trim();
+              validate(`Commit ${commit.sha.slice(0, 7)}`, subject);
+            }
+
+            if (failures.length > 0) {
+              core.setFailed([
+                'Conventional metadata check failed.',
+                'Expected: <type>(optional-scope): description',
+                `Allowed types: ${types.join(', ')}`,
+                'Examples:',
+                '  feat(web): add mechanism index page',
+                '  fix(renderer-svg): increase responsive stroke weight',
+                '  chore(ci): enforce conventional metadata',
+                '',
+                ...failures.map((failure) => `- ${failure}`),
+              ].join('\n'));
+            } else {
+              core.info(`PR title and ${commits.length} commit subject(s) are conventional.`);
+            }
