@@ -96,6 +96,12 @@ interface PathSample {
   tangent: Vec2;
 }
 
+interface StraightSpan {
+  a: Vec2;
+  b: Vec2;
+  length: number;
+}
+
 function distance(a: Vec2, b: Vec2): number {
   return Math.hypot(b.x - a.x, b.y - a.y);
 }
@@ -217,6 +223,80 @@ function beltSurfaceMarks(
   }).filter((mark): mark is SegmentPrimitive => mark !== undefined);
 }
 
+function longestStraightSpans(belt: PolylinePrimitive): StraightSpan[] {
+  return belt.points.slice(0, -1)
+    .map((a, index): StraightSpan | undefined => {
+      const b = belt.points[index + 1];
+      if (b === undefined) return undefined;
+      return { a, b, length: distance(a, b) };
+    })
+    .filter((span): span is StraightSpan => span !== undefined)
+    .sort((left, right) => right.length - left.length)
+    .slice(0, 2);
+}
+
+function segmentIntersection(first: StraightSpan, second: StraightSpan): Vec2 | undefined {
+  const rx = first.b.x - first.a.x;
+  const ry = first.b.y - first.a.y;
+  const sx = second.b.x - second.a.x;
+  const sy = second.b.y - second.a.y;
+  const denominator = rx * sy - ry * sx;
+  if (Math.abs(denominator) < 1e-12) return undefined;
+
+  const qpx = second.a.x - first.a.x;
+  const qpy = second.a.y - first.a.y;
+  const t = (qpx * sy - qpy * sx) / denominator;
+  const u = (qpx * ry - qpy * rx) / denominator;
+  if (!(t > 0.05 && t < 0.95 && u > 0.05 && u < 0.95)) return undefined;
+
+  return { x: first.a.x + t * rx, y: first.a.y + t * ry };
+}
+
+function centeredSpan(span: StraightSpan, center: Vec2, halfLength: number): { a: Vec2; b: Vec2 } {
+  const tangent = {
+    x: (span.b.x - span.a.x) / span.length,
+    y: (span.b.y - span.a.y) / span.length,
+  };
+  return {
+    a: { x: center.x - tangent.x * halfLength, y: center.y - tangent.y * halfLength },
+    b: { x: center.x + tangent.x * halfLength, y: center.y + tangent.y * halfLength },
+  };
+}
+
+function crossedBeltOverUnder(belt: PolylinePrimitive): SegmentPrimitive[] {
+  const spans = longestStraightSpans(belt);
+  const top = spans[0];
+  const under = spans[1];
+  if (top === undefined || under === undefined) return [];
+  const crossing = segmentIntersection(top, under);
+  if (crossing === undefined) return [];
+
+  const underGap = centeredSpan(under, crossing, 0.009);
+  const topBridge = centeredSpan(top, crossing, 0.012);
+  return [
+    {
+      type: 'segment',
+      id: 'belt-crossing-gap',
+      layer: 'mechanism',
+      styles: ['cutout'],
+      a: underGap.a,
+      b: underGap.b,
+      width: 10,
+      ariaLabel: 'Crossed belt underpass gap',
+    },
+    {
+      type: 'segment',
+      id: 'belt-crossing-bridge',
+      layer: 'mechanism',
+      styles: ['belt'],
+      a: topBridge.a,
+      b: topBridge.b,
+      width: 5.7,
+      ariaLabel: 'Crossed belt overpass',
+    },
+  ];
+}
+
 /**
  * Presentation-only enrichment for Atlas's illustrated mechanism language.
  *
@@ -254,6 +334,7 @@ export function enrichMechanicalIllustration(scene: MechanismScene): MechanismSc
   const staticPrimitives = scene.primitives.filter((primitive) => !replaced.has(primitive.id));
   const mechanismIndex = staticPrimitives.findIndex((primitive) => primitive.layer === 'mechanism');
   const insertAt = mechanismIndex < 0 ? staticPrimitives.length : mechanismIndex;
+  const crossing = scene.id === 'belt-reversed' ? crossedBeltOverUnder(belt) : [];
 
   const illustrated: ScenePrimitive[] = [
     {
@@ -270,6 +351,7 @@ export function enrichMechanicalIllustration(scene: MechanismScene): MechanismSc
       ariaLabel: 'Flexible cord path',
     },
     ...beltSurfaceMarks(belt, driver, driverMark),
+    ...crossing,
     ...pulleyIllustration(driver, driverMark, 'belt-driver'),
     ...pulleyIllustration(driven, drivenMark, 'belt-driven'),
   ];
