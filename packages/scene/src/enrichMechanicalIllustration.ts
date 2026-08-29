@@ -29,16 +29,31 @@ function spokeEndpoint(center: Vec2, radius: number, angle: number): Vec2 {
   };
 }
 
+interface SharedPulleyDetails {
+  hubRadius: number;
+  axleRadius: number;
+}
+
+function sharedPulleyDetails(driver: CirclePrimitive, driven: CirclePrimitive): SharedPulleyDetails {
+  const smallerPulleyRadius = Math.min(driver.radius, driven.radius);
+  const hubRadius = Math.min(0.009, smallerPulleyRadius * 0.30);
+  return {
+    hubRadius,
+    axleRadius: Math.min(0.0027, hubRadius * 0.30),
+  };
+}
+
 function pulleyIllustration(
   pulley: CirclePrimitive,
   phaseMark: SegmentPrimitive,
   prefix: string,
+  details: SharedPulleyDetails,
 ): ScenePrimitive[] {
   const angle = Math.atan2(
     phaseMark.b.y - pulley.center.y,
     phaseMark.b.x - pulley.center.x,
   );
-  const spokeRadius = pulley.radius * 0.77;
+  const spokeRadius = pulley.radius * 0.78;
 
   const spokes: SegmentPrimitive[] = Array.from({ length: 4 }, (_, index) => ({
     type: 'segment',
@@ -47,14 +62,14 @@ function pulleyIllustration(
     styles: ['body'],
     a: pulley.center,
     b: spokeEndpoint(pulley.center, spokeRadius, angle + index * Math.PI / 2),
-    width: 4.8,
+    width: 4.5,
     ariaLabel: `${pulley.ariaLabel ?? prefix} spoke`,
   }));
 
   return [
     {
       ...pulley,
-      width: 7.5,
+      width: 7.2,
     },
     {
       type: 'circle',
@@ -62,8 +77,8 @@ function pulleyIllustration(
       layer: 'mechanism',
       styles: ['body'],
       center: pulley.center,
-      radius: pulley.radius * 0.79,
-      width: 2.5,
+      radius: pulley.radius * 0.81,
+      width: 2.7,
       ariaLabel: `${pulley.ariaLabel ?? prefix} inner rim`,
     },
     ...spokes,
@@ -73,8 +88,8 @@ function pulleyIllustration(
       layer: 'mechanism',
       styles: ['joint'],
       center: pulley.center,
-      radius: Math.max(0.0075, pulley.radius * 0.255),
-      width: 4,
+      radius: details.hubRadius,
+      width: 3.8,
       selectId: pulley.selectId,
       ariaLabel: `${pulley.ariaLabel ?? prefix} hub`,
     },
@@ -84,8 +99,8 @@ function pulleyIllustration(
       layer: 'mechanism',
       styles: ['body'],
       center: pulley.center,
-      radius: Math.max(0.0025, pulley.radius * 0.07),
-      width: 2.6,
+      radius: details.axleRadius,
+      width: 2.5,
       ariaLabel: `${pulley.ariaLabel ?? prefix} axle`,
     },
   ];
@@ -191,7 +206,9 @@ function beltSurfaceMarks(
   const count = 34;
   const spacing = pathLength / count;
   const phaseDirection = beltPathPhaseSign(belt, driver);
-  const phase = (((phaseDirection * angle * driver.radius) % spacing) + spacing) % spacing;
+  // Keep this phase signed. sampleClosedPolyline performs full-loop wrapping,
+  // which preserves continuous motion across the zero-angle boundary.
+  const phase = phaseDirection * angle * driver.radius;
   const halfMark = 0.0031;
   const diagonalAlongPath = 0.52;
   const diagonalAcrossPath = Math.sqrt(1 - diagonalAlongPath * diagonalAlongPath);
@@ -223,16 +240,27 @@ function beltSurfaceMarks(
   }).filter((mark): mark is SegmentPrimitive => mark !== undefined);
 }
 
-function longestStraightSpans(belt: PolylinePrimitive): StraightSpan[] {
+function liesOnPulley(point: Vec2, pulley: CirclePrimitive): boolean {
+  const tolerance = Math.max(1e-7, pulley.radius * 1e-5);
+  return Math.abs(distance(point, pulley.center) - pulley.radius) <= tolerance;
+}
+
+function tangentSpans(
+  belt: PolylinePrimitive,
+  driver: CirclePrimitive,
+  driven: CirclePrimitive,
+): StraightSpan[] {
   return belt.points.slice(0, -1)
     .map((a, index): StraightSpan | undefined => {
       const b = belt.points[index + 1];
       if (b === undefined) return undefined;
+      const joinsDifferentPulleys =
+        (liesOnPulley(a, driver) && liesOnPulley(b, driven)) ||
+        (liesOnPulley(a, driven) && liesOnPulley(b, driver));
+      if (!joinsDifferentPulleys) return undefined;
       return { a, b, length: distance(a, b) };
     })
-    .filter((span): span is StraightSpan => span !== undefined)
-    .sort((left, right) => right.length - left.length)
-    .slice(0, 2);
+    .filter((span): span is StraightSpan => span !== undefined);
 }
 
 function segmentIntersection(first: StraightSpan, second: StraightSpan): Vec2 | undefined {
@@ -263,8 +291,12 @@ function centeredSpan(span: StraightSpan, center: Vec2, halfLength: number): { a
   };
 }
 
-function crossedBeltOverUnder(belt: PolylinePrimitive): SegmentPrimitive[] {
-  const spans = longestStraightSpans(belt);
+function crossedBeltOverUnder(
+  belt: PolylinePrimitive,
+  driver: CirclePrimitive,
+  driven: CirclePrimitive,
+): SegmentPrimitive[] {
+  const spans = tangentSpans(belt, driver, driven);
   const top = spans[0];
   const under = spans[1];
   if (top === undefined || under === undefined) return [];
@@ -334,7 +366,10 @@ export function enrichMechanicalIllustration(scene: MechanismScene): MechanismSc
   const staticPrimitives = scene.primitives.filter((primitive) => !replaced.has(primitive.id));
   const mechanismIndex = staticPrimitives.findIndex((primitive) => primitive.layer === 'mechanism');
   const insertAt = mechanismIndex < 0 ? staticPrimitives.length : mechanismIndex;
-  const crossing = scene.id === 'belt-reversed' ? crossedBeltOverUnder(belt) : [];
+  const details = sharedPulleyDetails(driver, driven);
+  const crossing = scene.id === 'belt-reversed'
+    ? crossedBeltOverUnder(belt, driver, driven)
+    : [];
 
   const illustrated: ScenePrimitive[] = [
     {
@@ -352,8 +387,8 @@ export function enrichMechanicalIllustration(scene: MechanismScene): MechanismSc
     },
     ...beltSurfaceMarks(belt, driver, driverMark),
     ...crossing,
-    ...pulleyIllustration(driver, driverMark, 'belt-driver'),
-    ...pulleyIllustration(driven, drivenMark, 'belt-driven'),
+    ...pulleyIllustration(driver, driverMark, 'belt-driver', details),
+    ...pulleyIllustration(driven, drivenMark, 'belt-driven', details),
   ];
 
   return {
