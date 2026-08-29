@@ -20,10 +20,57 @@ const selectionElement = document.querySelector<HTMLElement>('#selection')!;
 const statusElement = document.querySelector<HTMLElement>('#status')!;
 const host = document.querySelector<HTMLElement>('#production-host')!;
 
+function verticalBrownReference(model: SimulationModel): SimulationModel {
+  const mechanical = model.systems.mechanical;
+  const ground = mechanical?.bodies.ground;
+  const driven = mechanical?.bodies.driven;
+  const drivenAxis = ground?.features['driven-axis'];
+  if (mechanical === undefined || ground === undefined || driven === undefined || drivenAxis?.type !== 'axis') {
+    throw new TypeError('Belt model is missing the expected shaft-center geometry');
+  }
+
+  return {
+    ...model,
+    systems: {
+      ...model.systems,
+      mechanical: {
+        ...mechanical,
+        bodies: {
+          ...mechanical.bodies,
+          ground: {
+            ...ground,
+            features: {
+              ...ground.features,
+              'driven-axis': {
+                ...drivenAxis,
+                origin: {
+                  x: quantity(0, 'mm'),
+                  y: { parameter: 'center-distance' },
+                },
+              },
+            },
+          },
+          driven: {
+            ...driven,
+            referencePose: {
+              ...driven.referencePose,
+              x: quantity(0, 'mm'),
+              y: { parameter: 'center-distance' },
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
+const verticalOpenBeltDriveModel = verticalBrownReference(openBeltDriveModel);
+const verticalCrossedBeltDriveModel = verticalBrownReference(crossedBeltDriveModel);
+
 const fourBarCompiled = analyticFourBarAdapter.compile(canonicalFourBarModel);
 const beltCompiled = {
-  'belt-open': analyticBeltAdapter.compile(openBeltDriveModel),
-  'belt-crossed': analyticBeltAdapter.compile(crossedBeltDriveModel),
+  'belt-open': analyticBeltAdapter.compile(verticalOpenBeltDriveModel),
+  'belt-crossed': analyticBeltAdapter.compile(verticalCrossedBeltDriveModel),
 };
 
 let selectedId: string | undefined;
@@ -71,7 +118,7 @@ function evaluateFourBar(): ModelState {
 }
 
 function beltModel(current: 'belt-open' | 'belt-crossed'): SimulationModel {
-  return current === 'belt-open' ? openBeltDriveModel : crossedBeltDriveModel;
+  return current === 'belt-open' ? verticalOpenBeltDriveModel : verticalCrossedBeltDriveModel;
 }
 
 function beltParameters(distanceMm: number): Record<string, QuantityValue> {
@@ -130,10 +177,10 @@ const renderer = createSvgMechanismRenderer(host, {
       const current = choice();
       if (current === 'fourbar') return;
       parameterDragCount += 1;
-      const candidate = Math.max(50, Math.min(280, point.x * 1000));
+      const candidate = Math.max(50, Math.min(280, point.y * 1000));
       const candidateState = evaluateBelt(current, candidate);
       host.dataset.parameterDragCount = String(parameterDragCount);
-      host.dataset.lastParameterWorldX = String(point.x);
+      host.dataset.lastParameterWorldY = String(point.y);
       host.dataset.lastParameterCandidateMm = String(candidate);
       host.dataset.lastParameterValidity = hasErrors(candidateState) || candidate < brownPulleyRadiusMm * 2
         ? 'invalid'
