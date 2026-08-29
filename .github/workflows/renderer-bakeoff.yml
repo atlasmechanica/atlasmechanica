@@ -67,6 +67,10 @@ jobs:
           cp experiments/renderers/svg-bakeoff/renderer-bakeoff-crossed-belt-chromium.png /tmp/atlas-renderer-publish/crossed-belt-chromium.png
           cp experiments/renderers/svg-bakeoff/renderer-bakeoff-open-belt-webkit.png /tmp/atlas-renderer-publish/open-belt-webkit.png
           cp experiments/renderers/svg-bakeoff/renderer-bakeoff-crossed-belt-webkit.png /tmp/atlas-renderer-publish/crossed-belt-webkit.png
+          cp experiments/renderers/svg-bakeoff/renderer-bakeoff-open-belt-mobile-chromium.png /tmp/atlas-renderer-publish/open-belt-mobile-chromium.png
+          cp experiments/renderers/svg-bakeoff/renderer-bakeoff-crossed-belt-mobile-chromium.png /tmp/atlas-renderer-publish/crossed-belt-mobile-chromium.png
+          cp experiments/renderers/svg-bakeoff/renderer-bakeoff-open-belt-mobile-webkit.png /tmp/atlas-renderer-publish/open-belt-mobile-webkit.png
+          cp experiments/renderers/svg-bakeoff/renderer-bakeoff-crossed-belt-mobile-webkit.png /tmp/atlas-renderer-publish/crossed-belt-mobile-webkit.png
           cp experiments/renderers/svg-bakeoff/renderer-browser-report.json /tmp/atlas-renderer-publish/renderer-browser-report.json
           cp /tmp/renderer-bundle.json /tmp/atlas-renderer-publish/renderer-bundle.json
       - name: Upload safe publication payload
@@ -190,6 +194,10 @@ jobs:
               'crossed-belt-chromium.png',
               'open-belt-webkit.png',
               'crossed-belt-webkit.png',
+              'open-belt-mobile-chromium.png',
+              'crossed-belt-mobile-chromium.png',
+              'open-belt-mobile-webkit.png',
+              'crossed-belt-mobile-webkit.png',
             ];
             const tree = [];
             for (const filename of files) {
@@ -263,7 +271,7 @@ jobs:
 
             const visualMarker = '<!-- atlas-visual-review -->';
             const raw = `https://raw.githubusercontent.com/${owner}/${repo}/${process.env.REVIEW_SHA}`;
-            const visualBody = `${visualMarker}\n## Visual review — approval required before merge\n\nTested head: \`${process.env.TESTED_SHA}\`\n\n### Brown / 507 movement 1 reference\n![Brown / 507 movement 1](https://507movements.com/img/mm_001.png)\n\n### Atlas open belt — Chromium\n![Atlas open belt Chromium](${raw}/open-belt-chromium.png)\n\n### Atlas crossed belt — Chromium\n![Atlas crossed belt Chromium](${raw}/crossed-belt-chromium.png)\n\n<details><summary>WebKit screenshots</summary>\n\n![Atlas open belt WebKit](${raw}/open-belt-webkit.png)\n\n![Atlas crossed belt WebKit](${raw}/crossed-belt-webkit.png)\n</details>\n\n**Do not merge until the visual review is explicitly approved.**`;
+            const visualBody = `${visualMarker}\n## Visual review — approval required before merge\n\nTested head: \`${process.env.TESTED_SHA}\`\n\n### Brown / 507 movement 1 reference\n![Brown / 507 movement 1](https://507movements.com/img/mm_001.png)\n\n### Atlas desktop — Chromium\n\n![Atlas open belt Chromium](${raw}/open-belt-chromium.png)\n\n![Atlas crossed belt Chromium](${raw}/crossed-belt-chromium.png)\n\n### Atlas mobile — Chromium\n\n![Atlas open belt mobile Chromium](${raw}/open-belt-mobile-chromium.png)\n\n![Atlas crossed belt mobile Chromium](${raw}/crossed-belt-mobile-chromium.png)\n\n<details><summary>WebKit desktop + mobile screenshots</summary>\n\n![Atlas open belt WebKit](${raw}/open-belt-webkit.png)\n\n![Atlas crossed belt WebKit](${raw}/crossed-belt-webkit.png)\n\n![Atlas open belt mobile WebKit](${raw}/open-belt-mobile-webkit.png)\n\n![Atlas crossed belt mobile WebKit](${raw}/crossed-belt-mobile-webkit.png)\n</details>\n\n**Do not merge until both desktop and mobile visual review are explicitly approved.**`;
             const existingVisual = comments.find(comment => comment.user?.type === 'Bot' && comment.body?.includes(visualMarker));
             if (existingVisual) {
               await github.rest.issues.updateComment({ owner, repo, comment_id: existingVisual.id, body: visualBody });
