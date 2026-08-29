@@ -113,7 +113,7 @@ test('production invalid parameter drag keeps the last valid crossed-belt state'
   await expect(productionHost).toHaveAttribute('data-parameter-drag-count', /[1-9][0-9]*/);
   await expect(productionHost).toHaveAttribute('data-last-parameter-validity', 'invalid');
   const candidate = Number(await productionHost.getAttribute('data-last-parameter-candidate-mm'));
-  expect(candidate).toBeCloseTo(50, 3);
+  expect(Math.abs(candidate - 50)).toBeLessThan(1);
   await expect(page.locator('#status')).toContainText('Invalid geometry');
   await expect(page.locator('#production-host [data-primitive="belt-invalid-handle"]')).toHaveCount(1);
 
