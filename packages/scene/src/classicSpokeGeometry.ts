@@ -1,4 +1,4 @@
-import type { PolylinePrimitive, Vec2 } from './types.js';
+import type { SegmentPrimitive, Vec2 } from './types.js';
 
 export interface ClassicSpokeOptions {
   center: Vec2;
@@ -26,26 +26,39 @@ function lateral(point: Vec2, normal: Vec2, offset: number): Vec2 {
 }
 
 /**
- * Brown-era cast spokes read as tapered members rather than constant-width bars.
- * Represent the spoke as a closed outlined trapezoid so the flare is geometric
- * and independent of renderer stroke-width tricks.
+ * Brown-era cast spokes are best read as a pair of tapering edge lines. Keeping
+ * the hub/rim ends open avoids the modern "trapezoid paddle" look and lets the
+ * spoke visually join the two circular cast members without drawing through them.
  */
-export function classicSpoke(options: ClassicSpokeOptions): PolylinePrimitive {
+export function classicSpokeEdges(options: ClassicSpokeOptions): [SegmentPrimitive, SegmentPrimitive] {
   const root = radialPoint(options.center, options.rootRadius, options.angle);
   const tip = radialPoint(options.center, options.tipRadius, options.angle);
   const normal = { x: -Math.sin(options.angle), y: Math.cos(options.angle) };
   const rootLeft = lateral(root, normal, options.rootHalfWidth);
   const tipLeft = lateral(tip, normal, options.tipHalfWidth);
-  const tipRight = lateral(tip, normal, -options.tipHalfWidth);
   const rootRight = lateral(root, normal, -options.rootHalfWidth);
+  const tipRight = lateral(tip, normal, -options.tipHalfWidth);
 
-  return {
-    type: 'polyline',
-    id: options.id,
-    layer: 'mechanism',
-    styles: ['pulley'],
-    points: [rootLeft, tipLeft, tipRight, rootRight, rootLeft],
-    width: 2.4,
-    ariaLabel: options.ariaLabel,
-  };
+  return [
+    {
+      type: 'segment',
+      id: options.id,
+      layer: 'mechanism',
+      styles: ['pulley'],
+      a: rootLeft,
+      b: tipLeft,
+      width: 2.4,
+      ariaLabel: `${options.ariaLabel} left edge`,
+    },
+    {
+      type: 'segment',
+      id: `${options.id}-edge`,
+      layer: 'mechanism',
+      styles: ['pulley'],
+      a: rootRight,
+      b: tipRight,
+      width: 2.4,
+      ariaLabel: `${options.ariaLabel} right edge`,
+    },
+  ];
 }
