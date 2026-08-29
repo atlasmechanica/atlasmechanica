@@ -38,6 +38,11 @@ export const SVG_RENDERER_STYLE = `
 .atlas-style-handle { stroke: var(--am-accent); fill: var(--am-background); }
 .atlas-style-invalid { stroke: var(--am-danger); fill: var(--am-background); stroke-dasharray: 4 3; }
 .atlas-style-cutout { stroke: var(--am-background); }
+/* A cutout handle is an interaction affordance hidden at rest. Painting it in
+   the background used to erase any rope/rim below it and left pale circles or
+   squares in the mechanism plate. Keep its visible glyph genuinely transparent;
+   the hit geometry remains active and the focus rule below restores the accent. */
+.atlas-handle-visible.atlas-style-cutout { stroke: transparent; }
 .atlas-selected { stroke: var(--am-accent); filter: drop-shadow(0 0 1.5px var(--am-accent)); }
 .atlas-hit { stroke: transparent; fill: transparent; pointer-events: none; }
 .atlas-hit-fill { stroke: transparent; fill: transparent; pointer-events: none; }
