@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { quantity, type SimulationModel } from '@atlasmechanica/model';
 import { analyticBeltAdapter, openBeltDriveModel } from '@atlasmechanica/kinematics';
 import { buildMechanismScene } from './index.js';
-import type { PolylinePrimitive, Vec2 } from './types.js';
+import type { MechanismScene, PolylinePrimitive, Vec2 } from './types.js';
 
 function verticalReference(model: SimulationModel): SimulationModel {
   const mechanical = model.systems.mechanical;
@@ -52,19 +52,27 @@ function distance(a: Vec2, b: Vec2): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
+function midpoint(a: Vec2, b: Vec2): Vec2 {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+function productionScene(): MechanismScene {
+  const model = verticalReference(openBeltDriveModel);
+  const parameters = {
+    'driver-radius': quantity(45, 'mm'),
+    'driven-radius': quantity(45, 'mm'),
+    'center-distance': quantity(180, 'mm'),
+  };
+  const state = analyticBeltAdapter.compile(model).createSession().evaluate({
+    coordinates: { 'driver-angle': quantity(0, 'deg') },
+    parameters,
+  });
+  return buildMechanismScene({ model, state, parameters });
+}
+
 describe('production Brown belt scene', () => {
   it('wraps an equal-pulley open rope around the exterior semicircles', () => {
-    const model = verticalReference(openBeltDriveModel);
-    const parameters = {
-      'driver-radius': quantity(45, 'mm'),
-      'driven-radius': quantity(45, 'mm'),
-      'center-distance': quantity(180, 'mm'),
-    };
-    const state = analyticBeltAdapter.compile(model).createSession().evaluate({
-      coordinates: { 'driver-angle': quantity(0, 'deg') },
-      parameters,
-    });
-    const scene = buildMechanismScene({ model, state, parameters });
+    const scene = productionScene();
     const rope = scene.primitives.find(
       (primitive): primitive is PolylinePrimitive =>
         primitive.id === 'belt-path' && primitive.type === 'polyline',
@@ -81,5 +89,35 @@ describe('production Brown belt scene', () => {
     expect(nearest(driverExterior)).toBeLessThan(1e-9);
     expect(nearest(drivenInterior)).toBeGreaterThan(0.04);
     expect(nearest(driverInterior)).toBeGreaterThan(0.04);
+  });
+
+  it('uses strongly tapered cast spokes that remain clear of hub and inner rim', () => {
+    const scene = productionScene();
+    const spoke = scene.primitives.find((primitive) => primitive.id === 'belt-driver-spoke-0');
+    const hub = scene.primitives.find((primitive) => primitive.id === 'belt-driver-hub');
+    const innerRim = scene.primitives.find((primitive) => primitive.id === 'belt-driver-rim-inner');
+    if (spoke?.type !== 'polyline' || hub?.type !== 'circle' || innerRim?.type !== 'circle') {
+      throw new TypeError('Missing production cast-spoke geometry');
+    }
+
+    const rootLeft = spoke.points[0];
+    const tipLeft = spoke.points[1];
+    const tipRight = spoke.points[2];
+    const rootRight = spoke.points[3];
+    if (rootLeft === undefined || tipLeft === undefined || tipRight === undefined || rootRight === undefined) {
+      throw new TypeError('Incomplete cast-spoke outline');
+    }
+
+    const rootWidth = distance(rootLeft, rootRight);
+    const tipWidth = distance(tipLeft, tipRight);
+    const rootCenter = midpoint(rootLeft, rootRight);
+    const tipCenter = midpoint(tipLeft, tipRight);
+
+    expect(rootWidth / tipWidth).toBeGreaterThan(2.8);
+    expect(distance(rootCenter, hub.center)).toBeGreaterThan(hub.radius);
+    expect(distance(tipCenter, innerRim.center)).toBeLessThan(innerRim.radius);
+    expect(spoke.width).toBe(2.4);
+    expect(scene.primitives.some((primitive) => primitive.id.startsWith('belt-driver-spoke-root-'))).toBe(false);
+    expect(scene.primitives.some((primitive) => primitive.id.startsWith('belt-driver-spoke-core-'))).toBe(false);
   });
 });
