@@ -68,8 +68,27 @@ describe('mechanical illustration enrichment', () => {
     expect(ids.has('belt-driven-hub')).toBe(true);
     expect([...ids].filter((id) => id.startsWith('belt-driver-spoke-'))).toHaveLength(4);
     expect([...ids].filter((id) => id.startsWith('belt-driven-spoke-'))).toHaveLength(4);
+    expect([...ids].filter((id) => id.startsWith('belt-surface-mark-'))).toHaveLength(34);
     expect(ids.has('belt-driver-mark')).toBe(false);
     expect(ids.has('belt-driven-mark')).toBe(false);
+  });
+
+  it('uses substantial four-spoke pulley proportions', () => {
+    const scene = illustrated(openBeltDriveModel);
+    const driver = scene.primitives.find((primitive) => primitive.id === 'belt-driver');
+    const inner = scene.primitives.find((primitive) => primitive.id === 'belt-driver-rim-inner');
+    const hub = scene.primitives.find((primitive) => primitive.id === 'belt-driver-hub');
+    const spoke = scene.primitives.find((primitive) => primitive.id === 'belt-driver-spoke-0');
+
+    if (driver?.type !== 'circle' || inner?.type !== 'circle' || hub?.type !== 'circle' || spoke?.type !== 'segment') {
+      throw new TypeError('Missing illustrated pulley primitives');
+    }
+
+    expect(driver.width).toBe(7.5);
+    expect(inner.radius / driver.radius).toBeCloseTo(0.79, 10);
+    expect(inner.styles).toEqual(['body']);
+    expect(hub.radius / driver.radius).toBeCloseTo(0.255, 10);
+    expect(spoke.width).toBe(4.8);
   });
 
   it('rotates spokes from the solver-owned pulley phase', () => {
@@ -80,6 +99,18 @@ describe('mechanical illustration enrichment', () => {
 
     const angle = Math.atan2(spoke.b.y - spoke.a.y, spoke.b.x - spoke.a.x);
     expect(angle).toBeCloseTo(Math.PI / 6, 10);
+  });
+
+  it('uses an explicit over-under convention only for crossed routing', () => {
+    const open = illustrated(openBeltDriveModel);
+    const crossed = illustrated(crossedBeltDriveModel);
+    const openIds = new Set(open.primitives.map((primitive) => primitive.id));
+    const crossedIds = new Set(crossed.primitives.map((primitive) => primitive.id));
+
+    expect(openIds.has('belt-crossing-gap')).toBe(false);
+    expect(openIds.has('belt-crossing-bridge')).toBe(false);
+    expect(crossedIds.has('belt-crossing-gap')).toBe(true);
+    expect(crossedIds.has('belt-crossing-bridge')).toBe(true);
   });
 
   it.each([

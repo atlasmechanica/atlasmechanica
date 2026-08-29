@@ -38,7 +38,7 @@ function pulleyIllustration(
     phaseMark.b.y - pulley.center.y,
     phaseMark.b.x - pulley.center.x,
   );
-  const spokeRadius = pulley.radius * 0.72;
+  const spokeRadius = pulley.radius * 0.77;
 
   const spokes: SegmentPrimitive[] = Array.from({ length: 4 }, (_, index) => ({
     type: 'segment',
@@ -47,23 +47,23 @@ function pulleyIllustration(
     styles: ['body'],
     a: pulley.center,
     b: spokeEndpoint(pulley.center, spokeRadius, angle + index * Math.PI / 2),
-    width: 2.6,
+    width: 4.8,
     ariaLabel: `${pulley.ariaLabel ?? prefix} spoke`,
   }));
 
   return [
     {
       ...pulley,
-      width: 5.5,
+      width: 7.5,
     },
     {
       type: 'circle',
       id: `${prefix}-rim-inner`,
       layer: 'mechanism',
-      styles: ['ground'],
+      styles: ['body'],
       center: pulley.center,
-      radius: pulley.radius * 0.82,
-      width: 1.8,
+      radius: pulley.radius * 0.79,
+      width: 2.5,
       ariaLabel: `${pulley.ariaLabel ?? prefix} inner rim`,
     },
     ...spokes,
@@ -73,8 +73,8 @@ function pulleyIllustration(
       layer: 'mechanism',
       styles: ['joint'],
       center: pulley.center,
-      radius: Math.max(0.006, pulley.radius * 0.19),
-      width: 3,
+      radius: Math.max(0.0075, pulley.radius * 0.255),
+      width: 4,
       selectId: pulley.selectId,
       ariaLabel: `${pulley.ariaLabel ?? prefix} hub`,
     },
@@ -84,8 +84,8 @@ function pulleyIllustration(
       layer: 'mechanism',
       styles: ['body'],
       center: pulley.center,
-      radius: Math.max(0.0022, pulley.radius * 0.055),
-      width: 2.2,
+      radius: Math.max(0.0025, pulley.radius * 0.07),
+      width: 2.6,
       ariaLabel: `${pulley.ariaLabel ?? prefix} axle`,
     },
   ];
@@ -94,6 +94,12 @@ function pulleyIllustration(
 interface PathSample {
   point: Vec2;
   tangent: Vec2;
+}
+
+interface StraightSpan {
+  a: Vec2;
+  b: Vec2;
+  length: number;
 }
 
 function distance(a: Vec2, b: Vec2): number {
@@ -159,9 +165,6 @@ function beltPathPhaseSign(
     y: contact.y - driver.center.y,
   };
 
-  // Positive pulley rotation is CCW, so the local surface velocity direction
-  // at the contact point is z × r = (-r.y, r.x). Compare that physical
-  // tangent with the arbitrary stored-polyline traversal direction.
   const positiveRotationVelocity = { x: -radial.y, y: radial.x };
   const alignment =
     positiveRotationVelocity.x * pathTangent.x +
@@ -185,33 +188,113 @@ function beltSurfaceMarks(
   }, 0);
   if (!(pathLength > 0)) return [];
 
-  const count = 18;
+  const count = 34;
   const spacing = pathLength / count;
   const phaseDirection = beltPathPhaseSign(belt, driver);
   const phase = (((phaseDirection * angle * driver.radius) % spacing) + spacing) % spacing;
-  const halfMark = 0.0022;
+  const halfMark = 0.0031;
+  const diagonalAlongPath = 0.52;
+  const diagonalAcrossPath = Math.sqrt(1 - diagonalAlongPath * diagonalAlongPath);
 
   return Array.from({ length: count }, (_, index): SegmentPrimitive | undefined => {
     const sample = sampleClosedPolyline(belt.points, phase + index * spacing);
     if (sample === undefined) return undefined;
     const normal = { x: -sample.tangent.y, y: sample.tangent.x };
+    const slash = {
+      x: sample.tangent.x * diagonalAlongPath + normal.x * diagonalAcrossPath,
+      y: sample.tangent.y * diagonalAlongPath + normal.y * diagonalAcrossPath,
+    };
     return {
       type: 'segment',
       id: `belt-surface-mark-${index}`,
       layer: 'mechanism',
       styles: ['cutout'],
       a: {
-        x: sample.point.x - normal.x * halfMark,
-        y: sample.point.y - normal.y * halfMark,
+        x: sample.point.x - slash.x * halfMark,
+        y: sample.point.y - slash.y * halfMark,
       },
       b: {
-        x: sample.point.x + normal.x * halfMark,
-        y: sample.point.y + normal.y * halfMark,
+        x: sample.point.x + slash.x * halfMark,
+        y: sample.point.y + slash.y * halfMark,
       },
-      width: 1.35,
-      ariaLabel: 'Moving belt surface mark',
+      width: 1.25,
+      ariaLabel: 'Moving cord surface mark',
     };
   }).filter((mark): mark is SegmentPrimitive => mark !== undefined);
+}
+
+function longestStraightSpans(belt: PolylinePrimitive): StraightSpan[] {
+  return belt.points.slice(0, -1)
+    .map((a, index): StraightSpan | undefined => {
+      const b = belt.points[index + 1];
+      if (b === undefined) return undefined;
+      return { a, b, length: distance(a, b) };
+    })
+    .filter((span): span is StraightSpan => span !== undefined)
+    .sort((left, right) => right.length - left.length)
+    .slice(0, 2);
+}
+
+function segmentIntersection(first: StraightSpan, second: StraightSpan): Vec2 | undefined {
+  const rx = first.b.x - first.a.x;
+  const ry = first.b.y - first.a.y;
+  const sx = second.b.x - second.a.x;
+  const sy = second.b.y - second.a.y;
+  const denominator = rx * sy - ry * sx;
+  if (Math.abs(denominator) < 1e-12) return undefined;
+
+  const qpx = second.a.x - first.a.x;
+  const qpy = second.a.y - first.a.y;
+  const t = (qpx * sy - qpy * sx) / denominator;
+  const u = (qpx * ry - qpy * rx) / denominator;
+  if (!(t > 0.05 && t < 0.95 && u > 0.05 && u < 0.95)) return undefined;
+
+  return { x: first.a.x + t * rx, y: first.a.y + t * ry };
+}
+
+function centeredSpan(span: StraightSpan, center: Vec2, halfLength: number): { a: Vec2; b: Vec2 } {
+  const tangent = {
+    x: (span.b.x - span.a.x) / span.length,
+    y: (span.b.y - span.a.y) / span.length,
+  };
+  return {
+    a: { x: center.x - tangent.x * halfLength, y: center.y - tangent.y * halfLength },
+    b: { x: center.x + tangent.x * halfLength, y: center.y + tangent.y * halfLength },
+  };
+}
+
+function crossedBeltOverUnder(belt: PolylinePrimitive): SegmentPrimitive[] {
+  const spans = longestStraightSpans(belt);
+  const top = spans[0];
+  const under = spans[1];
+  if (top === undefined || under === undefined) return [];
+  const crossing = segmentIntersection(top, under);
+  if (crossing === undefined) return [];
+
+  const underGap = centeredSpan(under, crossing, 0.009);
+  const topBridge = centeredSpan(top, crossing, 0.012);
+  return [
+    {
+      type: 'segment',
+      id: 'belt-crossing-gap',
+      layer: 'mechanism',
+      styles: ['cutout'],
+      a: underGap.a,
+      b: underGap.b,
+      width: 10,
+      ariaLabel: 'Crossed belt underpass gap',
+    },
+    {
+      type: 'segment',
+      id: 'belt-crossing-bridge',
+      layer: 'mechanism',
+      styles: ['belt'],
+      a: topBridge.a,
+      b: topBridge.b,
+      width: 5.7,
+      ariaLabel: 'Crossed belt overpass',
+    },
+  ];
 }
 
 /**
@@ -251,21 +334,24 @@ export function enrichMechanicalIllustration(scene: MechanismScene): MechanismSc
   const staticPrimitives = scene.primitives.filter((primitive) => !replaced.has(primitive.id));
   const mechanismIndex = staticPrimitives.findIndex((primitive) => primitive.layer === 'mechanism');
   const insertAt = mechanismIndex < 0 ? staticPrimitives.length : mechanismIndex;
+  const crossing = scene.id === 'belt-reversed' ? crossedBeltOverUnder(belt) : [];
 
   const illustrated: ScenePrimitive[] = [
     {
       ...belt,
       id: 'belt-band-underlay',
       styles: ['ground'],
-      width: 10,
+      width: 8.2,
       selectId: undefined,
-      ariaLabel: 'Belt edge',
+      ariaLabel: 'Cord outer edge',
     },
     {
       ...belt,
-      width: 5.5,
+      width: 5.7,
+      ariaLabel: 'Flexible cord path',
     },
     ...beltSurfaceMarks(belt, driver, driverMark),
+    ...crossing,
     ...pulleyIllustration(driver, driverMark, 'belt-driver'),
     ...pulleyIllustration(driven, drivenMark, 'belt-driven'),
   ];
