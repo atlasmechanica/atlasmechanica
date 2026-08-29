@@ -1,0 +1,33 @@
+name: cleanup visual review branch
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete generated visual review branch
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const branch = `visual-review-pr-${context.issue.number}`;
+            try {
+              await github.rest.git.deleteRef({
+                owner,
+                repo,
+                ref: `heads/${branch}`,
+              });
+              core.notice(`Deleted ${branch}`);
+            } catch (error) {
+              if (error.status === 404 || error.status === 422) {
+                core.notice(`No generated visual review branch to delete for PR #${context.issue.number}`);
+                return;
+              }
+              throw error;
+            }
