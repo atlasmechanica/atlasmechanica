@@ -1,0 +1,178 @@
+---
+import BeltDriveLab from '../../../components/BeltDriveLab.astro';
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="Crossed Belt Drive"
+  description="Explore a crossed belt drive interactively: reversed rotary transmission, ideal speed ratio, belt geometry, and Brown movement 002 context."
+  canonicalPath="/mechanisms/crossed-belt-drive/"
+>
+  <main class="page">
+    <div class="site-shell">
+      <nav class="breadcrumbs" aria-label="Breadcrumb">
+        <a href="/">Atlas</a><span class="sep">/</span>
+        <span>Mechanisms</span><span class="sep">/</span>
+        <span aria-current="page">Crossed Belt Drive</span>
+      </nav>
+
+      <header class="mechanism-heading">
+        <div>
+          <p class="eyebrow">Continuous rotary → reversed continuous rotary</p>
+          <h1>Crossed Belt Drive</h1>
+          <p>
+            Cross the belt between two parallel pulleys and the driven shaft reverses direction.
+            In the ideal no-slip model, the pulley-size ratio is unchanged; only its sign changes.
+          </p>
+        </div>
+        <a class="collection-chip" href="#brown-002">
+          <span>Collection context</span>
+          <strong>Brown 002</strong>
+        </a>
+      </header>
+
+      <BeltDriveLab routing="crossed" />
+
+      <div class="content-grid">
+        <article class="prose">
+          <section>
+            <p class="eyebrow">What changed from 001?</p>
+            <h2>One routing change flips the output.</h2>
+            <p>
+              The two pulleys can keep the same diameters and spacing used by an open belt. The new ingredient is the
+              crossing itself: each straight belt span switches sides between the pulleys, so the driven pulley must
+              rotate opposite the driver to satisfy the no-slip contact condition.
+            </p>
+            <div class="formula">
+              ω₂ / ω₁ = −r₁ / r₂
+              <small>
+                Ideal crossed belt: the magnitude of the speed ratio still comes from the pulley pitch radii. The minus
+                sign records the reversed output direction.
+              </small>
+            </div>
+            <div class="formula">
+              |v| = r₁|ω₁| = r₂|ω₂|
+              <small>
+                Crossing the belt changes direction, not the ideal belt-speed magnitude for the same driver radius and
+                angular speed.
+              </small>
+            </div>
+          </section>
+
+          <section>
+            <p class="eyebrow">Why it matters</p>
+            <h2>Direction becomes a design choice.</h2>
+            <p>
+              Movement 001 establishes that a belt can transmit rotation. Movement 002 shows that routing can control
+              the <em>direction</em> of that transmission without changing the driver or adding a meshing gear pair.
+              It is a compact lesson in mechanism design: geometry can change behavior even when the same components
+              and ideal ratio are retained.
+            </p>
+            <h3>Compare it with the open belt</h3>
+            <ul>
+              <li>open belt: same-direction output;</li>
+              <li>crossed belt: opposite-direction output;</li>
+              <li>both: ideal speed-ratio magnitude set by pulley pitch radii;</li>
+              <li>crossed routing: a stricter minimum center distance is required for real tangent geometry.</li>
+            </ul>
+          </section>
+
+          <section>
+            <p class="eyebrow">Engineering tradeoff</p>
+            <h2>The crossing is useful—and physically consequential.</h2>
+            <p>
+              In a real flat-belt transmission, the two spans must pass one another at the crossover. That can introduce
+              belt rubbing, extra flexing, heat, and wear if the installation does not provide enough separation or
+              guidance. The ideal Atlas model computes planar tangent geometry and kinematics; it does not yet model
+              belt thickness, self-contact, frictional losses, tension, or lateral tracking.
+            </p>
+            <p>
+              Notice the geometry limit in the lab as well: for a crossed belt, the center distance must exceed the sum
+              of the two pitch radii. Drag the center-distance handle too close and Atlas keeps the last valid physical
+              state while showing the invalid proposal.
+            </p>
+          </section>
+
+          <section id="brown-002">
+            <p class="eyebrow">Collection 001 · Henry T. Brown</p>
+            <h2>Brown turns reversal into a control system.</h2>
+            <p>
+              Brown explicitly presents movement 2 as a modification of movement 1: substitute a crossed belt and the
+              pulley directions reverse. He then extends the idea to a driven shaft carrying one fast pulley and two
+              loose pulleys. With both an open and a crossed belt available, shifting which belt runs on the fast pulley
+              selects the shaft direction while the driver continues rotating.
+            </p>
+            <blockquote class="quote">
+              “Differs from 1 in the substitution of a crossed belt for the open one.”
+              <cite>Henry T. Brown, movement 2 · online transcription reference</cite>
+            </blockquote>
+            <p style="margin-top: 16px">
+              The live model above isolates the two-pulley crossed-belt principle. Brown's larger fast/loose-pulley
+              reversing arrangement is application context, not something this simple model claims to simulate.
+            </p>
+            <p>
+              <a href="https://507movements.com/mm_002.html">View the current 507movements.com reference ↗</a>
+            </p>
+          </section>
+
+          <section>
+            <p class="eyebrow">Learning progression</p>
+            <h2>Transmission → direction → engagement.</h2>
+            <p>
+              The first two movements answer two different questions: <em>can rotation be transmitted?</em> and
+              <em>which way should the output turn?</em> The next belt-drive step in this learning path adds another
+              kind of control: engaging or disengaging the transmission with a tightening pulley.
+            </p>
+            <a class="next-card" href="/mechanisms/open-belt-drive/" aria-label="Review open belt drive">
+              <div class="next-card__number">001</div>
+              <div>
+                <strong>Open Belt Drive</strong>
+                <p>Review the baseline · same components · same-direction output.</p>
+              </div>
+              <div class="next-card__arrow" aria-hidden="true">←</div>
+            </a>
+          </section>
+        </article>
+
+        <aside class="side-facts" aria-label="Mechanism facts">
+          <div class="fact-group">
+            <h3>Functional signature</h3>
+            <p>continuous rotary → reversed continuous rotary</p>
+          </div>
+          <div class="fact-group">
+            <h3>Ideal relationship</h3>
+            <p>Constant speed-ratio magnitude; opposite direction</p>
+          </div>
+          <div class="fact-group">
+            <h3>Degrees of freedom</h3>
+            <p>1 prescribed input coordinate</p>
+          </div>
+          <div class="fact-group">
+            <h3>Components</h3>
+            <div class="fact-tags">
+              <span class="fact-tag">belt</span>
+              <span class="fact-tag">pulley</span>
+              <span class="fact-tag">shaft</span>
+            </div>
+          </div>
+          <div class="fact-group">
+            <h3>Atlas model</h3>
+            <p>Exact analytic planar kinematics</p>
+          </div>
+          <div class="fact-group">
+            <h3>Geometry condition</h3>
+            <p>Center distance must exceed the sum of the pitch radii for the ideal crossed tangent construction.</p>
+          </div>
+          <div class="fact-group">
+            <h3>Assumptions</h3>
+            <p>Massless, inextensible belt; no slip; fixed coplanar centers; no belt self-contact or lateral dynamics.</p>
+          </div>
+          <div class="fact-group">
+            <h3>Collection appearances</h3>
+            <p>Brown · 507 Mechanical Movements · 002</p>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </main>
+</BaseLayout>
