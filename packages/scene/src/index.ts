@@ -138,12 +138,6 @@ function frameBrownBeltPlate(scene: MechanismScene): MechanismScene {
   const dy = Math.abs(driven.center.y - driver.center.y);
   if (dy <= dx) return scene;
 
-  // Brown/507 movements 001 and 002 use a vertical two-pulley composition.
-  // The native renderer's configured viewBox is 640×400, so keep this world
-  // viewport at the same 1.6 aspect ratio. That preserves isotropic world scale:
-  // a physical circle remains a circle instead of being stretched into an ellipse.
-  // The generous horizontal field is intentional letterboxing around the narrow
-  // historical plate and also leaves enough fixed Y range for parameter dragging.
   return {
     ...scene,
     viewport: {
@@ -178,12 +172,6 @@ function clearBrownPulleyFromRope(
       continue;
     }
 
-    // Visible strokes use non-scaling-stroke and are calibrated at the product's
-    // 1180px reference surface. Convert those CSS-pixel half-widths through the
-    // framed 0.64m world width, not through the SVG's 640-unit viewBox. The
-    // responsive renderer scales stroke pixels and geometry by the same ratio on
-    // narrower surfaces, so solving tangency at the reference width preserves it
-    // everywhere: rope inner edge meets rim outer edge with no gap or overlap.
     const halfStrokeClearancePx =
       ((rope.width + visible.width) * BROWN_ILLUSTRATION_STROKE_WEIGHT) / 2;
     const targetOuterRadius =
@@ -231,9 +219,7 @@ function replacePulleySpokes(
     hub?.type !== 'circle' ||
     innerRim?.type !== 'circle' ||
     phaseSpoke?.type !== 'segment'
-  ) {
-    return primitives;
-  }
+  ) return primitives;
 
   const baseAngle = Math.atan2(
     phaseSpoke.b.y - phaseSpoke.a.y,
@@ -243,10 +229,6 @@ function replacePulleySpokes(
   const tipRadius = innerRim.radius - pulley.radius * 0.012;
   if (!(tipRadius > rootRadius)) return primitives;
 
-  // Brown's spoke edges flare clearly at the hub, but remain much closer to a
-  // cast wheel than the exaggerated closed-trapezoid draft. A 2:1 root/tip
-  // width makes the taper legible while the open ends meet the hub and inner rim
-  // without drawing caps across either circular member.
   const rootHalfWidth = pulley.radius * 0.10;
   const tipHalfWidth = pulley.radius * 0.05;
   const spokes = Array.from({ length: 4 }, (_, index) => classicSpokeEdges({
@@ -308,33 +290,16 @@ function isRopePaint(primitive: ScenePrimitive): boolean {
 
 function paintBrownRopeOverPulley(scene: MechanismScene): MechanismScene {
   if (!scene.id.startsWith('belt-')) return scene;
-
   const rope = scene.primitives.filter(isRopePaint);
   if (rope.length === 0) return scene;
-
-  // The canonical belt path lies on the pulley contact circumference. In the
-  // Brown/507 illustration the rope is the material wrapped around that rim, so
-  // it must be painted after the cast wheel. Painting the wheel last visually
-  // hides the rope at contact and makes it look like it runs in an inner groove.
   const beneath = scene.primitives.filter((primitive) => !isRopePaint(primitive));
-  return {
-    ...scene,
-    primitives: [...beneath, ...rope],
-  };
+  return { ...scene, primitives: [...beneath, ...rope] };
 }
 
-/**
- * Production scene builder. Canonical mechanical geometry is compiled first,
- * then a presentation-only illustration pass adds Atlas's visual language.
- */
 export function buildMechanismScene(options: SceneBuildOptions) {
   const schematic = correctOpenEqualPulleyWrap(buildSchematicMechanismScene(options));
   const enriched = enrichMechanicalIllustration(schematic);
   const cleared = clearBrownPulleyFromRope(enriched, schematic);
-  const illustrated = weightBrownIllustration(
-    replaceWithClassicCastSpokes(cleared),
-  );
-  return frameBrownBeltPlate(
-    paintBrownRopeOverPulley(illustrated),
-  );
+  const illustrated = weightBrownIllustration(replaceWithClassicCastSpokes(cleared));
+  return frameBrownBeltPlate(paintBrownRopeOverPulley(illustrated));
 }
