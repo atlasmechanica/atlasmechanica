@@ -38,6 +38,14 @@ export const SVG_RENDERER_STYLE = `
 .atlas-style-handle { stroke: var(--am-accent); fill: var(--am-background); }
 .atlas-style-invalid { stroke: var(--am-danger); fill: var(--am-background); stroke-dasharray: 4 3; }
 .atlas-style-cutout { stroke: var(--am-background); }
+.atlas-primitive[data-primitive="belt-driver-rim-inner"] .atlas-visible,
+.atlas-primitive[data-primitive="belt-driven-rim-inner"] .atlas-visible,
+.atlas-primitive[data-primitive="belt-driver-hub"] .atlas-visible,
+.atlas-primitive[data-primitive="belt-driven-hub"] .atlas-visible,
+.atlas-primitive[data-primitive^="belt-driver-spoke-"]:not([data-primitive^="belt-driver-spoke-core-"]) .atlas-visible,
+.atlas-primitive[data-primitive^="belt-driven-spoke-"]:not([data-primitive^="belt-driven-spoke-core-"]) .atlas-visible {
+  stroke: var(--am-accent);
+}
 .atlas-selected { stroke: var(--am-accent); filter: drop-shadow(0 0 1.5px var(--am-accent)); }
 .atlas-hit { stroke: transparent; fill: transparent; pointer-events: none; }
 .atlas-hit-fill { stroke: transparent; fill: transparent; pointer-events: none; }
