@@ -129,10 +129,14 @@ describe('mechanical illustration enrichment', () => {
 
     expect(driver.radius).toBeCloseTo(driven.radius, 12);
     expect(driver.width).toBe(4.4);
+    expect(driver.styles).toEqual(['pulley']);
     expect(inner.radius / driver.radius).toBeCloseTo(0.79, 10);
+    expect(inner.styles).toEqual(['pulley']);
     expect(driverHub.radius).toBeCloseTo(drivenHub.radius, 12);
     expect(driverHub.radius / driver.radius).toBeCloseTo(0.014 / 0.045, 10);
+    expect(driverHub.styles).toEqual(['pulley']);
     expect(spoke.width).toBe(6.4);
+    expect(spoke.styles).toEqual(['pulley']);
     expect(spokeCore.width).toBe(3.0);
     expect(spokeCore.styles).toEqual(['cutout']);
   });
