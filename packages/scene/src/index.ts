@@ -6,7 +6,7 @@ import {
   buildMechanismScene as buildSchematicMechanismScene,
   type SceneBuildOptions,
 } from './buildMechanismScene.js';
-import { classicSpoke } from './classicSpokeGeometry.js';
+import { classicSpokeEdges } from './classicSpokeGeometry.js';
 import { enrichMechanicalIllustration } from './enrichMechanicalIllustration.js';
 import type { MechanismScene, ScenePrimitive, Vec2 } from './types.js';
 
@@ -150,10 +150,7 @@ function frameBrownBeltPlate(scene: MechanismScene): MechanismScene {
 }
 
 function isSpokePrimitive(primitive: ScenePrimitive, prefix: string): boolean {
-  return (
-    primitive.id.startsWith(`${prefix}-spoke-`) ||
-    primitive.id.startsWith(`${prefix}-spoke-root-`)
-  );
+  return primitive.id.startsWith(`${prefix}-spoke-`);
 }
 
 function replacePulleySpokes(
@@ -177,16 +174,17 @@ function replacePulleySpokes(
     phaseSpoke.b.y - phaseSpoke.a.y,
     phaseSpoke.b.x - phaseSpoke.a.x,
   );
-  const rootRadius = hub.radius + pulley.radius * 0.012;
-  const tipRadius = innerRim.radius - pulley.radius * 0.035;
+  const rootRadius = hub.radius + pulley.radius * 0.006;
+  const tipRadius = innerRim.radius - pulley.radius * 0.012;
   if (!(tipRadius > rootRadius)) return primitives;
 
-  // Make the historical cast-spoke taper unmistakable rather than simulating it
-  // with two constant-width strokes. The root is a little over 3× the tip width
-  // on Brown 001/002, while both ends remain clear of the hub and inner rim.
-  const rootHalfWidth = Math.min(pulley.radius * 0.16, hub.radius * 0.55);
-  const tipHalfWidth = pulley.radius * 0.052;
-  const spokes = Array.from({ length: 4 }, (_, index) => classicSpoke({
+  // Brown's spoke edges flare clearly at the hub, but remain much closer to a
+  // cast wheel than the exaggerated closed-trapezoid draft. A 2:1 root/tip
+  // width makes the taper legible while the open ends meet the hub and inner rim
+  // without drawing caps across either circular member.
+  const rootHalfWidth = pulley.radius * 0.10;
+  const tipHalfWidth = pulley.radius * 0.05;
+  const spokes = Array.from({ length: 4 }, (_, index) => classicSpokeEdges({
     center: pulley.center,
     angle: baseAngle + index * Math.PI / 2,
     rootRadius,
@@ -195,7 +193,7 @@ function replacePulleySpokes(
     tipHalfWidth,
     id: `${prefix}-spoke-${index}`,
     ariaLabel: `${pulley.ariaLabel ?? prefix} tapered cast spoke`,
-  }));
+  })).flat();
 
   const firstSpokeIndex = primitives.findIndex((primitive) => isSpokePrimitive(primitive, prefix));
   if (firstSpokeIndex < 0) return primitives;
