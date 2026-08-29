@@ -91,6 +91,97 @@ function pulleyIllustration(
   ];
 }
 
+interface PathSample {
+  point: Vec2;
+  tangent: Vec2;
+}
+
+function distance(a: Vec2, b: Vec2): number {
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
+function sampleClosedPolyline(points: Vec2[], targetDistance: number): PathSample | undefined {
+  if (points.length < 2) return undefined;
+
+  const lengths: number[] = [];
+  let total = 0;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const a = points[index];
+    const b = points[index + 1];
+    if (a === undefined || b === undefined) continue;
+    const length = distance(a, b);
+    lengths.push(length);
+    total += length;
+  }
+  if (!(total > 0)) return undefined;
+
+  let remaining = ((targetDistance % total) + total) % total;
+  for (let index = 0; index < lengths.length; index += 1) {
+    const length = lengths[index] ?? 0;
+    if (remaining <= length || index === lengths.length - 1) {
+      const a = points[index];
+      const b = points[index + 1];
+      if (a === undefined || b === undefined || !(length > 0)) return undefined;
+      const t = Math.min(1, remaining / length);
+      return {
+        point: {
+          x: a.x + (b.x - a.x) * t,
+          y: a.y + (b.y - a.y) * t,
+        },
+        tangent: {
+          x: (b.x - a.x) / length,
+          y: (b.y - a.y) / length,
+        },
+      };
+    }
+    remaining -= length;
+  }
+  return undefined;
+}
+
+function beltSurfaceMarks(
+  belt: PolylinePrimitive,
+  driver: CirclePrimitive,
+  driverMark: SegmentPrimitive,
+): SegmentPrimitive[] {
+  const angle = Math.atan2(
+    driverMark.b.y - driver.center.y,
+    driverMark.b.x - driver.center.x,
+  );
+  const pathLength = belt.points.slice(0, -1).reduce((sum, point, index) => {
+    const next = belt.points[index + 1];
+    return next === undefined ? sum : sum + distance(point, next);
+  }, 0);
+  if (!(pathLength > 0)) return [];
+
+  const count = 18;
+  const spacing = pathLength / count;
+  const phase = ((angle * driver.radius) % spacing + spacing) % spacing;
+  const halfMark = 0.0022;
+
+  return Array.from({ length: count }, (_, index): SegmentPrimitive | undefined => {
+    const sample = sampleClosedPolyline(belt.points, phase + index * spacing);
+    if (sample === undefined) return undefined;
+    const normal = { x: -sample.tangent.y, y: sample.tangent.x };
+    return {
+      type: 'segment',
+      id: `belt-surface-mark-${index}`,
+      layer: 'mechanism',
+      styles: ['cutout'],
+      a: {
+        x: sample.point.x - normal.x * halfMark,
+        y: sample.point.y - normal.y * halfMark,
+      },
+      b: {
+        x: sample.point.x + normal.x * halfMark,
+        y: sample.point.y + normal.y * halfMark,
+      },
+      width: 1.35,
+      ariaLabel: 'Moving belt surface mark',
+    };
+  }).filter((mark): mark is SegmentPrimitive => mark !== undefined);
+}
+
 /**
  * Presentation-only enrichment for Atlas's illustrated mechanism language.
  *
@@ -142,6 +233,7 @@ export function enrichMechanicalIllustration(scene: MechanismScene): MechanismSc
       ...belt,
       width: 5.5,
     },
+    ...beltSurfaceMarks(belt, driver, driverMark),
     ...pulleyIllustration(driver, driverMark, 'belt-driver'),
     ...pulleyIllustration(driven, drivenMark, 'belt-driven'),
   ];
