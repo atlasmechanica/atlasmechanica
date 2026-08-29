@@ -1,5 +1,6 @@
 import type {
   CirclePrimitive,
+  HandlePrimitive,
   MechanismScene,
   PolylinePrimitive,
   ScenePrimitive,
@@ -29,64 +30,127 @@ function spokeEndpoint(center: Vec2, radius: number, angle: number): Vec2 {
   };
 }
 
+const VISIBLE_PULLEY_RADIUS_RATIO = 0.95;
+const INNER_RIM_RADIUS_RATIO = 0.79;
+
+interface SharedPulleyDetails {
+  hubRadius: number;
+}
+
+function sharedPulleyDetails(driver: CirclePrimitive, driven: CirclePrimitive): SharedPulleyDetails {
+  const smallerPulleyRadius = Math.min(driver.radius, driven.radius);
+  return {
+    // Brown 001/002 use the same classic hub size on both pulleys. Keep that
+    // absolute visual relationship while still capping it safely for supported
+    // small-radius model overrides.
+    hubRadius: Math.min(0.014, smallerPulleyRadius * 0.32),
+  };
+}
+
 function pulleyIllustration(
   pulley: CirclePrimitive,
   phaseMark: SegmentPrimitive,
   prefix: string,
+  details: SharedPulleyDetails,
 ): ScenePrimitive[] {
   const angle = Math.atan2(
     phaseMark.b.y - pulley.center.y,
     phaseMark.b.x - pulley.center.x,
   );
-  const spokeRadius = pulley.radius * 0.77;
+  // The solver-owned pulley radius is the belt/rope pitch-contact radius. Brown's
+  // visible cast wheel sits just inside that contact circle, so keep the physical
+  // tangent geometry untouched and inset only the decorative wheel material.
+  const visibleRadius = pulley.radius * VISIBLE_PULLEY_RADIUS_RATIO;
+  const innerRimRadius = visibleRadius * INNER_RIM_RADIUS_RATIO;
 
-  const spokes: SegmentPrimitive[] = Array.from({ length: 4 }, (_, index) => ({
-    type: 'segment',
-    id: `${prefix}-spoke-${index}`,
-    layer: 'mechanism',
-    styles: ['body'],
-    a: pulley.center,
-    b: spokeEndpoint(pulley.center, spokeRadius, angle + index * Math.PI / 2),
-    width: 4.8,
-    ariaLabel: `${pulley.ariaLabel ?? prefix} spoke`,
-  }));
+  // Brown's cast spokes flare subtly as they meet the hub and terminate at the
+  // inner rim rather than drawing through either circular member. Layer a short,
+  // broader root behind the ordinary outlined spoke to get that historic taper
+  // while staying within the renderer-neutral segment vocabulary.
+  const spokeStartRadius = details.hubRadius + visibleRadius * 0.04;
+  const spokeEndRadius = innerRimRadius - visibleRadius * 0.025;
+  const availableSpokeLength = Math.max(0, spokeEndRadius - spokeStartRadius);
+  const spokeRootEndRadius = spokeStartRadius + availableSpokeLength * 0.46;
+
+  const spokes = Array.from({ length: 4 }, (_, index): ScenePrimitive[] => {
+    const spokeAngle = angle + index * Math.PI / 2;
+    const start = spokeEndpoint(pulley.center, spokeStartRadius, spokeAngle);
+    const rootEnd = spokeEndpoint(pulley.center, spokeRootEndRadius, spokeAngle);
+    const end = spokeEndpoint(pulley.center, spokeEndRadius, spokeAngle);
+    return [
+      {
+        type: 'segment',
+        id: `${prefix}-spoke-root-${index}`,
+        layer: 'mechanism',
+        styles: ['pulley'],
+        a: start,
+        b: rootEnd,
+        width: 8.0,
+        ariaLabel: `${pulley.ariaLabel ?? prefix} flared spoke root outline`,
+      },
+      {
+        type: 'segment',
+        id: `${prefix}-spoke-root-core-${index}`,
+        layer: 'mechanism',
+        styles: ['cutout'],
+        a: start,
+        b: rootEnd,
+        width: 3.8,
+        ariaLabel: `${pulley.ariaLabel ?? prefix} flared spoke root interior`,
+      },
+      {
+        type: 'segment',
+        id: `${prefix}-spoke-${index}`,
+        layer: 'mechanism',
+        styles: ['pulley'],
+        a: start,
+        b: end,
+        width: 6.4,
+        ariaLabel: `${pulley.ariaLabel ?? prefix} spoke outline`,
+      },
+      {
+        type: 'segment',
+        id: `${prefix}-spoke-core-${index}`,
+        layer: 'mechanism',
+        styles: ['cutout'],
+        a: start,
+        b: end,
+        width: 3.0,
+        ariaLabel: `${pulley.ariaLabel ?? prefix} spoke interior`,
+      },
+    ];
+  }).flat();
 
   return [
     {
       ...pulley,
-      width: 7.5,
-    },
-    {
-      type: 'circle',
-      id: `${prefix}-rim-inner`,
-      layer: 'mechanism',
-      styles: ['body'],
-      center: pulley.center,
-      radius: pulley.radius * 0.79,
-      width: 2.5,
-      ariaLabel: `${pulley.ariaLabel ?? prefix} inner rim`,
+      radius: visibleRadius,
+      styles: ['pulley'],
+      // Brown's wheel is line-drawn rather than a solid heavy ring: two dark
+      // contours with clear white material between them.
+      width: 4.4,
     },
     ...spokes,
     {
       type: 'circle',
-      id: `${prefix}-hub`,
+      id: `${prefix}-rim-inner`,
       layer: 'mechanism',
-      styles: ['joint'],
+      styles: ['pulley'],
       center: pulley.center,
-      radius: Math.max(0.0075, pulley.radius * 0.255),
-      width: 4,
-      selectId: pulley.selectId,
-      ariaLabel: `${pulley.ariaLabel ?? prefix} hub`,
+      radius: innerRimRadius,
+      width: 3.0,
+      ariaLabel: `${pulley.ariaLabel ?? prefix} inner rim`,
     },
     {
       type: 'circle',
-      id: `${prefix}-axle`,
+      id: `${prefix}-hub`,
       layer: 'mechanism',
-      styles: ['body'],
+      styles: ['pulley'],
       center: pulley.center,
-      radius: Math.max(0.0025, pulley.radius * 0.07),
-      width: 2.6,
-      ariaLabel: `${pulley.ariaLabel ?? prefix} axle`,
+      radius: details.hubRadius,
+      width: 3.4,
+      selectId: pulley.selectId,
+      ariaLabel: `${pulley.ariaLabel ?? prefix} hub`,
     },
   ];
 }
@@ -188,12 +252,15 @@ function beltSurfaceMarks(
   }, 0);
   if (!(pathLength > 0)) return [];
 
-  const count = 34;
+  // Brown's cord is read as rope because closely spaced diagonal lay marks sit
+  // inside a light cord body bounded by dark edges. The marks advance from the
+  // same solver-owned pulley phase used by the spokes.
+  const count = 42;
   const spacing = pathLength / count;
   const phaseDirection = beltPathPhaseSign(belt, driver);
-  const phase = (((phaseDirection * angle * driver.radius) % spacing) + spacing) % spacing;
-  const halfMark = 0.0031;
-  const diagonalAlongPath = 0.52;
+  const phase = phaseDirection * angle * driver.radius;
+  const halfMark = 0.0016;
+  const diagonalAlongPath = 0.48;
   const diagonalAcrossPath = Math.sqrt(1 - diagonalAlongPath * diagonalAlongPath);
 
   return Array.from({ length: count }, (_, index): SegmentPrimitive | undefined => {
@@ -208,7 +275,7 @@ function beltSurfaceMarks(
       type: 'segment',
       id: `belt-surface-mark-${index}`,
       layer: 'mechanism',
-      styles: ['cutout'],
+      styles: ['belt'],
       a: {
         x: sample.point.x - slash.x * halfMark,
         y: sample.point.y - slash.y * halfMark,
@@ -217,22 +284,33 @@ function beltSurfaceMarks(
         x: sample.point.x + slash.x * halfMark,
         y: sample.point.y + slash.y * halfMark,
       },
-      width: 1.25,
-      ariaLabel: 'Moving cord surface mark',
+      width: 1.1,
+      ariaLabel: 'Moving rope lay mark',
     };
   }).filter((mark): mark is SegmentPrimitive => mark !== undefined);
 }
 
-function longestStraightSpans(belt: PolylinePrimitive): StraightSpan[] {
+function liesOnPulley(point: Vec2, pulley: CirclePrimitive): boolean {
+  const tolerance = Math.max(1e-7, pulley.radius * 1e-5);
+  return Math.abs(distance(point, pulley.center) - pulley.radius) <= tolerance;
+}
+
+function tangentSpans(
+  belt: PolylinePrimitive,
+  driver: CirclePrimitive,
+  driven: CirclePrimitive,
+): StraightSpan[] {
   return belt.points.slice(0, -1)
     .map((a, index): StraightSpan | undefined => {
       const b = belt.points[index + 1];
       if (b === undefined) return undefined;
+      const joinsDifferentPulleys =
+        (liesOnPulley(a, driver) && liesOnPulley(b, driven)) ||
+        (liesOnPulley(a, driven) && liesOnPulley(b, driver));
+      if (!joinsDifferentPulleys) return undefined;
       return { a, b, length: distance(a, b) };
     })
-    .filter((span): span is StraightSpan => span !== undefined)
-    .sort((left, right) => right.length - left.length)
-    .slice(0, 2);
+    .filter((span): span is StraightSpan => span !== undefined);
 }
 
 function segmentIntersection(first: StraightSpan, second: StraightSpan): Vec2 | undefined {
@@ -263,16 +341,35 @@ function centeredSpan(span: StraightSpan, center: Vec2, halfLength: number): { a
   };
 }
 
-function crossedBeltOverUnder(belt: PolylinePrimitive): SegmentPrimitive[] {
-  const spans = longestStraightSpans(belt);
+function contactSafeHalfLength(span: StraightSpan, crossing: Vec2, maximum: number): number {
+  const nearestContact = Math.min(distance(crossing, span.a), distance(crossing, span.b));
+  // The cue uses round caps in the SVG renderer. Keeping its centerline to at
+  // most 40% of the nearest contact clearance leaves substantial room for those
+  // caps instead of merely proving the total cue is shorter than the tangent.
+  return Math.min(maximum, nearestContact * 0.40);
+}
+
+function crossedBeltOverUnder(
+  belt: PolylinePrimitive,
+  driver: CirclePrimitive,
+  driven: CirclePrimitive,
+): SegmentPrimitive[] {
+  const spans = tangentSpans(belt, driver, driven);
   const top = spans[0];
   const under = spans[1];
   if (top === undefined || under === undefined) return [];
   const crossing = segmentIntersection(top, under);
   if (crossing === undefined) return [];
 
-  const underGap = centeredSpan(under, crossing, 0.009);
-  const topBridge = centeredSpan(top, crossing, 0.012);
+  // Never let the drafting convention extend to the pulley contact points.
+  // The crossing can sit far off the midpoint on unequal near-limit pulleys, so
+  // clamp each cue against the *nearest* contact point, not the whole span.
+  const underHalfLength = contactSafeHalfLength(under, crossing, 0.009);
+  const topHalfLength = contactSafeHalfLength(top, crossing, 0.012);
+  if (!(underHalfLength > 0) || !(topHalfLength > 0)) return [];
+
+  const underGap = centeredSpan(under, crossing, underHalfLength);
+  const topBridge = centeredSpan(top, crossing, topHalfLength);
   return [
     {
       type: 'segment',
@@ -281,20 +378,39 @@ function crossedBeltOverUnder(belt: PolylinePrimitive): SegmentPrimitive[] {
       styles: ['cutout'],
       a: underGap.a,
       b: underGap.b,
-      width: 10,
-      ariaLabel: 'Crossed belt underpass gap',
+      width: 9.0,
+      ariaLabel: 'Crossed rope underpass gap',
+    },
+    {
+      type: 'segment',
+      id: 'belt-crossing-bridge-outline',
+      layer: 'mechanism',
+      styles: ['belt'],
+      a: topBridge.a,
+      b: topBridge.b,
+      width: 7.0,
+      ariaLabel: 'Crossed rope overpass outline',
     },
     {
       type: 'segment',
       id: 'belt-crossing-bridge',
       layer: 'mechanism',
-      styles: ['belt'],
+      styles: ['cutout'],
       a: topBridge.a,
       b: topBridge.b,
-      width: 5.7,
-      ariaLabel: 'Crossed belt overpass',
+      width: 4.0,
+      ariaLabel: 'Crossed rope overpass interior',
     },
   ];
+}
+
+function hideAtRest(primitive: ScenePrimitive): ScenePrimitive {
+  if (primitive.type !== 'handle') return primitive;
+  if (primitive.id !== 'belt-input-handle' && primitive.id !== 'belt-distance-handle') return primitive;
+  return {
+    ...primitive,
+    styles: ['cutout'],
+  } satisfies HandlePrimitive;
 }
 
 /**
@@ -331,29 +447,39 @@ export function enrichMechanicalIllustration(scene: MechanismScene): MechanismSc
     drivenMark.id,
   ]);
 
-  const staticPrimitives = scene.primitives.filter((primitive) => !replaced.has(primitive.id));
+  // The surrounding web lab already exposes ratio and center-distance readouts.
+  // Keep Brown's actual mechanism plate visually uncluttered, and leave the
+  // interaction controls invisible until focus while retaining their hit areas.
+  const staticPrimitives = scene.primitives
+    .filter((primitive) => !replaced.has(primitive.id))
+    .filter((primitive) => primitive.id !== 'belt-distance' && primitive.id !== 'belt-ratio-label')
+    .map(hideAtRest);
   const mechanismIndex = staticPrimitives.findIndex((primitive) => primitive.layer === 'mechanism');
   const insertAt = mechanismIndex < 0 ? staticPrimitives.length : mechanismIndex;
-  const crossing = scene.id === 'belt-reversed' ? crossedBeltOverUnder(belt) : [];
+  const details = sharedPulleyDetails(driver, driven);
+  const crossing = scene.id === 'belt-reversed'
+    ? crossedBeltOverUnder(belt, driver, driven)
+    : [];
 
   const illustrated: ScenePrimitive[] = [
     {
       ...belt,
       id: 'belt-band-underlay',
-      styles: ['ground'],
-      width: 8.2,
+      styles: ['belt'],
+      width: 7.0,
       selectId: undefined,
-      ariaLabel: 'Cord outer edge',
+      ariaLabel: 'Rope outer edge',
     },
     {
       ...belt,
-      width: 5.7,
-      ariaLabel: 'Flexible cord path',
+      styles: ['cutout'],
+      width: 4.0,
+      ariaLabel: 'Rope light interior',
     },
     ...beltSurfaceMarks(belt, driver, driverMark),
     ...crossing,
-    ...pulleyIllustration(driver, driverMark, 'belt-driver'),
-    ...pulleyIllustration(driven, drivenMark, 'belt-driven'),
+    ...pulleyIllustration(driver, driverMark, 'belt-driver', details),
+    ...pulleyIllustration(driven, drivenMark, 'belt-driven', details),
   ];
 
   return {

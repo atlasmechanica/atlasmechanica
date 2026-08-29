@@ -11,50 +11,29 @@ on:
       - 'package.json'
       - '.github/workflows/renderer-bakeoff.yml'
 
+concurrency:
+  group: renderer-bakeoff-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   browser-scorecard:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Install dependencies
         run: npm install
       - name: Typecheck, unit tests and production build
-        id: compile
-        shell: bash
-        run: |
-          set +e
-          npm run check > /tmp/renderer-check.log 2>&1
-          code=$?
-          cat /tmp/renderer-check.log
-          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          exit 0
-      - name: Publish compile diagnostics
-        if: steps.compile.outputs.exit_code != '0'
-        uses: actions/github-script@v7
-        env:
-          CHECK_LOG: /tmp/renderer-check.log
-        with:
-          script: |
-            const fs = require('fs');
-            const marker = '<!-- atlas-renderer-compile -->';
-            const log = fs.readFileSync(process.env.CHECK_LOG, 'utf8').slice(-12000);
-            const body = `${marker}\n## Renderer bake-off compile diagnostics\n\n\`\`\`text\n${log}\n\`\`\``;
-            const { owner, repo } = context.repo;
-            const issue_number = context.issue.number;
-            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, per_page: 100 });
-            const existing = comments.find(comment => comment.user?.type === 'Bot' && comment.body?.includes(marker));
-            if (existing) await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
-            else await github.rest.issues.createComment({ owner, repo, issue_number, body });
-      - name: Stop after compile failure
-        if: steps.compile.outputs.exit_code != '0'
-        run: exit 1
+        run: npm run check
       - name: Install Chromium and WebKit
         run: npx playwright install --with-deps chromium webkit
         working-directory: experiments/renderers/svg-bakeoff
@@ -79,21 +58,214 @@ jobs:
             experiments/renderers/svg-bakeoff/renderer-bakeoff-*.png
             experiments/renderers/svg-bakeoff/renderer-browser-report.json
             /tmp/renderer-bundle.json
-      - name: Publish scorecard to pull request
+      - name: Stage safe publication payload
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          mkdir -p /tmp/atlas-renderer-publish
+          cp experiments/renderers/svg-bakeoff/renderer-bakeoff-open-belt-chromium.png /tmp/atlas-renderer-publish/open-belt-chromium.png
+          cp experiments/renderers/svg-bakeoff/renderer-bakeoff-crossed-belt-chromium.png /tmp/atlas-renderer-publish/crossed-belt-chromium.png
+          cp experiments/renderers/svg-bakeoff/renderer-bakeoff-open-belt-webkit.png /tmp/atlas-renderer-publish/open-belt-webkit.png
+          cp experiments/renderers/svg-bakeoff/renderer-bakeoff-crossed-belt-webkit.png /tmp/atlas-renderer-publish/crossed-belt-webkit.png
+          cp experiments/renderers/svg-bakeoff/renderer-browser-report.json /tmp/atlas-renderer-publish/renderer-browser-report.json
+          cp /tmp/renderer-bundle.json /tmp/atlas-renderer-publish/renderer-bundle.json
+      - name: Upload safe publication payload
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/upload-artifact@v4
+        with:
+          name: renderer-pr-publish-${{ github.event.pull_request.number }}
+          path: /tmp/atlas-renderer-publish/*
+          retention-days: 1
+
+  publish-results:
+    needs: browser-scorecard
+    if: ${{ always() && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Verify this run still matches the open PR head
+        id: current-head
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pull_number = context.issue.number;
+            const expected = context.payload.pull_request.head.sha;
+            const { data: pull } = await github.rest.pulls.get({ owner, repo, pull_number });
+            const isOpen = pull.state === 'open';
+            const current = isOpen && pull.head.sha === expected;
+            core.setOutput('current', String(current));
+            core.setOutput('tested_sha', expected);
+            if (!isOpen) {
+              core.notice(`Skipping visual publication because PR #${pull_number} is closed.`);
+            } else if (!current) {
+              core.notice(`Skipping visual publication for stale head ${expected}; current head is ${pull.head.sha}.`);
+            }
+
+      - name: Invalidate stale visual evidence after failed validation
+        if: needs.browser-scorecard.result != 'success' && steps.current-head.outputs.current == 'true'
         uses: actions/github-script@v7
         env:
-          BUNDLE_PATH: /tmp/renderer-bundle.json
-          BROWSER_PATH: experiments/renderers/svg-bakeoff/renderer-browser-report.json
+          REVIEW_BRANCH: visual-review-pr-${{ github.event.pull_request.number }}
+          TESTED_SHA: ${{ steps.current-head.outputs.tested_sha }}
+          SCORECARD_RESULT: ${{ needs.browser-scorecard.result }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const branch = process.env.REVIEW_BRANCH;
+            try {
+              await github.rest.git.deleteRef({ owner, repo, ref: `heads/${branch}` });
+              core.notice(`Deleted stale ${branch} after renderer validation ${process.env.SCORECARD_RESULT}.`);
+            } catch (error) {
+              if (error.status !== 404 && error.status !== 422) throw error;
+              core.notice(`No stale visual review branch to delete for PR #${issue_number}.`);
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const scorecardMarker = '<!-- atlas-renderer-bakeoff -->';
+            const scorecardBody = [
+              scorecardMarker,
+              '## Renderer bake-off scorecard — invalid',
+              '',
+              `Current head: \`${process.env.TESTED_SHA}\``,
+              '',
+              `Renderer validation finished with **${process.env.SCORECARD_RESULT}**. No scorecard from an older head is valid for this revision.`,
+            ].join('\n');
+            const existingScorecard = comments.find(comment => comment.user?.type === 'Bot' && comment.body?.includes(scorecardMarker));
+            if (existingScorecard) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existingScorecard.id, body: scorecardBody });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body: scorecardBody });
+            }
+
+            const visualMarker = '<!-- atlas-visual-review -->';
+            const visualBody = [
+              visualMarker,
+              '## Visual review — invalidated',
+              '',
+              `Current head: \`${process.env.TESTED_SHA}\``,
+              '',
+              `Renderer validation finished with **${process.env.SCORECARD_RESULT}** for this head. Any screenshots from an older head are stale and must not be used for approval.`,
+              '',
+              '**Do not merge until a renderer run succeeds and fresh visual evidence is published for the current head.**',
+            ].join('\n');
+            const existingVisual = comments.find(comment => comment.user?.type === 'Bot' && comment.body?.includes(visualMarker));
+            if (existingVisual) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existingVisual.id, body: visualBody });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body: visualBody });
+            }
+
+      - name: Download tested publication payload
+        if: needs.browser-scorecard.result == 'success' && steps.current-head.outputs.current == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: renderer-pr-publish-${{ github.event.pull_request.number }}
+          path: /tmp/atlas-renderer-publish
+
+      - name: Publish isolated visual-review commit
+        id: visual-commit
+        if: needs.browser-scorecard.result == 'success' && steps.current-head.outputs.current == 'true'
+        uses: actions/github-script@v7
+        env:
+          REVIEW_BRANCH: visual-review-pr-${{ github.event.pull_request.number }}
+          PAYLOAD_DIR: /tmp/atlas-renderer-publish
         with:
           script: |
             const fs = require('fs');
-            const bundle = JSON.parse(fs.readFileSync(process.env.BUNDLE_PATH, 'utf8'));
-            const browser = JSON.parse(fs.readFileSync(process.env.BROWSER_PATH, 'utf8'));
-            const marker = '<!-- atlas-renderer-bakeoff -->';
-            const body = `${marker}\n## Renderer bake-off scorecard\n\n### Bundle\n\`\`\`json\n${JSON.stringify(bundle, null, 2)}\n\`\`\`\n\n### Chromium + WebKit\n\`\`\`json\n${JSON.stringify(browser, null, 2)}\n\`\`\``;
+            const path = require('path');
+            const { owner, repo } = context.repo;
+            const branch = process.env.REVIEW_BRANCH;
+            const files = [
+              'open-belt-chromium.png',
+              'crossed-belt-chromium.png',
+              'open-belt-webkit.png',
+              'crossed-belt-webkit.png',
+            ];
+            const tree = [];
+            for (const filename of files) {
+              const content = fs.readFileSync(path.join(process.env.PAYLOAD_DIR, filename)).toString('base64');
+              const { data: blob } = await github.rest.git.createBlob({
+                owner,
+                repo,
+                content,
+                encoding: 'base64',
+              });
+              tree.push({ path: filename, mode: '100644', type: 'blob', sha: blob.sha });
+            }
+            const { data: createdTree } = await github.rest.git.createTree({ owner, repo, tree });
+            const { data: commit } = await github.rest.git.createCommit({
+              owner,
+              repo,
+              message: 'Update renderer visual review',
+              tree: createdTree.sha,
+              parents: [],
+            });
+            try {
+              await github.rest.git.getRef({ owner, repo, ref: `heads/${branch}` });
+              await github.rest.git.updateRef({
+                owner,
+                repo,
+                ref: `heads/${branch}`,
+                sha: commit.sha,
+                force: true,
+              });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.git.createRef({
+                owner,
+                repo,
+                ref: `refs/heads/${branch}`,
+                sha: commit.sha,
+              });
+            }
+            core.setOutput('review_sha', commit.sha);
+
+      - name: Publish scorecard and inline visual review
+        if: needs.browser-scorecard.result == 'success' && steps.current-head.outputs.current == 'true'
+        uses: actions/github-script@v7
+        env:
+          BUNDLE_PATH: /tmp/atlas-renderer-publish/renderer-bundle.json
+          BROWSER_PATH: /tmp/atlas-renderer-publish/renderer-browser-report.json
+          REVIEW_SHA: ${{ steps.visual-commit.outputs.review_sha }}
+          TESTED_SHA: ${{ steps.current-head.outputs.tested_sha }}
+        with:
+          script: |
+            const fs = require('fs');
             const { owner, repo } = context.repo;
             const issue_number = context.issue.number;
-            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, per_page: 100 });
-            const existing = comments.find(comment => comment.user?.type === 'Bot' && comment.body?.includes(marker));
-            if (existing) await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
-            else await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const bundle = JSON.parse(fs.readFileSync(process.env.BUNDLE_PATH, 'utf8'));
+            const browser = JSON.parse(fs.readFileSync(process.env.BROWSER_PATH, 'utf8'));
+            const scorecardMarker = '<!-- atlas-renderer-bakeoff -->';
+            const scorecardBody = `${scorecardMarker}\n## Renderer bake-off scorecard\n\nTested head: \`${process.env.TESTED_SHA}\`\n\n### Bundle\n\`\`\`json\n${JSON.stringify(bundle, null, 2)}\n\`\`\`\n\n### Chromium + WebKit\n\`\`\`json\n${JSON.stringify(browser, null, 2)}\n\`\`\``;
+            const existingScorecard = comments.find(comment => comment.user?.type === 'Bot' && comment.body?.includes(scorecardMarker));
+            if (existingScorecard) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existingScorecard.id, body: scorecardBody });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body: scorecardBody });
+            }
+
+            const visualMarker = '<!-- atlas-visual-review -->';
+            const raw = `https://raw.githubusercontent.com/${owner}/${repo}/${process.env.REVIEW_SHA}`;
+            const visualBody = `${visualMarker}\n## Visual review — approval required before merge\n\nTested head: \`${process.env.TESTED_SHA}\`\n\n### Brown / 507 movement 1 reference\n![Brown / 507 movement 1](https://507movements.com/img/mm_001.png)\n\n### Atlas open belt — Chromium\n![Atlas open belt Chromium](${raw}/open-belt-chromium.png)\n\n### Atlas crossed belt — Chromium\n![Atlas crossed belt Chromium](${raw}/crossed-belt-chromium.png)\n\n<details><summary>WebKit screenshots</summary>\n\n![Atlas open belt WebKit](${raw}/open-belt-webkit.png)\n\n![Atlas crossed belt WebKit](${raw}/crossed-belt-webkit.png)\n</details>\n\n**Do not merge until the visual review is explicitly approved.**`;
+            const existingVisual = comments.find(comment => comment.user?.type === 'Bot' && comment.body?.includes(visualMarker));
+            if (existingVisual) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existingVisual.id, body: visualBody });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body: visualBody });
+            }

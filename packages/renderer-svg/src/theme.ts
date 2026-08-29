@@ -29,8 +29,8 @@ export const SVG_RENDERER_STYLE = `
 .atlas-style-body { stroke: var(--am-foreground); }
 .atlas-style-joint { stroke: var(--am-foreground); fill: var(--am-background); }
 .atlas-style-tracer { stroke: var(--am-accent); fill: var(--am-background); }
-.atlas-style-belt { stroke: var(--am-foreground); }
-.atlas-style-pulley { stroke: var(--am-foreground); fill: none; }
+.atlas-style-belt { stroke: var(--am-vector); }
+.atlas-style-pulley { stroke: var(--am-accent); fill: none; }
 .atlas-style-trace { stroke: var(--am-trace); opacity: .72; }
 .atlas-style-vector { stroke: var(--am-vector); color: var(--am-vector); }
 .atlas-style-dimension { stroke: var(--am-muted); }
@@ -38,10 +38,17 @@ export const SVG_RENDERER_STYLE = `
 .atlas-style-handle { stroke: var(--am-accent); fill: var(--am-background); }
 .atlas-style-invalid { stroke: var(--am-danger); fill: var(--am-background); stroke-dasharray: 4 3; }
 .atlas-style-cutout { stroke: var(--am-background); }
+/* A cutout handle is an interaction affordance hidden at rest. Painting it in
+   the background used to erase any rope/rim below it and left pale circles or
+   squares in the mechanism plate. Keep its visible glyph genuinely transparent;
+   the hit geometry remains active and the focus rule below restores the accent. */
+.atlas-handle-visible.atlas-style-cutout { stroke: transparent; }
 .atlas-selected { stroke: var(--am-accent); filter: drop-shadow(0 0 1.5px var(--am-accent)); }
-.atlas-hit { stroke: transparent; fill: transparent; pointer-events: stroke; }
-.atlas-hit-fill { stroke: transparent; fill: transparent; pointer-events: all; }
+.atlas-hit { stroke: transparent; fill: transparent; pointer-events: none; }
+.atlas-hit-fill { stroke: transparent; fill: transparent; pointer-events: none; }
 .atlas-interactive { pointer-events: all; cursor: pointer; }
+.atlas-interactive .atlas-hit { pointer-events: stroke; }
+.atlas-interactive .atlas-hit-fill { pointer-events: all; }
 .atlas-interactive:focus .atlas-visible { stroke: var(--am-accent); filter: drop-shadow(0 0 2px var(--am-accent)); }
 .atlas-interactive:focus { outline: none; }
 .atlas-handle-visible { vector-effect: non-scaling-stroke; stroke-width: 2; }

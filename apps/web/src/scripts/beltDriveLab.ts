@@ -9,6 +9,9 @@ import { buildMechanismScene, type Vec2 } from '@atlasmechanica/scene';
 
 type BeltRouting = 'open' | 'crossed';
 
+const referencePulleyRadiusMm = 45;
+const minimumCenterMm = 95;
+
 function required<T extends Element>(element: T | null, name: string): T {
   if (element === null) throw new TypeError(`Belt drive lab is missing ${name}`);
   return element;
@@ -20,8 +23,53 @@ function routingFor(root: HTMLElement): BeltRouting {
   throw new TypeError(`Unknown belt routing: ${routing ?? 'missing'}`);
 }
 
+function verticalBrownReference(model: SimulationModel): SimulationModel {
+  const mechanical = model.systems.mechanical;
+  const ground = mechanical?.bodies.ground;
+  const driven = mechanical?.bodies.driven;
+  const drivenAxis = ground?.features['driven-axis'];
+  if (mechanical === undefined || ground === undefined || driven === undefined || drivenAxis?.type !== 'axis') {
+    throw new TypeError('Belt model is missing the expected shaft-center geometry');
+  }
+
+  return {
+    ...model,
+    systems: {
+      ...model.systems,
+      mechanical: {
+        ...mechanical,
+        bodies: {
+          ...mechanical.bodies,
+          ground: {
+            ...ground,
+            features: {
+              ...ground.features,
+              'driven-axis': {
+                ...drivenAxis,
+                origin: {
+                  x: quantity(0, 'mm'),
+                  y: { parameter: 'center-distance' },
+                },
+              },
+            },
+          },
+          driven: {
+            ...driven,
+            referencePose: {
+              ...driven.referencePose,
+              x: quantity(0, 'mm'),
+              y: { parameter: 'center-distance' },
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
 function modelFor(routing: BeltRouting): SimulationModel {
-  return routing === 'open' ? openBeltDriveModel : crossedBeltDriveModel;
+  const model = routing === 'open' ? openBeltDriveModel : crossedBeltDriveModel;
+  return verticalBrownReference(model);
 }
 
 function scalarSignal(state: ModelState, id: string): number | undefined {
@@ -45,7 +93,6 @@ function normalizedDegrees(value: number): number {
 for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]')) {
   const routing = routingFor(root);
   const model = modelFor(routing);
-  const minimumCenter = routing === 'crossed' ? 95 : 45;
   const host = required(root.querySelector<HTMLElement>('[data-renderer]'), 'renderer host');
   const playButton = required(root.querySelector<HTMLButtonElement>('[data-play]'), 'play button');
   const resetButton = required(root.querySelector<HTMLButtonElement>('[data-reset]'), 'reset button');
@@ -71,7 +118,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
   let angleDeg = clamp(Number(params.get('angle') ?? defaults.angle) || 0, 0, 360);
   let centerMm = clamp(
     Number(params.get('center') ?? defaults.center) || defaults.center,
-    minimumCenter,
+    minimumCenterMm,
     260,
   );
   let rpm = clamp(Number(params.get('rpm') ?? defaults.rpm) || defaults.rpm, 10, 120);
@@ -85,12 +132,20 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
   centerInput.value = String(centerMm);
   rpmInput.value = String(rpm);
 
+  function parameters(candidateCenter = centerMm) {
+    return {
+      'driver-radius': quantity(referencePulleyRadiusMm, 'mm'),
+      'driven-radius': quantity(referencePulleyRadiusMm, 'mm'),
+      'center-distance': quantity(candidateCenter, 'mm'),
+    } as const;
+  }
+
   function evaluate(candidateCenter = centerMm): ModelState {
     const radiansPerSecond = rpm * Math.PI * 2 / 60;
     return compiled.createSession().evaluate({
       coordinates: { 'driver-angle': quantity(angleDeg, 'deg') },
       rates: { 'driver-angle': quantity(radiansPerSecond, 'rad/s') },
-      parameters: { 'center-distance': quantity(candidateCenter, 'mm') },
+      parameters: parameters(candidateCenter),
     });
   }
 
@@ -125,6 +180,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
 
   const renderer = createSvgMechanismRenderer(host, {
     instanceId: `${routing}-belt-drive-main`,
+    keyboardParameterAxis: 'y',
     callbacks: {
       onSelect(id) {
         selectedId = id;
@@ -141,7 +197,13 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
         syncUrl();
       },
       onParameterDrag(point) {
-        const candidate = clamp(point.x * 1000, 20, 280);
+        const candidate = clamp(point.y * 1000, 20, 280);
+        if (candidate < minimumCenterMm) {
+          invalidParameterHandle = point;
+          status.textContent = 'That spacing would make the pulley rims overlap.';
+          render();
+          return;
+        }
         const candidateState = evaluate(candidate);
         if (hasErrors(candidateState)) {
           invalidParameterHandle = point;
@@ -172,7 +234,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
     renderer.update(buildMechanismScene({
       model,
       state: currentState,
-      parameters: { 'center-distance': quantity(centerMm, 'mm') },
+      parameters: parameters(),
       selectedId,
       invalidParameterHandle,
     }));
@@ -228,7 +290,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
     centerInput.value = String(centerMm);
     rpmInput.value = String(rpm);
     currentState = evaluate();
-    status.textContent = 'Reset to the reference configuration.';
+    status.textContent = 'Reset to the Brown reference proportions.';
     render();
     syncUrl();
   });
