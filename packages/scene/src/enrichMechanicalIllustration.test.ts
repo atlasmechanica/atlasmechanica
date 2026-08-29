@@ -83,7 +83,7 @@ function nearest(points: Vec2[], target: Vec2): Vec2 {
 }
 
 describe('mechanical illustration enrichment', () => {
-  it('keeps stable primary IDs while adding belt and pulley detail', () => {
+  it('keeps stable primary IDs while adding Brown-style rope and pulley detail', () => {
     const scene = illustrated(openBeltDriveModel);
     const ids = new Set(scene.primitives.map((primitive) => primitive.id));
 
@@ -93,39 +93,51 @@ describe('mechanical illustration enrichment', () => {
     expect(ids.has('belt-band-underlay')).toBe(true);
     expect(ids.has('belt-driver-hub')).toBe(true);
     expect(ids.has('belt-driven-hub')).toBe(true);
-    expect([...ids].filter((id) => id.startsWith('belt-driver-spoke-'))).toHaveLength(4);
-    expect([...ids].filter((id) => id.startsWith('belt-driven-spoke-'))).toHaveLength(4);
-    expect([...ids].filter((id) => id.startsWith('belt-surface-mark-'))).toHaveLength(34);
+    expect([...ids].filter((id) => /^belt-driver-spoke-\d+$/.test(id))).toHaveLength(4);
+    expect([...ids].filter((id) => /^belt-driver-spoke-core-\d+$/.test(id))).toHaveLength(4);
+    expect([...ids].filter((id) => /^belt-driven-spoke-\d+$/.test(id))).toHaveLength(4);
+    expect([...ids].filter((id) => /^belt-driven-spoke-core-\d+$/.test(id))).toHaveLength(4);
+    expect([...ids].filter((id) => id.startsWith('belt-surface-mark-'))).toHaveLength(42);
     expect(ids.has('belt-driver-mark')).toBe(false);
     expect(ids.has('belt-driven-mark')).toBe(false);
   });
 
-  it('uses the same Brown-style hub size on both canonical 001 pulleys', () => {
-    const scene = illustrated(openBeltDriveModel);
+  it('matches the equal-pulley Brown 001 reference with identical hub/spoke grammar', () => {
+    const scene = illustrated(openBeltDriveModel, {
+      driverRadiusMm: 45,
+      drivenRadiusMm: 45,
+    });
     const driver = scene.primitives.find((primitive) => primitive.id === 'belt-driver');
+    const driven = scene.primitives.find((primitive) => primitive.id === 'belt-driven');
     const inner = scene.primitives.find((primitive) => primitive.id === 'belt-driver-rim-inner');
     const driverHub = scene.primitives.find((primitive) => primitive.id === 'belt-driver-hub');
     const drivenHub = scene.primitives.find((primitive) => primitive.id === 'belt-driven-hub');
     const spoke = scene.primitives.find((primitive) => primitive.id === 'belt-driver-spoke-0');
+    const spokeCore = scene.primitives.find((primitive) => primitive.id === 'belt-driver-spoke-core-0');
 
     if (
       driver?.type !== 'circle' ||
+      driven?.type !== 'circle' ||
       inner?.type !== 'circle' ||
       driverHub?.type !== 'circle' ||
       drivenHub?.type !== 'circle' ||
-      spoke?.type !== 'segment'
+      spoke?.type !== 'segment' ||
+      spokeCore?.type !== 'segment'
     ) {
       throw new TypeError('Missing illustrated pulley primitives');
     }
 
-    expect(driver.width).toBe(7.2);
-    expect(inner.radius / driver.radius).toBeCloseTo(0.81, 10);
+    expect(driver.radius).toBeCloseTo(driven.radius, 12);
+    expect(driver.width).toBe(4.4);
+    expect(inner.radius / driver.radius).toBeCloseTo(0.79, 10);
     expect(driverHub.radius).toBeCloseTo(drivenHub.radius, 12);
-    expect(driverHub.radius / driver.radius).toBeCloseTo(0.30, 10);
-    expect(spoke.width).toBe(4.5);
+    expect(driverHub.radius / driver.radius).toBeCloseTo(0.014 / 0.045, 10);
+    expect(spoke.width).toBe(6.4);
+    expect(spokeCore.width).toBe(3.0);
+    expect(spokeCore.styles).toEqual(['cutout']);
   });
 
-  it('caps shared hub and axle details inside very small supported pulleys', () => {
+  it('caps the shared hub inside very small supported pulleys', () => {
     const scene = illustrated(openBeltDriveModel, {
       driverRadiusMm: 7,
       drivenRadiusMm: 7,
@@ -133,13 +145,45 @@ describe('mechanical illustration enrichment', () => {
     });
     const pulley = scene.primitives.find((primitive) => primitive.id === 'belt-driver');
     const hub = scene.primitives.find((primitive) => primitive.id === 'belt-driver-hub');
-    const axle = scene.primitives.find((primitive) => primitive.id === 'belt-driver-axle');
-    if (pulley?.type !== 'circle' || hub?.type !== 'circle' || axle?.type !== 'circle') {
+    if (pulley?.type !== 'circle' || hub?.type !== 'circle') {
       throw new TypeError('Missing small pulley illustration');
     }
 
     expect(hub.radius).toBeLessThan(pulley.radius);
-    expect(axle.radius).toBeLessThan(hub.radius);
+  });
+
+  it('renders rope as dark edges, a light core, and moving dark lay marks', () => {
+    const scene = illustrated(openBeltDriveModel, {
+      driverRadiusMm: 45,
+      drivenRadiusMm: 45,
+    });
+    const edge = scene.primitives.find((primitive) => primitive.id === 'belt-band-underlay');
+    const core = scene.primitives.find((primitive) => primitive.id === 'belt-path');
+    const mark = scene.primitives.find((primitive) => primitive.id === 'belt-surface-mark-0');
+    if (edge?.type !== 'polyline' || core?.type !== 'polyline' || mark?.type !== 'segment') {
+      throw new TypeError('Missing rope illustration primitives');
+    }
+
+    expect(edge.styles).toEqual(['belt']);
+    expect(edge.width).toBe(7.0);
+    expect(core.styles).toEqual(['cutout']);
+    expect(core.width).toBe(4.0);
+    expect(mark.styles).toEqual(['belt']);
+  });
+
+  it('keeps interaction affordances invisible at rest and removes duplicate in-plate readouts', () => {
+    const scene = illustrated(openBeltDriveModel, {
+      driverRadiusMm: 45,
+      drivenRadiusMm: 45,
+    });
+    const inputHandle = scene.primitives.find((primitive) => primitive.id === 'belt-input-handle');
+    const distanceHandle = scene.primitives.find((primitive) => primitive.id === 'belt-distance-handle');
+    const ids = new Set(scene.primitives.map((primitive) => primitive.id));
+
+    expect(inputHandle?.styles).toEqual(['cutout']);
+    expect(distanceHandle?.styles).toEqual(['cutout']);
+    expect(ids.has('belt-distance')).toBe(false);
+    expect(ids.has('belt-ratio-label')).toBe(false);
   });
 
   it('rotates spokes from the solver-owned pulley phase', () => {
@@ -161,6 +205,7 @@ describe('mechanical illustration enrichment', () => {
     expect(openIds.has('belt-crossing-gap')).toBe(false);
     expect(openIds.has('belt-crossing-bridge')).toBe(false);
     expect(crossedIds.has('belt-crossing-gap')).toBe(true);
+    expect(crossedIds.has('belt-crossing-bridge-outline')).toBe(true);
     expect(crossedIds.has('belt-crossing-bridge')).toBe(true);
   });
 
@@ -168,6 +213,7 @@ describe('mechanical illustration enrichment', () => {
     const crossed = illustrated(crossedBeltDriveModel, { centerMm: 90.5 });
     const ids = new Set(crossed.primitives.map((primitive) => primitive.id));
     expect(ids.has('belt-crossing-gap')).toBe(true);
+    expect(ids.has('belt-crossing-bridge-outline')).toBe(true);
     expect(ids.has('belt-crossing-bridge')).toBe(true);
   });
 
@@ -180,7 +226,7 @@ describe('mechanical illustration enrichment', () => {
   it.each([
     ['open', openBeltDriveModel],
     ['crossed', crossedBeltDriveModel],
-  ] as const)('moves %s belt texture with positive driver tangential velocity', (_name, model) => {
+  ] as const)('moves %s rope texture with positive driver tangential velocity', (_name, model) => {
     const atZero = illustrated(model, { angleDegrees: 0 });
     const afterPositiveRotation = illustrated(model, { angleDegrees: 2 });
 
