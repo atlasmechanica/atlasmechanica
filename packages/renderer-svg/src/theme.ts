@@ -37,6 +37,7 @@ export const SVG_RENDERER_STYLE = `
 .atlas-style-label { fill: var(--am-muted); stroke: none; font: 12px ui-sans-serif, system-ui, sans-serif; }
 .atlas-style-handle { stroke: var(--am-accent); fill: var(--am-background); }
 .atlas-style-invalid { stroke: var(--am-danger); fill: var(--am-background); stroke-dasharray: 4 3; }
+.atlas-style-cutout { stroke: var(--am-background); }
 .atlas-selected { stroke: var(--am-accent); filter: drop-shadow(0 0 1.5px var(--am-accent)); }
 .atlas-hit { stroke: transparent; fill: transparent; pointer-events: stroke; }
 .atlas-hit-fill { stroke: transparent; fill: transparent; pointer-events: all; }
