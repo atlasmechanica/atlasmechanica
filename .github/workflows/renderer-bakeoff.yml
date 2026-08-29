@@ -90,7 +90,7 @@ jobs:
         with:
           name: renderer-pr-publish-${{ github.event.pull_request.number }}
           path: /tmp/atlas-renderer-publish
-      - name: Verify this run still matches the PR head
+      - name: Verify this run still matches the open PR head
         id: current-head
         uses: actions/github-script@v7
         with:
@@ -99,10 +99,13 @@ jobs:
             const pull_number = context.issue.number;
             const expected = context.payload.pull_request.head.sha;
             const { data: pull } = await github.rest.pulls.get({ owner, repo, pull_number });
-            const current = pull.head.sha === expected;
+            const isOpen = pull.state === 'open';
+            const current = isOpen && pull.head.sha === expected;
             core.setOutput('current', String(current));
             core.setOutput('tested_sha', expected);
-            if (!current) {
+            if (!isOpen) {
+              core.notice(`Skipping visual publication because PR #${pull_number} is closed.`);
+            } else if (!current) {
               core.notice(`Skipping visual publication for stale head ${expected}; current head is ${pull.head.sha}.`);
             }
       - name: Publish isolated visual-review commit
