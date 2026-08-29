@@ -7,7 +7,7 @@ import {
   type SceneBuildOptions,
 } from './buildMechanismScene.js';
 import { enrichMechanicalIllustration } from './enrichMechanicalIllustration.js';
-import type { MechanismScene } from './types.js';
+import type { MechanismScene, ScenePrimitive } from './types.js';
 
 export { buildSchematicMechanismScene };
 
@@ -38,12 +38,40 @@ function frameBrownBeltPlate(scene: MechanismScene): MechanismScene {
   };
 }
 
+function isRopePaint(primitive: ScenePrimitive): boolean {
+  return (
+    primitive.id === 'belt-band-underlay' ||
+    primitive.id === 'belt-path' ||
+    primitive.id.startsWith('belt-surface-mark-') ||
+    primitive.id.startsWith('belt-crossing-')
+  );
+}
+
+function paintBrownRopeOverPulley(scene: MechanismScene): MechanismScene {
+  if (!scene.id.startsWith('belt-')) return scene;
+
+  const rope = scene.primitives.filter(isRopePaint);
+  if (rope.length === 0) return scene;
+
+  // The canonical belt path lies on the pulley contact circumference. In the
+  // Brown/507 illustration the rope is the material wrapped around that rim, so
+  // it must be painted after the cast wheel. Painting the wheel last visually
+  // hides the rope at contact and makes it look like it runs in an inner groove.
+  const beneath = scene.primitives.filter((primitive) => !isRopePaint(primitive));
+  return {
+    ...scene,
+    primitives: [...beneath, ...rope],
+  };
+}
+
 /**
  * Production scene builder. Canonical mechanical geometry is compiled first,
  * then a presentation-only illustration pass adds Atlas's visual language.
  */
 export function buildMechanismScene(options: SceneBuildOptions) {
   return frameBrownBeltPlate(
-    enrichMechanicalIllustration(buildSchematicMechanismScene(options)),
+    paintBrownRopeOverPulley(
+      enrichMechanicalIllustration(buildSchematicMechanismScene(options)),
+    ),
   );
 }
