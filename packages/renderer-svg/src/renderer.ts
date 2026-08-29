@@ -37,6 +37,13 @@ export interface SvgRendererOptions {
   ariaLabel?: string | undefined;
   keyboardParameterStep?: number | undefined;
   keyboardParameterAxis?: 'x' | 'y' | undefined;
+  /**
+   * Keep authored visible stroke widths unchanged at and above this CSS width,
+   * but scale them proportionally on narrower hosts. This preserves a reviewed
+   * desktop line weight while preventing non-scaling SVG strokes from becoming
+   * disproportionately heavy on responsive/mobile canvases.
+   */
+  responsiveStrokeReferenceWidth?: number | undefined;
 }
 
 export interface SvgMechanismRenderer {
@@ -116,6 +123,10 @@ export function createSvgMechanismRenderer(
     height: options.height ?? DEFAULT_RENDER_SIZE.height,
   };
   if (!(size.width > 0) || !(size.height > 0)) throw new TypeError('SVG renderer size must be positive');
+  const strokeReferenceWidth = options.responsiveStrokeReferenceWidth;
+  if (strokeReferenceWidth !== undefined && !(strokeReferenceWidth > 0)) {
+    throw new TypeError('SVG renderer responsiveStrokeReferenceWidth must be positive');
+  }
 
   const originalChildren = Array.from(host.childNodes);
   const originalTabIndex = host.getAttribute('tabindex');
@@ -175,6 +186,40 @@ export function createSvgMechanismRenderer(
   let currentScene: MechanismScene | undefined;
   let activeHandle: ActiveHandle | undefined;
   let destroyed = false;
+  let visibleStrokeScale = 1;
+
+  const computeVisibleStrokeScale = (): number => {
+    if (strokeReferenceWidth === undefined) return 1;
+    const hostWidth = host.getBoundingClientRect().width;
+    if (!(hostWidth > 0)) return 1;
+    return Math.min(1, hostWidth / strokeReferenceWidth);
+  };
+
+  const setVisibleStrokeWidth = (element: SVGElement, nominalWidth: number): void => {
+    if (strokeReferenceWidth === undefined) {
+      delete element.dataset.nominalStrokeWidth;
+      element.setAttribute('stroke-width', String(nominalWidth));
+      return;
+    }
+    element.dataset.nominalStrokeWidth = String(nominalWidth);
+    element.setAttribute('stroke-width', String(nominalWidth * visibleStrokeScale));
+  };
+
+  const rescaleVisibleStrokes = (): void => {
+    if (strokeReferenceWidth === undefined || destroyed) return;
+    visibleStrokeScale = computeVisibleStrokeScale();
+    for (const element of svg.querySelectorAll<SVGElement>('[data-nominal-stroke-width]')) {
+      const nominal = Number(element.dataset.nominalStrokeWidth);
+      if (Number.isFinite(nominal)) {
+        element.setAttribute('stroke-width', String(nominal * visibleStrokeScale));
+      }
+    }
+  };
+
+  const resizeObserver = strokeReferenceWidth !== undefined && typeof ResizeObserver !== 'undefined'
+    ? new ResizeObserver(() => rescaleVisibleStrokes())
+    : undefined;
+  resizeObserver?.observe(host);
 
   const layerRoot = (layer: SceneLayer): SVGGElement => {
     const root = layers.get(layer);
@@ -276,7 +321,7 @@ export function createSvgMechanismRenderer(
       setLine(visible, primitive.a, primitive.b, scene, size);
       setLine(hit, primitive.a, primitive.b, scene, size);
       visible.setAttribute('class', styleClass(primitive, selected));
-      visible.setAttribute('stroke-width', String(primitive.width ?? 3));
+      setVisibleStrokeWidth(visible, primitive.width ?? 3);
       visible.setAttribute('stroke-linecap', 'round');
       hit.setAttribute('class', 'atlas-hit');
       hit.setAttribute('stroke-width', String(Math.max((primitive.width ?? 3) + 14, 20)));
@@ -293,7 +338,7 @@ export function createSvgMechanismRenderer(
       visible.setAttribute('rx', String(rx));
       visible.setAttribute('ry', String(ry));
       visible.setAttribute('class', styleClass(primitive, selected));
-      visible.setAttribute('stroke-width', String(primitive.width ?? 2));
+      setVisibleStrokeWidth(visible, primitive.width ?? 2);
       hit.setAttribute('rx', String(rx + 10));
       hit.setAttribute('ry', String(ry + 10));
       hit.setAttribute('class', 'atlas-hit-fill');
@@ -310,7 +355,7 @@ export function createSvgMechanismRenderer(
         polyline.setAttribute('stroke-linejoin', 'round');
       }
       visible.setAttribute('class', styleClass(primitive, selected));
-      visible.setAttribute('stroke-width', String(primitive.width ?? 2));
+      setVisibleStrokeWidth(visible, primitive.width ?? 2);
       hit.setAttribute('class', 'atlas-hit');
       hit.setAttribute('stroke-width', String(Math.max((primitive.width ?? 2) + 14, 16)));
     } else if (primitive.type === 'vector') {
@@ -319,7 +364,7 @@ export function createSvgMechanismRenderer(
       setLine(visible, primitive.from, primitive.to, scene, size);
       setLine(hit, primitive.from, primitive.to, scene, size);
       visible.setAttribute('class', styleClass(primitive, selected));
-      visible.setAttribute('stroke-width', '2.2');
+      setVisibleStrokeWidth(visible, 2.2);
       visible.setAttribute('marker-end', `url(#${markerId})`);
       hit.setAttribute('class', 'atlas-hit');
       hit.setAttribute('stroke-width', '16');
@@ -360,7 +405,7 @@ export function createSvgMechanismRenderer(
       tickB.setAttribute('y2', String(b.y + 5));
       for (const item of [line, tickA, tickB]) {
         item.setAttribute('class', styleClass(primitive, false));
-        item.setAttribute('stroke-width', '1.2');
+        setVisibleStrokeWidth(item, 1.2);
       }
       text.setAttribute('x', String((a.x + b.x) / 2));
       text.setAttribute('y', String((a.y + b.y) / 2 - 7));
@@ -420,6 +465,7 @@ export function createSvgMechanismRenderer(
       if (destroyed) throw new TypeError('Cannot update a destroyed SVG mechanism renderer');
       assertMechanismScene(scene);
       currentScene = scene;
+      visibleStrokeScale = computeVisibleStrokeScale();
       svg.dataset.scene = scene.id;
       svg.setAttribute('aria-label', options.ariaLabel ?? scene.title);
       host.dataset.scene = scene.id;
@@ -465,6 +511,7 @@ export function createSvgMechanismRenderer(
       destroyed = true;
       activeHandle = undefined;
       currentScene = undefined;
+      resizeObserver?.disconnect();
       host.removeEventListener('keydown', hostKeyDown);
       nodes.clear();
       handlePoints.clear();
