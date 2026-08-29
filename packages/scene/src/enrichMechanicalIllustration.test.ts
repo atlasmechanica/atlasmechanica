@@ -213,12 +213,15 @@ describe('mechanical illustration enrichment', () => {
     expect(crossedIds.has('belt-crossing-bridge')).toBe(true);
   });
 
-  it('keeps the crossed over-under cue at a near-limit valid center distance', () => {
+  it('keeps the crossed over-under cue inside near-limit tangent spans', () => {
     const crossed = illustrated(crossedBeltDriveModel, { centerMm: 90.5 });
-    const ids = new Set(crossed.primitives.map((primitive) => primitive.id));
-    expect(ids.has('belt-crossing-gap')).toBe(true);
-    expect(ids.has('belt-crossing-bridge-outline')).toBe(true);
-    expect(ids.has('belt-crossing-bridge')).toBe(true);
+    const gap = segment(crossed, 'belt-crossing-gap');
+    const bridgeOutline = segment(crossed, 'belt-crossing-bridge-outline');
+    const bridge = segment(crossed, 'belt-crossing-bridge');
+
+    expect(pointDistance(gap.a, gap.b)).toBeLessThan(0.0095);
+    expect(pointDistance(bridgeOutline.a, bridgeOutline.b)).toBeLessThan(0.0095);
+    expect(pointDistance(bridge.a, bridge.b)).toBeLessThan(0.0095);
   });
 
   it('keeps a surface-mark identity continuous through the zero-angle boundary', () => {
