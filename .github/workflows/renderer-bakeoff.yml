@@ -3,6 +3,7 @@ name: renderer bake-off
 on:
   pull_request:
     paths:
+      - 'apps/web/**'
       - 'experiments/renderers/svg-bakeoff/**'
       - 'packages/model/**'
       - 'packages/kinematics/**'
