@@ -11,6 +11,8 @@ import { buildMechanismScene, type Vec2 } from '@atlasmechanica/scene';
 
 type MechanismChoice = 'fourbar' | 'belt-open' | 'belt-crossed';
 
+const brownPulleyRadiusMm = 45;
+
 const mechanismSelect = document.querySelector<HTMLSelectElement>('#mechanism')!;
 const angleInput = document.querySelector<HTMLInputElement>('#angle')!;
 const distanceInput = document.querySelector<HTMLInputElement>('#distance')!;
@@ -72,11 +74,19 @@ function beltModel(current: 'belt-open' | 'belt-crossed'): SimulationModel {
   return current === 'belt-open' ? openBeltDriveModel : crossedBeltDriveModel;
 }
 
+function beltParameters(distanceMm: number): Record<string, QuantityValue> {
+  return {
+    'driver-radius': quantity(brownPulleyRadiusMm, 'mm'),
+    'driven-radius': quantity(brownPulleyRadiusMm, 'mm'),
+    'center-distance': quantity(distanceMm, 'mm'),
+  };
+}
+
 function evaluateBelt(current: 'belt-open' | 'belt-crossed', distanceMm: number): ModelState {
   return beltCompiled[current].createSession().evaluate({
     coordinates: { 'driver-angle': quantity(angleDeg(), 'deg') },
     rates: { 'driver-angle': quantity(1, 'rad/s') },
-    parameters: { 'center-distance': quantity(distanceMm, 'mm') },
+    parameters: beltParameters(distanceMm),
   });
 }
 
@@ -95,7 +105,7 @@ function sceneInputs(): {
   return {
     model: beltModel(current),
     state,
-    parameters: { 'center-distance': quantity(distance, 'mm') },
+    parameters: beltParameters(distance),
   };
 }
 
@@ -125,11 +135,13 @@ const renderer = createSvgMechanismRenderer(host, {
       host.dataset.parameterDragCount = String(parameterDragCount);
       host.dataset.lastParameterWorldX = String(point.x);
       host.dataset.lastParameterCandidateMm = String(candidate);
-      host.dataset.lastParameterValidity = hasErrors(candidateState) ? 'invalid' : 'valid';
-      if (hasErrors(candidateState)) {
+      host.dataset.lastParameterValidity = hasErrors(candidateState) || candidate < brownPulleyRadiusMm * 2
+        ? 'invalid'
+        : 'valid';
+      if (hasErrors(candidateState) || candidate < brownPulleyRadiusMm * 2) {
         invalidParameterHandle = point;
         const diagnostic = candidateState.diagnostics.find((item) => item.severity === 'error');
-        statusElement.textContent = `Invalid geometry: ${diagnostic?.message ?? 'no real belt tangent'}`;
+        statusElement.textContent = `Invalid geometry: ${diagnostic?.message ?? 'pulley rims overlap'}`;
         render();
         return;
       }
