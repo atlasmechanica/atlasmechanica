@@ -219,7 +219,7 @@ function beltSurfaceMarks(
   const spacing = pathLength / count;
   const phaseDirection = beltPathPhaseSign(belt, driver);
   const phase = phaseDirection * angle * driver.radius;
-  const halfMark = 0.0030;
+  const halfMark = 0.0016;
   const diagonalAlongPath = 0.48;
   const diagonalAcrossPath = Math.sqrt(1 - diagonalAlongPath * diagonalAlongPath);
 
@@ -244,7 +244,7 @@ function beltSurfaceMarks(
         x: sample.point.x + slash.x * halfMark,
         y: sample.point.y + slash.y * halfMark,
       },
-      width: 1.35,
+      width: 1.1,
       ariaLabel: 'Moving rope lay mark',
     };
   }).filter((mark): mark is SegmentPrimitive => mark !== undefined);
