@@ -162,6 +162,7 @@ function dispatchInput(input: HTMLInputElement): void {
 
 const renderer = createSvgMechanismRenderer(host, {
   instanceId: 'renderer-v0-regression',
+  keyboardParameterAxis: 'y',
   callbacks: {
     onSelect(id) {
       selectedId = id;
