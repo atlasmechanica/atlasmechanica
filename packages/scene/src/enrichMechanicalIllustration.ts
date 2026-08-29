@@ -54,7 +54,6 @@ function pulleyIllustration(
   return [
     {
       ...pulley,
-      id: `${prefix}-rim-outer`,
       width: 5.5,
     },
     {
