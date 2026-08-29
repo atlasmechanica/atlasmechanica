@@ -341,6 +341,14 @@ function centeredSpan(span: StraightSpan, center: Vec2, halfLength: number): { a
   };
 }
 
+function contactSafeHalfLength(span: StraightSpan, crossing: Vec2, maximum: number): number {
+  const nearestContact = Math.min(distance(crossing, span.a), distance(crossing, span.b));
+  // The cue uses round caps in the SVG renderer. Keeping its centerline to at
+  // most 40% of the nearest contact clearance leaves substantial room for those
+  // caps instead of merely proving the total cue is shorter than the tangent.
+  return Math.min(maximum, nearestContact * 0.40);
+}
+
 function crossedBeltOverUnder(
   belt: PolylinePrimitive,
   driver: CirclePrimitive,
@@ -354,11 +362,10 @@ function crossedBeltOverUnder(
   if (crossing === undefined) return [];
 
   // Never let the drafting convention extend to the pulley contact points.
-  // On near-limit valid crossed belts the tangent spans become very short, so
-  // scale the gap/bridge down with the available physical span instead of using
-  // a fixed decoration that could draw across the pulley faces.
-  const underHalfLength = Math.min(0.009, under.length * 0.30);
-  const topHalfLength = Math.min(0.012, top.length * 0.35);
+  // The crossing can sit far off the midpoint on unequal near-limit pulleys, so
+  // clamp each cue against the *nearest* contact point, not the whole span.
+  const underHalfLength = contactSafeHalfLength(under, crossing, 0.009);
+  const topHalfLength = contactSafeHalfLength(top, crossing, 0.012);
   if (!(underHalfLength > 0) || !(topHalfLength > 0)) return [];
 
   const underGap = centeredSpan(under, crossing, underHalfLength);
