@@ -6,6 +6,7 @@ import {
   buildMechanismScene as buildSchematicMechanismScene,
   type SceneBuildOptions,
 } from './buildMechanismScene.js';
+import { classicSpoke } from './classicSpokeGeometry.js';
 import { enrichMechanicalIllustration } from './enrichMechanicalIllustration.js';
 import type { MechanismScene, ScenePrimitive, Vec2 } from './types.js';
 
@@ -148,6 +149,72 @@ function frameBrownBeltPlate(scene: MechanismScene): MechanismScene {
   };
 }
 
+function isSpokePrimitive(primitive: ScenePrimitive, prefix: string): boolean {
+  return (
+    primitive.id.startsWith(`${prefix}-spoke-`) ||
+    primitive.id.startsWith(`${prefix}-spoke-root-`)
+  );
+}
+
+function replacePulleySpokes(
+  primitives: ScenePrimitive[],
+  prefix: 'belt-driver' | 'belt-driven',
+): ScenePrimitive[] {
+  const pulley = primitives.find((primitive) => primitive.id === prefix);
+  const hub = primitives.find((primitive) => primitive.id === `${prefix}-hub`);
+  const innerRim = primitives.find((primitive) => primitive.id === `${prefix}-rim-inner`);
+  const phaseSpoke = primitives.find((primitive) => primitive.id === `${prefix}-spoke-0`);
+  if (
+    pulley?.type !== 'circle' ||
+    hub?.type !== 'circle' ||
+    innerRim?.type !== 'circle' ||
+    phaseSpoke?.type !== 'segment'
+  ) {
+    return primitives;
+  }
+
+  const baseAngle = Math.atan2(
+    phaseSpoke.b.y - phaseSpoke.a.y,
+    phaseSpoke.b.x - phaseSpoke.a.x,
+  );
+  const rootRadius = hub.radius + pulley.radius * 0.012;
+  const tipRadius = innerRim.radius - pulley.radius * 0.035;
+  if (!(tipRadius > rootRadius)) return primitives;
+
+  // Make the historical cast-spoke taper unmistakable rather than simulating it
+  // with two constant-width strokes. The root is a little over 3× the tip width
+  // on Brown 001/002, while both ends remain clear of the hub and inner rim.
+  const rootHalfWidth = Math.min(pulley.radius * 0.16, hub.radius * 0.55);
+  const tipHalfWidth = pulley.radius * 0.052;
+  const spokes = Array.from({ length: 4 }, (_, index) => classicSpoke({
+    center: pulley.center,
+    angle: baseAngle + index * Math.PI / 2,
+    rootRadius,
+    tipRadius,
+    rootHalfWidth,
+    tipHalfWidth,
+    id: `${prefix}-spoke-${index}`,
+    ariaLabel: `${pulley.ariaLabel ?? prefix} tapered cast spoke`,
+  }));
+
+  const firstSpokeIndex = primitives.findIndex((primitive) => isSpokePrimitive(primitive, prefix));
+  if (firstSpokeIndex < 0) return primitives;
+  const withoutOldSpokes = primitives.filter((primitive) => !isSpokePrimitive(primitive, prefix));
+  const insertionIndex = Math.min(firstSpokeIndex, withoutOldSpokes.length);
+  return [
+    ...withoutOldSpokes.slice(0, insertionIndex),
+    ...spokes,
+    ...withoutOldSpokes.slice(insertionIndex),
+  ];
+}
+
+function replaceWithClassicCastSpokes(scene: MechanismScene): MechanismScene {
+  if (!scene.id.startsWith('belt-')) return scene;
+  const driverReplaced = replacePulleySpokes(scene.primitives, 'belt-driver');
+  const bothReplaced = replacePulleySpokes(driverReplaced, 'belt-driven');
+  return { ...scene, primitives: bothReplaced };
+}
+
 function isRopePaint(primitive: ScenePrimitive): boolean {
   return (
     primitive.id === 'belt-band-underlay' ||
@@ -180,9 +247,10 @@ function paintBrownRopeOverPulley(scene: MechanismScene): MechanismScene {
  */
 export function buildMechanismScene(options: SceneBuildOptions) {
   const schematic = correctOpenEqualPulleyWrap(buildSchematicMechanismScene(options));
+  const illustrated = replaceWithClassicCastSpokes(
+    enrichMechanicalIllustration(schematic),
+  );
   return frameBrownBeltPlate(
-    paintBrownRopeOverPulley(
-      enrichMechanicalIllustration(schematic),
-    ),
+    paintBrownRopeOverPulley(illustrated),
   );
 }
