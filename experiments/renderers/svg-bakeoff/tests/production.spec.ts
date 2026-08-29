@@ -54,23 +54,40 @@ test('decorative pulley geometry cannot intercept selectable pulley hit targets'
   expect(await selectableHit.evaluate((element) => getComputedStyle(element).pointerEvents)).toBe('all');
 });
 
+test('production Brown belt reference uses equal vertically aligned pulleys and hidden handles', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#mechanism').selectOption('belt-open');
+
+  const driver = page.locator('#production-host [data-primitive="belt-driver"] .atlas-visible');
+  const driven = page.locator('#production-host [data-primitive="belt-driven"] .atlas-visible');
+  const driverCx = Number(await driver.getAttribute('cx'));
+  const drivenCx = Number(await driven.getAttribute('cx'));
+  const driverRx = Number(await driver.getAttribute('rx'));
+  const drivenRx = Number(await driven.getAttribute('rx'));
+  expect(driverCx).toBeCloseTo(drivenCx, 6);
+  expect(driverRx).toBeCloseTo(drivenRx, 6);
+
+  const inputHandle = page.locator('#production-host [data-primitive="belt-input-handle"] .atlas-visible');
+  const distanceHandle = page.locator('#production-host [data-primitive="belt-distance-handle"] .atlas-visible');
+  expect(await inputHandle.evaluate((element) => getComputedStyle(element).stroke)).toBe(
+    await page.locator('#production-host svg').evaluate((element) => getComputedStyle(element).backgroundColor),
+  );
+  await expect(distanceHandle).toHaveClass(/atlas-style-cutout/);
+});
+
 test('production invalid parameter drag keeps the last valid crossed-belt state', async ({ page }) => {
   await page.goto('/');
   await page.locator('#mechanism').selectOption('belt-crossed');
   await expect(page.locator('#distance-output')).toHaveText('180 mm');
 
   const productionHost = page.locator('#production-host');
-  // Raw Playwright mouse coordinates do not auto-scroll. The production
-  // regression card sits below the three-candidate bake-off on the page, so
-  // explicitly bring its SVG into the viewport before using page.mouse.
   await productionHost.scrollIntoViewIfNeeded();
   const beforePath = await page.locator('#production-host [data-primitive="belt-path"] .atlas-visible').getAttribute('points');
   const handle = await page.locator('#production-host [data-primitive="belt-distance-handle"] .atlas-hit-fill').boundingBox();
   if (!handle) throw new Error('Missing production parameter handle');
 
-  // The renderer preserves aspect ratio and may letterbox inside its CSS box.
-  // Aim far inside the impossible crossed-belt region (50 mm) through the exact
-  // viewBox mapping so this exercises pointer capture + client-to-world mapping.
+  // Brown's reference composition is vertical, so center distance is the world-Y
+  // coordinate of the driven shaft. Aim at 50 mm in the fixed portrait viewport.
   const target = await page.locator('#production-host svg').evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const viewBoxWidth = 640;
@@ -80,8 +97,8 @@ test('production invalid parameter drag keeps the last valid crossed-belt state'
     const renderedHeight = viewBoxHeight * scale;
     const offsetX = (rect.width - renderedWidth) / 2;
     const offsetY = (rect.height - renderedHeight) / 2;
-    const tx = (0.05 - (-0.06)) / (0.285 - (-0.06));
-    const ty = (0.13 - 0) / (0.13 - (-0.13));
+    const tx = (0 - (-0.13)) / (0.13 - (-0.13));
+    const ty = (0.33 - 0.05) / (0.33 - (-0.07));
     return {
       x: rect.left + offsetX + tx * renderedWidth,
       y: rect.top + offsetY + ty * renderedHeight,
