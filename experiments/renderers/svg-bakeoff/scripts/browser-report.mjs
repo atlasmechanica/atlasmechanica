@@ -7,9 +7,9 @@ const baseURL = process.env.BAKEOFF_URL ?? 'http://127.0.0.1:4173';
 const webURL = process.env.ATLAS_WEB_URL ?? 'http://127.0.0.1:4321';
 const repoRoot = fileURLToPath(new URL('../../../..', import.meta.url));
 
-async function waitForUrl(url, process, log) {
+async function waitForUrl(url, child, log) {
   for (let attempt = 0; attempt < 40; attempt += 1) {
-    if (process.exitCode !== null) {
+    if (child.exitCode !== null) {
       throw new Error(`Atlas web preview exited before becoming ready.\n${log()}`);
     }
     try {
@@ -23,11 +23,31 @@ async function waitForUrl(url, process, log) {
   throw new Error(`Timed out waiting for Atlas web preview at ${url}.\n${log()}`);
 }
 
+async function stopProcessGroup(child) {
+  if (child.exitCode !== null || child.pid === undefined) return;
+  // GitHub's renderer job runs on Linux. `npm run preview` launches Astro as a
+  // child process, so killing only npm can leave Astro holding stdout/stderr open
+  // and keep this report alive forever. Start a detached process group and stop
+  // the whole group when capture is complete.
+  try {
+    process.kill(-child.pid, 'SIGTERM');
+  } catch (error) {
+    if (error?.code !== 'ESRCH') throw error;
+  }
+  await Promise.race([
+    new Promise((resolve) => child.once('exit', resolve)),
+    new Promise((resolve) => setTimeout(resolve, 2000)),
+  ]);
+  child.stdout.destroy();
+  child.stderr.destroy();
+  child.unref();
+}
+
 let webLog = '';
 const webPreview = spawn(
   'npm',
   ['run', 'preview', '--workspace', '@atlasmechanica/web', '--', '--host', '127.0.0.1', '--port', '4321'],
-  { cwd: repoRoot, stdio: ['ignore', 'pipe', 'pipe'] },
+  { cwd: repoRoot, stdio: ['ignore', 'pipe', 'pipe'], detached: true },
 );
 webPreview.stdout.on('data', (chunk) => { webLog += chunk.toString(); });
 webPreview.stderr.on('data', (chunk) => { webLog += chunk.toString(); });
@@ -74,7 +94,7 @@ try {
     await browser.close();
   }
 } finally {
-  webPreview.kill('SIGTERM');
+  await stopProcessGroup(webPreview);
 }
 
 fs.writeFileSync('renderer-browser-report.json', JSON.stringify(results, null, 2));
