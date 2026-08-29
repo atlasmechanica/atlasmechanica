@@ -23,8 +23,53 @@ function routingFor(root: HTMLElement): BeltRouting {
   throw new TypeError(`Unknown belt routing: ${routing ?? 'missing'}`);
 }
 
+function verticalBrownReference(model: SimulationModel): SimulationModel {
+  const mechanical = model.systems.mechanical;
+  const ground = mechanical?.bodies.ground;
+  const driven = mechanical?.bodies.driven;
+  const drivenAxis = ground?.features['driven-axis'];
+  if (mechanical === undefined || ground === undefined || driven === undefined || drivenAxis?.type !== 'axis') {
+    throw new TypeError('Belt model is missing the expected shaft-center geometry');
+  }
+
+  return {
+    ...model,
+    systems: {
+      ...model.systems,
+      mechanical: {
+        ...mechanical,
+        bodies: {
+          ...mechanical.bodies,
+          ground: {
+            ...ground,
+            features: {
+              ...ground.features,
+              'driven-axis': {
+                ...drivenAxis,
+                origin: {
+                  x: quantity(0, 'mm'),
+                  y: { parameter: 'center-distance' },
+                },
+              },
+            },
+          },
+          driven: {
+            ...driven,
+            referencePose: {
+              ...driven.referencePose,
+              x: quantity(0, 'mm'),
+              y: { parameter: 'center-distance' },
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
 function modelFor(routing: BeltRouting): SimulationModel {
-  return routing === 'open' ? openBeltDriveModel : crossedBeltDriveModel;
+  const model = routing === 'open' ? openBeltDriveModel : crossedBeltDriveModel;
+  return verticalBrownReference(model);
 }
 
 function scalarSignal(state: ModelState, id: string): number | undefined {
@@ -151,7 +196,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
         syncUrl();
       },
       onParameterDrag(point) {
-        const candidate = clamp(point.x * 1000, 20, 280);
+        const candidate = clamp(point.y * 1000, 20, 280);
         if (candidate < minimumCenterMm) {
           invalidParameterHandle = point;
           status.textContent = 'That spacing would make the pulley rims overlap.';
