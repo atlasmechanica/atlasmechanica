@@ -73,6 +73,21 @@ test('production Brown belt reference uses equal vertically aligned pulleys and 
   await expect(distanceHandle).toHaveClass(/atlas-style-cutout/);
 });
 
+test('vertical Brown distance handle nudges along world Y from the keyboard', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#mechanism').selectOption('belt-open');
+  await expect(page.locator('#distance-output')).toHaveText('180 mm');
+
+  const distanceHandle = page.locator('#production-host [data-primitive="belt-distance-handle"]');
+  await distanceHandle.focus();
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator('#distance-output')).toHaveText('185 mm');
+  expect(Number(await page.locator('#production-host').getAttribute('data-last-parameter-world-y'))).toBeCloseTo(0.185, 6);
+
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator('#distance-output')).toHaveText('180 mm');
+});
+
 test('production invalid parameter drag keeps the last valid crossed-belt state', async ({ page }) => {
   await page.goto('/');
   await page.locator('#mechanism').selectOption('belt-crossed');
