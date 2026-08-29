@@ -12,6 +12,10 @@ import type { MechanismScene, ScenePrimitive, Vec2 } from './types.js';
 
 export { buildSchematicMechanismScene };
 
+const BROWN_ILLUSTRATION_STROKE_WEIGHT = 1.35;
+const BROWN_WORLD_UNITS_PER_RENDER_PIXEL = 0.001;
+const BROWN_ROPE_RIM_GAP_PX = 0.5;
+
 function normalizedPositive(angle: number): number {
   const full = Math.PI * 2;
   return ((angle % full) + full) % full;
@@ -149,6 +153,64 @@ function frameBrownBeltPlate(scene: MechanismScene): MechanismScene {
   };
 }
 
+function clearBrownPulleyFromRope(
+  scene: MechanismScene,
+  schematic: MechanismScene,
+): MechanismScene {
+  if (!scene.id.startsWith('belt-')) return scene;
+
+  const rope = scene.primitives.find((primitive) => primitive.id === 'belt-band-underlay');
+  if (rope?.type !== 'polyline' || rope.width === undefined) return scene;
+
+  const adjustedRadii = new Map<string, { outer: number; inner: number }>();
+  for (const prefix of ['belt-driver', 'belt-driven'] as const) {
+    const physical = schematic.primitives.find((primitive) => primitive.id === prefix);
+    const visible = scene.primitives.find((primitive) => primitive.id === prefix);
+    const innerRim = scene.primitives.find((primitive) => primitive.id === `${prefix}-rim-inner`);
+    if (
+      physical?.type !== 'circle' ||
+      visible?.type !== 'circle' ||
+      innerRim?.type !== 'circle' ||
+      visible.width === undefined
+    ) {
+      continue;
+    }
+
+    // Widths are authored in renderer pixels. Brown's framed 640×400 plate maps
+    // 1 authored pixel to 1 mm of world space. Account for the final 1.35×
+    // weight here so the visible cast rim cannot intrude into the rope's inner
+    // blue edge as line weight changes.
+    const halfStrokeClearancePx =
+      ((rope.width + visible.width) * BROWN_ILLUSTRATION_STROKE_WEIGHT) / 2 +
+      BROWN_ROPE_RIM_GAP_PX;
+    const targetOuterRadius =
+      physical.radius - halfStrokeClearancePx * BROWN_WORLD_UNITS_PER_RENDER_PIXEL;
+    if (!(targetOuterRadius > 0)) continue;
+
+    const scale = Math.min(1, targetOuterRadius / visible.radius);
+    adjustedRadii.set(prefix, {
+      outer: visible.radius * scale,
+      inner: innerRim.radius * scale,
+    });
+  }
+
+  if (adjustedRadii.size === 0) return scene;
+  return {
+    ...scene,
+    primitives: scene.primitives.map((primitive) => {
+      for (const [prefix, radii] of adjustedRadii) {
+        if (primitive.id === prefix && primitive.type === 'circle') {
+          return { ...primitive, radius: radii.outer };
+        }
+        if (primitive.id === `${prefix}-rim-inner` && primitive.type === 'circle') {
+          return { ...primitive, radius: radii.inner };
+        }
+      }
+      return primitive;
+    }),
+  };
+}
+
 function isSpokePrimitive(primitive: ScenePrimitive, prefix: string): boolean {
   return primitive.id.startsWith(`${prefix}-spoke-`);
 }
@@ -213,6 +275,25 @@ function replaceWithClassicCastSpokes(scene: MechanismScene): MechanismScene {
   return { ...scene, primitives: bothReplaced };
 }
 
+function weightBrownIllustration(scene: MechanismScene): MechanismScene {
+  if (!scene.id.startsWith('belt-')) return scene;
+
+  return {
+    ...scene,
+    primitives: scene.primitives.map((primitive) => {
+      if (primitive.layer !== 'mechanism') return primitive;
+      if (primitive.type !== 'segment' && primitive.type !== 'circle' && primitive.type !== 'polyline') {
+        return primitive;
+      }
+      if (primitive.width === undefined) return primitive;
+      return {
+        ...primitive,
+        width: primitive.width * BROWN_ILLUSTRATION_STROKE_WEIGHT,
+      };
+    }),
+  };
+}
+
 function isRopePaint(primitive: ScenePrimitive): boolean {
   return (
     primitive.id === 'belt-band-underlay' ||
@@ -245,8 +326,10 @@ function paintBrownRopeOverPulley(scene: MechanismScene): MechanismScene {
  */
 export function buildMechanismScene(options: SceneBuildOptions) {
   const schematic = correctOpenEqualPulleyWrap(buildSchematicMechanismScene(options));
-  const illustrated = replaceWithClassicCastSpokes(
-    enrichMechanicalIllustration(schematic),
+  const enriched = enrichMechanicalIllustration(schematic);
+  const cleared = clearBrownPulleyFromRope(enriched, schematic);
+  const illustrated = weightBrownIllustration(
+    replaceWithClassicCastSpokes(cleared),
   );
   return frameBrownBeltPlate(
     paintBrownRopeOverPulley(illustrated),
