@@ -41,6 +41,19 @@ test('production SVG has deterministic defs, layer order, hit targets and export
   expect(handleRadius).toBeGreaterThanOrEqual(16);
 });
 
+test('decorative pulley geometry cannot intercept selectable pulley hit targets', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('#mechanism').selectOption('belt-open');
+
+  const decorativeHit = page.locator('#production-host [data-primitive="belt-driver-rim-inner"] .atlas-hit-fill');
+  const selectableHit = page.locator('#production-host [data-primitive="belt-driver"] .atlas-hit-fill');
+
+  await expect(decorativeHit).toHaveCount(1);
+  await expect(selectableHit).toHaveCount(1);
+  expect(await decorativeHit.evaluate((element) => getComputedStyle(element).pointerEvents)).toBe('none');
+  expect(await selectableHit.evaluate((element) => getComputedStyle(element).pointerEvents)).toBe('all');
+});
+
 test('production invalid parameter drag keeps the last valid crossed-belt state', async ({ page }) => {
   await page.goto('/');
   await page.locator('#mechanism').selectOption('belt-crossed');
