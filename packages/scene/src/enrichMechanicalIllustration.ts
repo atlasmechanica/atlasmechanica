@@ -31,6 +31,7 @@ function spokeEndpoint(center: Vec2, radius: number, angle: number): Vec2 {
 }
 
 const VISIBLE_PULLEY_RADIUS_RATIO = 0.95;
+const INNER_RIM_RADIUS_RATIO = 0.79;
 
 interface SharedPulleyDetails {
   hubRadius: number;
@@ -60,18 +61,50 @@ function pulleyIllustration(
   // visible cast wheel sits just inside that contact circle, so keep the physical
   // tangent geometry untouched and inset only the decorative wheel material.
   const visibleRadius = pulley.radius * VISIBLE_PULLEY_RADIUS_RATIO;
-  const spokeRadius = visibleRadius * 0.79;
+  const innerRimRadius = visibleRadius * INNER_RIM_RADIUS_RATIO;
+
+  // Brown's cast spokes flare subtly as they meet the hub and terminate at the
+  // inner rim rather than drawing through either circular member. Layer a short,
+  // broader root behind the ordinary outlined spoke to get that historic taper
+  // while staying within the renderer-neutral segment vocabulary.
+  const spokeStartRadius = details.hubRadius + visibleRadius * 0.04;
+  const spokeEndRadius = innerRimRadius - visibleRadius * 0.025;
+  const availableSpokeLength = Math.max(0, spokeEndRadius - spokeStartRadius);
+  const spokeRootEndRadius = spokeStartRadius + availableSpokeLength * 0.46;
 
   const spokes = Array.from({ length: 4 }, (_, index): ScenePrimitive[] => {
-    const endpoint = spokeEndpoint(pulley.center, spokeRadius, angle + index * Math.PI / 2);
+    const spokeAngle = angle + index * Math.PI / 2;
+    const start = spokeEndpoint(pulley.center, spokeStartRadius, spokeAngle);
+    const rootEnd = spokeEndpoint(pulley.center, spokeRootEndRadius, spokeAngle);
+    const end = spokeEndpoint(pulley.center, spokeEndRadius, spokeAngle);
     return [
+      {
+        type: 'segment',
+        id: `${prefix}-spoke-root-${index}`,
+        layer: 'mechanism',
+        styles: ['pulley'],
+        a: start,
+        b: rootEnd,
+        width: 8.0,
+        ariaLabel: `${pulley.ariaLabel ?? prefix} flared spoke root outline`,
+      },
+      {
+        type: 'segment',
+        id: `${prefix}-spoke-root-core-${index}`,
+        layer: 'mechanism',
+        styles: ['cutout'],
+        a: start,
+        b: rootEnd,
+        width: 3.8,
+        ariaLabel: `${pulley.ariaLabel ?? prefix} flared spoke root interior`,
+      },
       {
         type: 'segment',
         id: `${prefix}-spoke-${index}`,
         layer: 'mechanism',
         styles: ['pulley'],
-        a: pulley.center,
-        b: endpoint,
+        a: start,
+        b: end,
         width: 6.4,
         ariaLabel: `${pulley.ariaLabel ?? prefix} spoke outline`,
       },
@@ -80,8 +113,8 @@ function pulleyIllustration(
         id: `${prefix}-spoke-core-${index}`,
         layer: 'mechanism',
         styles: ['cutout'],
-        a: pulley.center,
-        b: endpoint,
+        a: start,
+        b: end,
         width: 3.0,
         ariaLabel: `${pulley.ariaLabel ?? prefix} spoke interior`,
       },
@@ -104,7 +137,7 @@ function pulleyIllustration(
       layer: 'mechanism',
       styles: ['pulley'],
       center: pulley.center,
-      radius: visibleRadius * 0.79,
+      radius: innerRimRadius,
       width: 3.0,
       ariaLabel: `${pulley.ariaLabel ?? prefix} inner rim`,
     },
