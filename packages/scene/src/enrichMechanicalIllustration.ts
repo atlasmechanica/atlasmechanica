@@ -63,7 +63,7 @@ function pulleyIllustration(
         type: 'segment',
         id: `${prefix}-spoke-${index}`,
         layer: 'mechanism',
-        styles: ['body'],
+        styles: ['pulley'],
         a: pulley.center,
         b: endpoint,
         width: 6.4,
@@ -85,6 +85,7 @@ function pulleyIllustration(
   return [
     {
       ...pulley,
+      styles: ['pulley'],
       // Brown's wheel is line-drawn rather than a solid heavy ring: two dark
       // contours with clear white material between them.
       width: 4.4,
@@ -94,7 +95,7 @@ function pulleyIllustration(
       type: 'circle',
       id: `${prefix}-rim-inner`,
       layer: 'mechanism',
-      styles: ['body'],
+      styles: ['pulley'],
       center: pulley.center,
       radius: pulley.radius * 0.79,
       width: 3.0,
@@ -104,7 +105,7 @@ function pulleyIllustration(
       type: 'circle',
       id: `${prefix}-hub`,
       layer: 'mechanism',
-      styles: ['joint'],
+      styles: ['pulley'],
       center: pulley.center,
       radius: details.hubRadius,
       width: 3.4,
