@@ -36,6 +36,7 @@ export interface SvgRendererOptions {
   height?: number | undefined;
   ariaLabel?: string | undefined;
   keyboardParameterStep?: number | undefined;
+  keyboardParameterAxis?: 'x' | 'y' | undefined;
 }
 
 export interface SvgMechanismRenderer {
@@ -215,16 +216,27 @@ export function createSvgMechanismRenderer(
       }
       const handle = group.dataset.handle as HandlePrimitive['handle'] | undefined;
       const point = handlePoints.get(primitive.id);
-      if (point !== undefined && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+      if (point === undefined) return;
+
+      if (handle === 'input' && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
         event.preventDefault();
-        const sign = event.key === 'ArrowRight' ? 1 : -1;
-        if (handle === 'input') callbacks.onNudgeInput?.(sign * 2);
-        if (handle === 'parameter') {
-          callbacks.onParameterDrag?.({
-            x: point.x + sign * (options.keyboardParameterStep ?? 0.005),
-            y: point.y,
-          });
-        }
+        callbacks.onNudgeInput?.(event.key === 'ArrowRight' ? 2 : -2);
+        return;
+      }
+
+      if (handle === 'parameter') {
+        const axis = options.keyboardParameterAxis ?? 'x';
+        const negativeKey = axis === 'x' ? 'ArrowLeft' : 'ArrowDown';
+        const positiveKey = axis === 'x' ? 'ArrowRight' : 'ArrowUp';
+        if (event.key !== negativeKey && event.key !== positiveKey) return;
+        event.preventDefault();
+        const sign = event.key === positiveKey ? 1 : -1;
+        const step = sign * (options.keyboardParameterStep ?? 0.005);
+        callbacks.onParameterDrag?.(
+          axis === 'x'
+            ? { x: point.x + step, y: point.y }
+            : { x: point.x, y: point.y + step },
+        );
       }
     });
 
