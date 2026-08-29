@@ -9,24 +9,47 @@ import { buildMechanismScene } from './buildMechanismScene.js';
 import { enrichMechanicalIllustration } from './enrichMechanicalIllustration.js';
 import type { MechanismScene, SegmentPrimitive, Vec2 } from './types.js';
 
+interface IllustrationOptions {
+  angleDegrees?: number;
+  driverRadiusMm?: number;
+  drivenRadiusMm?: number;
+  centerMm?: number;
+}
+
 function illustrated(
   model: typeof openBeltDriveModel | typeof crossedBeltDriveModel,
-  angleDegrees = 30,
+  options: IllustrationOptions = {},
 ) {
+  const angleDegrees = options.angleDegrees ?? 30;
+  const driverRadiusMm = options.driverRadiusMm ?? 30;
+  const drivenRadiusMm = options.drivenRadiusMm ?? 60;
+  const centerMm = options.centerMm ?? 180;
+  const parameters = {
+    'driver-radius': quantity(driverRadiusMm, 'mm'),
+    'driven-radius': quantity(drivenRadiusMm, 'mm'),
+    'center-distance': quantity(centerMm, 'mm'),
+  };
+
   const state = analyticBeltAdapter
     .compile(model)
     .createSession()
     .evaluate({
       coordinates: { 'driver-angle': quantity(angleDegrees, 'deg') },
       rates: { 'driver-angle': quantity(1, 'rad/s') },
-      parameters: { 'center-distance': quantity(180, 'mm') },
+      parameters,
     });
 
   return enrichMechanicalIllustration(buildMechanismScene({
     model,
     state,
-    parameters: { 'center-distance': quantity(180, 'mm') },
+    parameters,
   }));
+}
+
+function segment(scene: MechanismScene, id: string): SegmentPrimitive {
+  const primitive = scene.primitives.find((candidate) => candidate.id === id);
+  if (primitive?.type !== 'segment') throw new TypeError(`Missing segment ${id}`);
+  return primitive;
 }
 
 function midpoint(segment: SegmentPrimitive): Vec2 {
@@ -34,6 +57,10 @@ function midpoint(segment: SegmentPrimitive): Vec2 {
     x: (segment.a.x + segment.b.x) / 2,
     y: (segment.a.y + segment.b.y) / 2,
   };
+}
+
+function pointDistance(a: Vec2, b: Vec2): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
 function surfaceMarkMidpoints(scene: MechanismScene): Vec2[] {
@@ -47,7 +74,7 @@ function surfaceMarkMidpoints(scene: MechanismScene): Vec2[] {
 
 function nearest(points: Vec2[], target: Vec2): Vec2 {
   const result = points.reduce<{ point: Vec2; distance: number } | undefined>((best, point) => {
-    const distance = Math.hypot(point.x - target.x, point.y - target.y);
+    const distance = pointDistance(point, target);
     if (best === undefined || distance < best.distance) return { point, distance };
     return best;
   }, undefined);
@@ -73,22 +100,46 @@ describe('mechanical illustration enrichment', () => {
     expect(ids.has('belt-driven-mark')).toBe(false);
   });
 
-  it('uses substantial four-spoke pulley proportions', () => {
+  it('uses the same Brown-style hub size on both canonical 001 pulleys', () => {
     const scene = illustrated(openBeltDriveModel);
     const driver = scene.primitives.find((primitive) => primitive.id === 'belt-driver');
     const inner = scene.primitives.find((primitive) => primitive.id === 'belt-driver-rim-inner');
-    const hub = scene.primitives.find((primitive) => primitive.id === 'belt-driver-hub');
+    const driverHub = scene.primitives.find((primitive) => primitive.id === 'belt-driver-hub');
+    const drivenHub = scene.primitives.find((primitive) => primitive.id === 'belt-driven-hub');
     const spoke = scene.primitives.find((primitive) => primitive.id === 'belt-driver-spoke-0');
 
-    if (driver?.type !== 'circle' || inner?.type !== 'circle' || hub?.type !== 'circle' || spoke?.type !== 'segment') {
+    if (
+      driver?.type !== 'circle' ||
+      inner?.type !== 'circle' ||
+      driverHub?.type !== 'circle' ||
+      drivenHub?.type !== 'circle' ||
+      spoke?.type !== 'segment'
+    ) {
       throw new TypeError('Missing illustrated pulley primitives');
     }
 
-    expect(driver.width).toBe(7.5);
-    expect(inner.radius / driver.radius).toBeCloseTo(0.79, 10);
-    expect(inner.styles).toEqual(['body']);
-    expect(hub.radius / driver.radius).toBeCloseTo(0.255, 10);
-    expect(spoke.width).toBe(4.8);
+    expect(driver.width).toBe(7.2);
+    expect(inner.radius / driver.radius).toBeCloseTo(0.81, 10);
+    expect(driverHub.radius).toBeCloseTo(drivenHub.radius, 12);
+    expect(driverHub.radius / driver.radius).toBeCloseTo(0.30, 10);
+    expect(spoke.width).toBe(4.5);
+  });
+
+  it('caps shared hub and axle details inside very small supported pulleys', () => {
+    const scene = illustrated(openBeltDriveModel, {
+      driverRadiusMm: 7,
+      drivenRadiusMm: 7,
+      centerMm: 30,
+    });
+    const pulley = scene.primitives.find((primitive) => primitive.id === 'belt-driver');
+    const hub = scene.primitives.find((primitive) => primitive.id === 'belt-driver-hub');
+    const axle = scene.primitives.find((primitive) => primitive.id === 'belt-driver-axle');
+    if (pulley?.type !== 'circle' || hub?.type !== 'circle' || axle?.type !== 'circle') {
+      throw new TypeError('Missing small pulley illustration');
+    }
+
+    expect(hub.radius).toBeLessThan(pulley.radius);
+    expect(axle.radius).toBeLessThan(hub.radius);
   });
 
   it('rotates spokes from the solver-owned pulley phase', () => {
@@ -113,12 +164,25 @@ describe('mechanical illustration enrichment', () => {
     expect(crossedIds.has('belt-crossing-bridge')).toBe(true);
   });
 
+  it('keeps the crossed over-under cue at a near-limit valid center distance', () => {
+    const crossed = illustrated(crossedBeltDriveModel, { centerMm: 90.5 });
+    const ids = new Set(crossed.primitives.map((primitive) => primitive.id));
+    expect(ids.has('belt-crossing-gap')).toBe(true);
+    expect(ids.has('belt-crossing-bridge')).toBe(true);
+  });
+
+  it('keeps a surface-mark identity continuous through the zero-angle boundary', () => {
+    const before = midpoint(segment(illustrated(openBeltDriveModel, { angleDegrees: -1 }), 'belt-surface-mark-0'));
+    const after = midpoint(segment(illustrated(openBeltDriveModel, { angleDegrees: 1 }), 'belt-surface-mark-0'));
+    expect(pointDistance(before, after)).toBeLessThan(0.003);
+  });
+
   it.each([
     ['open', openBeltDriveModel],
     ['crossed', crossedBeltDriveModel],
   ] as const)('moves %s belt texture with positive driver tangential velocity', (_name, model) => {
-    const atZero = illustrated(model, 0);
-    const afterPositiveRotation = illustrated(model, 2);
+    const atZero = illustrated(model, { angleDegrees: 0 });
+    const afterPositiveRotation = illustrated(model, { angleDegrees: 2 });
 
     const driver = atZero.primitives.find((primitive) => primitive.id === 'belt-driver');
     const belt = atZero.primitives.find((primitive) => primitive.id === 'belt-path');
