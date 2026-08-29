@@ -181,6 +181,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
   const renderer = createSvgMechanismRenderer(host, {
     instanceId: `${routing}-belt-drive-main`,
     keyboardParameterAxis: 'y',
+    responsiveStrokeReferenceWidth: 1180,
     callbacks: {
       onSelect(id) {
         selectedId = id;
