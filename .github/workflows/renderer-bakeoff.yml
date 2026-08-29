@@ -12,7 +12,7 @@ on:
       - '.github/workflows/renderer-bakeoff.yml'
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 jobs:
@@ -92,6 +92,47 @@ jobs:
             const marker = '<!-- atlas-renderer-bakeoff -->';
             const body = `${marker}\n## Renderer bake-off scorecard\n\n### Bundle\n\`\`\`json\n${JSON.stringify(bundle, null, 2)}\n\`\`\`\n\n### Chromium + WebKit\n\`\`\`json\n${JSON.stringify(browser, null, 2)}\n\`\`\``;
             const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, per_page: 100 });
+            const existing = comments.find(comment => comment.user?.type === 'Bot' && comment.body?.includes(marker));
+            if (existing) await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            else await github.rest.issues.createComment({ owner, repo, issue_number, body });
+      - name: Stage visual review screenshots
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          mkdir -p /tmp/atlas-visual-review
+          cp experiments/renderers/svg-bakeoff/renderer-bakeoff-open-belt-chromium.png /tmp/atlas-visual-review/open-belt-chromium.png
+          cp experiments/renderers/svg-bakeoff/renderer-bakeoff-crossed-belt-chromium.png /tmp/atlas-visual-review/crossed-belt-chromium.png
+          cp experiments/renderers/svg-bakeoff/renderer-bakeoff-open-belt-webkit.png /tmp/atlas-visual-review/open-belt-webkit.png
+          cp experiments/renderers/svg-bakeoff/renderer-bakeoff-crossed-belt-webkit.png /tmp/atlas-visual-review/crossed-belt-webkit.png
+      - name: Publish visual review branch
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          REVIEW_BRANCH: visual-review-pr-${{ github.event.pull_request.number }}
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          rm -rf /tmp/atlas-visual-review-worktree
+          git worktree add --detach /tmp/atlas-visual-review-worktree HEAD
+          cd /tmp/atlas-visual-review-worktree
+          git switch --orphan "$REVIEW_BRANCH"
+          git rm -rf .
+          cp /tmp/atlas-visual-review/*.png .
+          git add *.png
+          git commit -m "Visual review for PR #${{ github.event.pull_request.number }}"
+          git push --force origin HEAD:"$REVIEW_BRANCH"
+      - name: Publish visual review to pull request
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v7
+        env:
+          REVIEW_BRANCH: visual-review-pr-${{ github.event.pull_request.number }}
+        with:
+          script: |
+            const marker = '<!-- atlas-visual-review -->';
+            const { owner, repo } = context.repo;
+            const branch = process.env.REVIEW_BRANCH;
+            const raw = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}`;
+            const body = `${marker}\n## Visual review — approval required before merge\n\n### Brown / 507 movement 1 reference\n![Brown / 507 movement 1](https://507movements.com/img/mm_001.png)\n\n### Atlas open belt — Chromium\n![Atlas open belt Chromium](${raw}/open-belt-chromium.png)\n\n### Atlas crossed belt — Chromium\n![Atlas crossed belt Chromium](${raw}/crossed-belt-chromium.png)\n\n<details><summary>WebKit screenshots</summary>\n\n![Atlas open belt WebKit](${raw}/open-belt-webkit.png)\n\n![Atlas crossed belt WebKit](${raw}/crossed-belt-webkit.png)\n</details>\n\n**Do not merge until the visual review is explicitly approved.**`;
             const issue_number = context.issue.number;
             const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number, per_page: 100 });
             const existing = comments.find(comment => comment.user?.type === 'Bot' && comment.body?.includes(marker));
