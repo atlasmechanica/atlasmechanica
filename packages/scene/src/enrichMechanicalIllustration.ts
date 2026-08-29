@@ -30,6 +30,8 @@ function spokeEndpoint(center: Vec2, radius: number, angle: number): Vec2 {
   };
 }
 
+const VISIBLE_PULLEY_RADIUS_RATIO = 0.95;
+
 interface SharedPulleyDetails {
   hubRadius: number;
 }
@@ -54,7 +56,11 @@ function pulleyIllustration(
     phaseMark.b.y - pulley.center.y,
     phaseMark.b.x - pulley.center.x,
   );
-  const spokeRadius = pulley.radius * 0.79;
+  // The solver-owned pulley radius is the belt/rope pitch-contact radius. Brown's
+  // visible cast wheel sits just inside that contact circle, so keep the physical
+  // tangent geometry untouched and inset only the decorative wheel material.
+  const visibleRadius = pulley.radius * VISIBLE_PULLEY_RADIUS_RATIO;
+  const spokeRadius = visibleRadius * 0.79;
 
   const spokes = Array.from({ length: 4 }, (_, index): ScenePrimitive[] => {
     const endpoint = spokeEndpoint(pulley.center, spokeRadius, angle + index * Math.PI / 2);
@@ -85,6 +91,7 @@ function pulleyIllustration(
   return [
     {
       ...pulley,
+      radius: visibleRadius,
       styles: ['pulley'],
       // Brown's wheel is line-drawn rather than a solid heavy ring: two dark
       // contours with clear white material between them.
@@ -97,7 +104,7 @@ function pulleyIllustration(
       layer: 'mechanism',
       styles: ['pulley'],
       center: pulley.center,
-      radius: pulley.radius * 0.79,
+      radius: visibleRadius * 0.79,
       width: 3.0,
       ariaLabel: `${pulley.ariaLabel ?? prefix} inner rim`,
     },
