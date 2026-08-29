@@ -313,8 +313,16 @@ function crossedBeltOverUnder(
   const crossing = segmentIntersection(top, under);
   if (crossing === undefined) return [];
 
-  const underGap = centeredSpan(under, crossing, 0.009);
-  const topBridge = centeredSpan(top, crossing, 0.012);
+  // Never let the drafting convention extend to the pulley contact points.
+  // On near-limit valid crossed belts the tangent spans become very short, so
+  // scale the gap/bridge down with the available physical span instead of using
+  // a fixed decoration that could draw across the pulley faces.
+  const underHalfLength = Math.min(0.009, under.length * 0.30);
+  const topHalfLength = Math.min(0.012, top.length * 0.35);
+  if (!(underHalfLength > 0) || !(topHalfLength > 0)) return [];
+
+  const underGap = centeredSpan(under, crossing, underHalfLength);
+  const topBridge = centeredSpan(top, crossing, topHalfLength);
   return [
     {
       type: 'segment',
