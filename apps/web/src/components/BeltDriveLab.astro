@@ -70,3 +70,27 @@ const direction = crossed ? 'Reversed' : 'Same';
 <script>
   import '../scripts/beltDriveLab.ts';
 </script>
+
+<style>
+  /* The native renderer projects into a 640×400 (8:5) viewBox. Keep the actual
+     product surface at that same aspect ratio so responsive layout scales the
+     mechanism and the review harness identically instead of letterboxing a
+     640×400 drawing inside the old fixed 430px-tall stage. */
+  .lab-stage {
+    min-height: 0;
+  }
+
+  .lab-renderer {
+    height: auto;
+    min-height: 0;
+    aspect-ratio: 8 / 5;
+  }
+
+  @media (max-width: 640px) {
+    .lab-stage,
+    .lab-renderer {
+      height: auto;
+      min-height: 0;
+    }
+  }
+</style>
