@@ -114,9 +114,55 @@ describe('production Brown belt scene', () => {
     expect(rootWidth / tipWidth).toBeCloseTo(2, 10);
     expect(distance(rootCenter, hub.center)).toBeGreaterThan(hub.radius);
     expect(distance(tipCenter, innerRim.center)).toBeLessThan(innerRim.radius);
-    expect(leftEdge.width).toBe(2.4);
-    expect(rightEdge.width).toBe(2.4);
+    expect(leftEdge.width).toBeCloseTo(2.4 * 1.35, 12);
+    expect(rightEdge.width).toBeCloseTo(2.4 * 1.35, 12);
     expect(scene.primitives.some((primitive) => primitive.id.startsWith('belt-driver-spoke-root-'))).toBe(false);
     expect(scene.primitives.some((primitive) => primitive.id.startsWith('belt-driver-spoke-core-'))).toBe(false);
+  });
+
+  it('makes the weighted cast rim tangent to the rope edge without moving the physical contact path', () => {
+    const scene = productionScene();
+    const rope = scene.primitives.find((primitive) => primitive.id === 'belt-band-underlay');
+    const driver = scene.primitives.find((primitive) => primitive.id === 'belt-driver');
+    if (
+      rope?.type !== 'polyline' ||
+      driver?.type !== 'circle' ||
+      rope.width === undefined ||
+      driver.width === undefined
+    ) {
+      throw new TypeError('Missing weighted rope/rim geometry');
+    }
+
+    const contact = rope.points[0];
+    if (contact === undefined) throw new TypeError('Missing physical rope contact');
+    const pitchRadius = distance(driver.center, contact);
+    const worldUnitsPerReferencePixel = 0.64 / 1180;
+    const ropeInnerRadius = pitchRadius - rope.width * worldUnitsPerReferencePixel / 2;
+    const rimOuterRadius = driver.radius + driver.width * worldUnitsPerReferencePixel / 2;
+
+    expect(pitchRadius).toBeCloseTo(0.045, 10);
+    // Zero-gap optical fit: the rope and cast rim edges are exactly tangent.
+    expect(ropeInnerRadius - rimOuterRadius).toBeCloseTo(0, 10);
+  });
+
+  it('applies one consistent 1.35x weight to the Brown mechanism strokes', () => {
+    const scene = productionScene();
+    const expectations = [
+      ['belt-band-underlay', 'polyline', 7.0],
+      ['belt-path', 'polyline', 4.0],
+      ['belt-driver', 'circle', 4.4],
+      ['belt-driver-rim-inner', 'circle', 3.0],
+      ['belt-driver-hub', 'circle', 3.4],
+      ['belt-driver-spoke-0', 'segment', 2.4],
+      ['belt-surface-mark-0', 'segment', 1.1],
+    ] as const;
+
+    for (const [id, type, nominalWidth] of expectations) {
+      const primitive = scene.primitives.find((candidate) => candidate.id === id);
+      if (primitive?.type !== type || !('width' in primitive)) {
+        throw new TypeError(`Missing weighted production primitive ${id}`);
+      }
+      expect(primitive.width).toBeCloseTo(nominalWidth * 1.35, 12);
+    }
   });
 });

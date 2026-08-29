@@ -12,6 +12,12 @@ import type { MechanismScene, ScenePrimitive, Vec2 } from './types.js';
 
 export { buildSchematicMechanismScene };
 
+const BROWN_ILLUSTRATION_STROKE_WEIGHT = 1.35;
+const BROWN_FRAMED_WORLD_WIDTH = 0.64;
+const BROWN_STROKE_REFERENCE_WIDTH_PX = 1180;
+const BROWN_WORLD_UNITS_PER_REFERENCE_PIXEL =
+  BROWN_FRAMED_WORLD_WIDTH / BROWN_STROKE_REFERENCE_WIDTH_PX;
+
 function normalizedPositive(angle: number): number {
   const full = Math.PI * 2;
   return ((angle % full) + full) % full;
@@ -132,12 +138,6 @@ function frameBrownBeltPlate(scene: MechanismScene): MechanismScene {
   const dy = Math.abs(driven.center.y - driver.center.y);
   if (dy <= dx) return scene;
 
-  // Brown/507 movements 001 and 002 use a vertical two-pulley composition.
-  // The native renderer's configured viewBox is 640×400, so keep this world
-  // viewport at the same 1.6 aspect ratio. That preserves isotropic world scale:
-  // a physical circle remains a circle instead of being stretched into an ellipse.
-  // The generous horizontal field is intentional letterboxing around the narrow
-  // historical plate and also leaves enough fixed Y range for parameter dragging.
   return {
     ...scene,
     viewport: {
@@ -146,6 +146,59 @@ function frameBrownBeltPlate(scene: MechanismScene): MechanismScene {
       minY: -0.07,
       maxY: 0.33,
     },
+  };
+}
+
+function clearBrownPulleyFromRope(
+  scene: MechanismScene,
+  schematic: MechanismScene,
+): MechanismScene {
+  if (!scene.id.startsWith('belt-')) return scene;
+
+  const rope = scene.primitives.find((primitive) => primitive.id === 'belt-band-underlay');
+  if (rope?.type !== 'polyline' || rope.width === undefined) return scene;
+
+  const adjustedRadii = new Map<string, { outer: number; inner: number }>();
+  for (const prefix of ['belt-driver', 'belt-driven'] as const) {
+    const physical = schematic.primitives.find((primitive) => primitive.id === prefix);
+    const visible = scene.primitives.find((primitive) => primitive.id === prefix);
+    const innerRim = scene.primitives.find((primitive) => primitive.id === `${prefix}-rim-inner`);
+    if (
+      physical?.type !== 'circle' ||
+      visible?.type !== 'circle' ||
+      innerRim?.type !== 'circle' ||
+      visible.width === undefined
+    ) {
+      continue;
+    }
+
+    const halfStrokeClearancePx =
+      ((rope.width + visible.width) * BROWN_ILLUSTRATION_STROKE_WEIGHT) / 2;
+    const targetOuterRadius =
+      physical.radius - halfStrokeClearancePx * BROWN_WORLD_UNITS_PER_REFERENCE_PIXEL;
+    if (!(targetOuterRadius > 0)) continue;
+
+    const scale = Math.min(1, targetOuterRadius / visible.radius);
+    adjustedRadii.set(prefix, {
+      outer: visible.radius * scale,
+      inner: innerRim.radius * scale,
+    });
+  }
+
+  if (adjustedRadii.size === 0) return scene;
+  return {
+    ...scene,
+    primitives: scene.primitives.map((primitive) => {
+      for (const [prefix, radii] of adjustedRadii) {
+        if (primitive.id === prefix && primitive.type === 'circle') {
+          return { ...primitive, radius: radii.outer };
+        }
+        if (primitive.id === `${prefix}-rim-inner` && primitive.type === 'circle') {
+          return { ...primitive, radius: radii.inner };
+        }
+      }
+      return primitive;
+    }),
   };
 }
 
@@ -166,9 +219,7 @@ function replacePulleySpokes(
     hub?.type !== 'circle' ||
     innerRim?.type !== 'circle' ||
     phaseSpoke?.type !== 'segment'
-  ) {
-    return primitives;
-  }
+  ) return primitives;
 
   const baseAngle = Math.atan2(
     phaseSpoke.b.y - phaseSpoke.a.y,
@@ -178,10 +229,6 @@ function replacePulleySpokes(
   const tipRadius = innerRim.radius - pulley.radius * 0.012;
   if (!(tipRadius > rootRadius)) return primitives;
 
-  // Brown's spoke edges flare clearly at the hub, but remain much closer to a
-  // cast wheel than the exaggerated closed-trapezoid draft. A 2:1 root/tip
-  // width makes the taper legible while the open ends meet the hub and inner rim
-  // without drawing caps across either circular member.
   const rootHalfWidth = pulley.radius * 0.10;
   const tipHalfWidth = pulley.radius * 0.05;
   const spokes = Array.from({ length: 4 }, (_, index) => classicSpokeEdges({
@@ -213,6 +260,25 @@ function replaceWithClassicCastSpokes(scene: MechanismScene): MechanismScene {
   return { ...scene, primitives: bothReplaced };
 }
 
+function weightBrownIllustration(scene: MechanismScene): MechanismScene {
+  if (!scene.id.startsWith('belt-')) return scene;
+
+  return {
+    ...scene,
+    primitives: scene.primitives.map((primitive) => {
+      if (primitive.layer !== 'mechanism') return primitive;
+      if (primitive.type !== 'segment' && primitive.type !== 'circle' && primitive.type !== 'polyline') {
+        return primitive;
+      }
+      if (primitive.width === undefined) return primitive;
+      return {
+        ...primitive,
+        width: primitive.width * BROWN_ILLUSTRATION_STROKE_WEIGHT,
+      };
+    }),
+  };
+}
+
 function isRopePaint(primitive: ScenePrimitive): boolean {
   return (
     primitive.id === 'belt-band-underlay' ||
@@ -224,31 +290,16 @@ function isRopePaint(primitive: ScenePrimitive): boolean {
 
 function paintBrownRopeOverPulley(scene: MechanismScene): MechanismScene {
   if (!scene.id.startsWith('belt-')) return scene;
-
   const rope = scene.primitives.filter(isRopePaint);
   if (rope.length === 0) return scene;
-
-  // The canonical belt path lies on the pulley contact circumference. In the
-  // Brown/507 illustration the rope is the material wrapped around that rim, so
-  // it must be painted after the cast wheel. Painting the wheel last visually
-  // hides the rope at contact and makes it look like it runs in an inner groove.
   const beneath = scene.primitives.filter((primitive) => !isRopePaint(primitive));
-  return {
-    ...scene,
-    primitives: [...beneath, ...rope],
-  };
+  return { ...scene, primitives: [...beneath, ...rope] };
 }
 
-/**
- * Production scene builder. Canonical mechanical geometry is compiled first,
- * then a presentation-only illustration pass adds Atlas's visual language.
- */
 export function buildMechanismScene(options: SceneBuildOptions) {
   const schematic = correctOpenEqualPulleyWrap(buildSchematicMechanismScene(options));
-  const illustrated = replaceWithClassicCastSpokes(
-    enrichMechanicalIllustration(schematic),
-  );
-  return frameBrownBeltPlate(
-    paintBrownRopeOverPulley(illustrated),
-  );
+  const enriched = enrichMechanicalIllustration(schematic);
+  const cleared = clearBrownPulleyFromRope(enriched, schematic);
+  const illustrated = weightBrownIllustration(replaceWithClassicCastSpokes(cleared));
+  return frameBrownBeltPlate(paintBrownRopeOverPulley(illustrated));
 }
