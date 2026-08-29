@@ -8,7 +8,7 @@ const crossed = routing === 'crossed';
 const inputId = `belt-${routing}-angle`;
 const centerId = `belt-${routing}-center`;
 const rpmId = `belt-${routing}-rpm`;
-const centerMin = crossed ? 95 : 45;
+const centerMin = 95;
 const direction = crossed ? 'Reversed' : 'Same';
 ---
 
@@ -31,7 +31,7 @@ const direction = crossed ? 'Reversed' : 'Same';
 
   <div class="lab-stage">
     <div class="lab-renderer" data-renderer aria-label={`Interactive ${routing} belt drive diagram`}></div>
-    <div class="lab-status" data-status aria-live="polite">Drag a handle or change a parameter.</div>
+    <div class="lab-status" data-status aria-live="polite">Drag the mechanism or change a parameter.</div>
     <noscript>
       <p style="padding: 1rem">The interactive diagram requires JavaScript; the explanation and equations below remain available.</p>
     </noscript>
@@ -58,9 +58,9 @@ const direction = crossed ? 'Reversed' : 'Same';
 
     <div class="lab-readouts" aria-label="Calculated mechanism values">
       <div class="readout"><span>Output direction</span><strong data-direction>{direction}</strong></div>
-      <div class="readout"><span>Speed ratio</span><strong data-ratio>0.500</strong></div>
-      <div class="readout"><span>Output speed</span><strong data-output-rpm>15.0 rpm</strong></div>
-      <div class="readout"><span>Belt speed</span><strong data-belt-speed>0.094 m/s</strong></div>
+      <div class="readout"><span>Speed ratio</span><strong data-ratio>1.000</strong></div>
+      <div class="readout"><span>Output speed</span><strong data-output-rpm>30.0 rpm</strong></div>
+      <div class="readout"><span>Belt speed</span><strong data-belt-speed>0.141 m/s</strong></div>
       <div class="readout"><span>Driver wrap</span><strong data-driver-wrap>—</strong></div>
       <div class="readout"><span>Ideal belt length</span><strong data-belt-length>—</strong></div>
     </div>
