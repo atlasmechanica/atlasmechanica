@@ -78,18 +78,13 @@ jobs:
 
   publish-results:
     needs: browser-scorecard
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: ${{ always() && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: write
       pull-requests: write
     steps:
-      - name: Download tested publication payload
-        uses: actions/download-artifact@v4
-        with:
-          name: renderer-pr-publish-${{ github.event.pull_request.number }}
-          path: /tmp/atlas-renderer-publish
       - name: Verify this run still matches the open PR head
         id: current-head
         uses: actions/github-script@v7
@@ -108,9 +103,77 @@ jobs:
             } else if (!current) {
               core.notice(`Skipping visual publication for stale head ${expected}; current head is ${pull.head.sha}.`);
             }
+
+      - name: Invalidate stale visual evidence after failed validation
+        if: needs.browser-scorecard.result != 'success' && steps.current-head.outputs.current == 'true'
+        uses: actions/github-script@v7
+        env:
+          REVIEW_BRANCH: visual-review-pr-${{ github.event.pull_request.number }}
+          TESTED_SHA: ${{ steps.current-head.outputs.tested_sha }}
+          SCORECARD_RESULT: ${{ needs.browser-scorecard.result }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const branch = process.env.REVIEW_BRANCH;
+            try {
+              await github.rest.git.deleteRef({ owner, repo, ref: `heads/${branch}` });
+              core.notice(`Deleted stale ${branch} after renderer validation ${process.env.SCORECARD_RESULT}.`);
+            } catch (error) {
+              if (error.status !== 404 && error.status !== 422) throw error;
+              core.notice(`No stale visual review branch to delete for PR #${issue_number}.`);
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const scorecardMarker = '<!-- atlas-renderer-bakeoff -->';
+            const scorecardBody = [
+              scorecardMarker,
+              '## Renderer bake-off scorecard — invalid',
+              '',
+              `Current head: \`${process.env.TESTED_SHA}\``,
+              '',
+              `Renderer validation finished with **${process.env.SCORECARD_RESULT}**. No scorecard from an older head is valid for this revision.`,
+            ].join('\n');
+            const existingScorecard = comments.find(comment => comment.user?.type === 'Bot' && comment.body?.includes(scorecardMarker));
+            if (existingScorecard) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existingScorecard.id, body: scorecardBody });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body: scorecardBody });
+            }
+
+            const visualMarker = '<!-- atlas-visual-review -->';
+            const visualBody = [
+              visualMarker,
+              '## Visual review — invalidated',
+              '',
+              `Current head: \`${process.env.TESTED_SHA}\``,
+              '',
+              `Renderer validation finished with **${process.env.SCORECARD_RESULT}** for this head. Any screenshots from an older head are stale and must not be used for approval.`,
+              '',
+              '**Do not merge until a renderer run succeeds and fresh visual evidence is published for the current head.**',
+            ].join('\n');
+            const existingVisual = comments.find(comment => comment.user?.type === 'Bot' && comment.body?.includes(visualMarker));
+            if (existingVisual) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existingVisual.id, body: visualBody });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body: visualBody });
+            }
+
+      - name: Download tested publication payload
+        if: needs.browser-scorecard.result == 'success' && steps.current-head.outputs.current == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: renderer-pr-publish-${{ github.event.pull_request.number }}
+          path: /tmp/atlas-renderer-publish
+
       - name: Publish isolated visual-review commit
         id: visual-commit
-        if: steps.current-head.outputs.current == 'true'
+        if: needs.browser-scorecard.result == 'success' && steps.current-head.outputs.current == 'true'
         uses: actions/github-script@v7
         env:
           REVIEW_BRANCH: visual-review-pr-${{ github.event.pull_request.number }}
@@ -165,8 +228,9 @@ jobs:
               });
             }
             core.setOutput('review_sha', commit.sha);
+
       - name: Publish scorecard and inline visual review
-        if: steps.current-head.outputs.current == 'true'
+        if: needs.browser-scorecard.result == 'success' && steps.current-head.outputs.current == 'true'
         uses: actions/github-script@v7
         env:
           BUNDLE_PATH: /tmp/atlas-renderer-publish/renderer-bundle.json
