@@ -116,7 +116,6 @@ jobs:
           git worktree add --detach /tmp/atlas-visual-review-worktree HEAD
           cd /tmp/atlas-visual-review-worktree
           git switch --orphan "$REVIEW_BRANCH"
-          git rm -rf .
           cp /tmp/atlas-visual-review/*.png .
           git add *.png
           git commit -m "Visual review for PR #${{ github.event.pull_request.number }}"
