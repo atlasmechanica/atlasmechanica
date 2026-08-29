@@ -13,8 +13,10 @@ import type { MechanismScene, ScenePrimitive, Vec2 } from './types.js';
 export { buildSchematicMechanismScene };
 
 const BROWN_ILLUSTRATION_STROKE_WEIGHT = 1.35;
-const BROWN_WORLD_UNITS_PER_RENDER_PIXEL = 0.001;
-const BROWN_ROPE_RIM_GAP_PX = 0.5;
+const BROWN_FRAMED_WORLD_WIDTH = 0.64;
+const BROWN_STROKE_REFERENCE_WIDTH_PX = 1180;
+const BROWN_WORLD_UNITS_PER_REFERENCE_PIXEL =
+  BROWN_FRAMED_WORLD_WIDTH / BROWN_STROKE_REFERENCE_WIDTH_PX;
 
 function normalizedPositive(angle: number): number {
   const full = Math.PI * 2;
@@ -176,15 +178,16 @@ function clearBrownPulleyFromRope(
       continue;
     }
 
-    // Widths are authored in renderer pixels. Brown's framed 640×400 plate maps
-    // 1 authored pixel to 1 mm of world space. Account for the final 1.35×
-    // weight here so the visible cast rim cannot intrude into the rope's inner
-    // blue edge as line weight changes.
+    // Visible strokes use non-scaling-stroke and are calibrated at the product's
+    // 1180px reference surface. Convert those CSS-pixel half-widths through the
+    // framed 0.64m world width, not through the SVG's 640-unit viewBox. The
+    // responsive renderer scales stroke pixels and geometry by the same ratio on
+    // narrower surfaces, so solving tangency at the reference width preserves it
+    // everywhere: rope inner edge meets rim outer edge with no gap or overlap.
     const halfStrokeClearancePx =
-      ((rope.width + visible.width) * BROWN_ILLUSTRATION_STROKE_WEIGHT) / 2 +
-      BROWN_ROPE_RIM_GAP_PX;
+      ((rope.width + visible.width) * BROWN_ILLUSTRATION_STROKE_WEIGHT) / 2;
     const targetOuterRadius =
-      physical.radius - halfStrokeClearancePx * BROWN_WORLD_UNITS_PER_RENDER_PIXEL;
+      physical.radius - halfStrokeClearancePx * BROWN_WORLD_UNITS_PER_REFERENCE_PIXEL;
     if (!(targetOuterRadius > 0)) continue;
 
     const scale = Math.min(1, targetOuterRadius / visible.radius);
