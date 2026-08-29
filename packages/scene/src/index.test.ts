@@ -141,6 +141,7 @@ describe('production Brown belt scene', () => {
     const rimOuterRadius = driver.radius + driver.width * worldUnitsPerReferencePixel / 2;
 
     expect(pitchRadius).toBeCloseTo(0.045, 10);
+    // The two painted edges meet exactly: no blue/rust overlap and no paper gap.
     expect(ropeInnerRadius - rimOuterRadius).toBeCloseTo(0, 10);
   });
 
