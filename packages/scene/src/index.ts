@@ -21,14 +21,17 @@ function frameBrownBeltPlate(scene: MechanismScene): MechanismScene {
   const dy = Math.abs(driven.center.y - driver.center.y);
   if (dy <= dx) return scene;
 
-  // Brown/507 movements 001 and 002 use a portrait plate with the two pulley
-  // centers vertically aligned. Keep enough fixed room for direct center-distance
-  // manipulation without reframing on every pointer move.
+  // Brown/507 movements 001 and 002 use a vertical two-pulley composition.
+  // The native renderer's configured viewBox is 640×400, so keep this world
+  // viewport at the same 1.6 aspect ratio. That preserves isotropic world scale:
+  // a physical circle remains a circle instead of being stretched into an ellipse.
+  // The generous horizontal field is intentional letterboxing around the narrow
+  // historical plate and also leaves enough fixed Y range for parameter dragging.
   return {
     ...scene,
     viewport: {
-      minX: -0.13,
-      maxX: 0.13,
+      minX: -0.32,
+      maxX: 0.32,
       minY: -0.07,
       maxY: 0.33,
     },
