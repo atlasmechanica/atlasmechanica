@@ -29,8 +29,8 @@ export const SVG_RENDERER_STYLE = `
 .atlas-style-body { stroke: var(--am-foreground); }
 .atlas-style-joint { stroke: var(--am-foreground); fill: var(--am-background); }
 .atlas-style-tracer { stroke: var(--am-accent); fill: var(--am-background); }
-.atlas-style-belt { stroke: var(--am-foreground); }
-.atlas-style-pulley { stroke: var(--am-foreground); fill: none; }
+.atlas-style-belt { stroke: var(--am-vector); }
+.atlas-style-pulley { stroke: var(--am-accent); fill: none; }
 .atlas-style-trace { stroke: var(--am-trace); opacity: .72; }
 .atlas-style-vector { stroke: var(--am-vector); color: var(--am-vector); }
 .atlas-style-dimension { stroke: var(--am-muted); }
