@@ -7,13 +7,17 @@ import {
 } from '@atlasmechanica/kinematics';
 import { buildMechanismScene } from './buildMechanismScene.js';
 import { enrichMechanicalIllustration } from './enrichMechanicalIllustration.js';
+import type { MechanismScene, SegmentPrimitive, Vec2 } from './types.js';
 
-function illustrated(model: typeof openBeltDriveModel | typeof crossedBeltDriveModel) {
+function illustrated(
+  model: typeof openBeltDriveModel | typeof crossedBeltDriveModel,
+  angleDegrees = 30,
+) {
   const state = analyticBeltAdapter
     .compile(model)
     .createSession()
     .evaluate({
-      coordinates: { 'driver-angle': quantity(30, 'deg') },
+      coordinates: { 'driver-angle': quantity(angleDegrees, 'deg') },
       rates: { 'driver-angle': quantity(1, 'rad/s') },
       parameters: { 'center-distance': quantity(180, 'mm') },
     });
@@ -23,6 +27,32 @@ function illustrated(model: typeof openBeltDriveModel | typeof crossedBeltDriveM
     state,
     parameters: { 'center-distance': quantity(180, 'mm') },
   }));
+}
+
+function midpoint(segment: SegmentPrimitive): Vec2 {
+  return {
+    x: (segment.a.x + segment.b.x) / 2,
+    y: (segment.a.y + segment.b.y) / 2,
+  };
+}
+
+function surfaceMarkMidpoints(scene: MechanismScene): Vec2[] {
+  return scene.primitives
+    .filter(
+      (primitive): primitive is SegmentPrimitive =>
+        primitive.type === 'segment' && primitive.id.startsWith('belt-surface-mark-'),
+    )
+    .map(midpoint);
+}
+
+function nearest(points: Vec2[], target: Vec2): Vec2 {
+  const result = points.reduce<{ point: Vec2; distance: number } | undefined>((best, point) => {
+    const distance = Math.hypot(point.x - target.x, point.y - target.y);
+    if (best === undefined || distance < best.distance) return { point, distance };
+    return best;
+  }, undefined);
+  if (result === undefined) throw new TypeError('Missing belt surface marks');
+  return result.point;
 }
 
 describe('mechanical illustration enrichment', () => {
@@ -50,6 +80,34 @@ describe('mechanical illustration enrichment', () => {
 
     const angle = Math.atan2(spoke.b.y - spoke.a.y, spoke.b.x - spoke.a.x);
     expect(angle).toBeCloseTo(Math.PI / 6, 10);
+  });
+
+  it.each([
+    ['open', openBeltDriveModel],
+    ['crossed', crossedBeltDriveModel],
+  ] as const)('moves %s belt texture with positive driver tangential velocity', (_name, model) => {
+    const atZero = illustrated(model, 0);
+    const afterPositiveRotation = illustrated(model, 2);
+
+    const driver = atZero.primitives.find((primitive) => primitive.id === 'belt-driver');
+    const belt = atZero.primitives.find((primitive) => primitive.id === 'belt-path');
+    if (driver?.type !== 'circle' || belt?.type !== 'polyline') {
+      throw new TypeError('Missing driver or belt path');
+    }
+
+    const contact = belt.points[0];
+    if (contact === undefined) throw new TypeError('Missing driver contact point');
+
+    const before = nearest(surfaceMarkMidpoints(atZero), contact);
+    const after = nearest(surfaceMarkMidpoints(afterPositiveRotation), contact);
+    const displacement = { x: after.x - before.x, y: after.y - before.y };
+    const radial = { x: contact.x - driver.center.x, y: contact.y - driver.center.y };
+    const positiveTangentialVelocity = { x: -radial.y, y: radial.x };
+    const alignment =
+      displacement.x * positiveTangentialVelocity.x +
+      displacement.y * positiveTangentialVelocity.y;
+
+    expect(alignment).toBeGreaterThan(0);
   });
 
   it('is deterministic and does not change the physical scene identity', () => {

@@ -139,6 +139,37 @@ function sampleClosedPolyline(points: Vec2[], targetDistance: number): PathSampl
   return undefined;
 }
 
+function beltPathPhaseSign(
+  belt: PolylinePrimitive,
+  driver: CirclePrimitive,
+): 1 | -1 {
+  const contact = belt.points[0];
+  const next = belt.points[1];
+  if (contact === undefined || next === undefined) return 1;
+
+  const segmentLength = distance(contact, next);
+  if (!(segmentLength > 0)) return 1;
+
+  const pathTangent = {
+    x: (next.x - contact.x) / segmentLength,
+    y: (next.y - contact.y) / segmentLength,
+  };
+  const radial = {
+    x: contact.x - driver.center.x,
+    y: contact.y - driver.center.y,
+  };
+
+  // Positive pulley rotation is CCW, so the local surface velocity direction
+  // at the contact point is z × r = (-r.y, r.x). Compare that physical
+  // tangent with the arbitrary stored-polyline traversal direction.
+  const positiveRotationVelocity = { x: -radial.y, y: radial.x };
+  const alignment =
+    positiveRotationVelocity.x * pathTangent.x +
+    positiveRotationVelocity.y * pathTangent.y;
+
+  return alignment >= 0 ? 1 : -1;
+}
+
 function beltSurfaceMarks(
   belt: PolylinePrimitive,
   driver: CirclePrimitive,
@@ -156,7 +187,8 @@ function beltSurfaceMarks(
 
   const count = 18;
   const spacing = pathLength / count;
-  const phase = ((angle * driver.radius) % spacing + spacing) % spacing;
+  const phaseDirection = beltPathPhaseSign(belt, driver);
+  const phase = (((phaseDirection * angle * driver.radius) % spacing) + spacing) % spacing;
   const halfMark = 0.0022;
 
   return Array.from({ length: count }, (_, index): SegmentPrimitive | undefined => {
