@@ -39,9 +39,11 @@ export const SVG_RENDERER_STYLE = `
 .atlas-style-invalid { stroke: var(--am-danger); fill: var(--am-background); stroke-dasharray: 4 3; }
 .atlas-style-cutout { stroke: var(--am-background); }
 .atlas-selected { stroke: var(--am-accent); filter: drop-shadow(0 0 1.5px var(--am-accent)); }
-.atlas-hit { stroke: transparent; fill: transparent; pointer-events: stroke; }
-.atlas-hit-fill { stroke: transparent; fill: transparent; pointer-events: all; }
+.atlas-hit { stroke: transparent; fill: transparent; pointer-events: none; }
+.atlas-hit-fill { stroke: transparent; fill: transparent; pointer-events: none; }
 .atlas-interactive { pointer-events: all; cursor: pointer; }
+.atlas-interactive .atlas-hit { pointer-events: stroke; }
+.atlas-interactive .atlas-hit-fill { pointer-events: all; }
 .atlas-interactive:focus .atlas-visible { stroke: var(--am-accent); filter: drop-shadow(0 0 2px var(--am-accent)); }
 .atlas-interactive:focus { outline: none; }
 .atlas-handle-visible { vector-effect: non-scaling-stroke; stroke-width: 2; }
