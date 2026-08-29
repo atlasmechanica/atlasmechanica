@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "check": "astro check && astro build",
+    "check": "astro check && astro build && node scripts/check-static-output.mjs",
     "preview": "astro preview"
   },
   "dependencies": {

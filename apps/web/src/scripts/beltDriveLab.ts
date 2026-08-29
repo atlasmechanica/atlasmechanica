@@ -1,11 +1,27 @@
-import { analyticBeltAdapter, openBeltDriveModel } from '@atlasmechanica/kinematics';
-import { hasErrors, quantity, type ModelState } from '@atlasmechanica/model';
+import {
+  analyticBeltAdapter,
+  crossedBeltDriveModel,
+  openBeltDriveModel,
+} from '@atlasmechanica/kinematics';
+import { hasErrors, quantity, type ModelState, type SimulationModel } from '@atlasmechanica/model';
 import { createSvgMechanismRenderer } from '@atlasmechanica/renderer-svg';
 import { buildMechanismScene, type Vec2 } from '@atlasmechanica/scene';
 
+type BeltRouting = 'open' | 'crossed';
+
 function required<T extends Element>(element: T | null, name: string): T {
-  if (element === null) throw new TypeError(`Open belt lab is missing ${name}`);
+  if (element === null) throw new TypeError(`Belt drive lab is missing ${name}`);
   return element;
+}
+
+function routingFor(root: HTMLElement): BeltRouting {
+  const routing = root.dataset.routing;
+  if (routing === 'open' || routing === 'crossed') return routing;
+  throw new TypeError(`Unknown belt routing: ${routing ?? 'missing'}`);
+}
+
+function modelFor(routing: BeltRouting): SimulationModel {
+  return routing === 'open' ? openBeltDriveModel : crossedBeltDriveModel;
 }
 
 function scalarSignal(state: ModelState, id: string): number | undefined {
@@ -26,7 +42,10 @@ function normalizedDegrees(value: number): number {
   return ((value % 360) + 360) % 360;
 }
 
-for (const root of document.querySelectorAll<HTMLElement>('[data-open-belt-lab]')) {
+for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]')) {
+  const routing = routingFor(root);
+  const model = modelFor(routing);
+  const minimumCenter = routing === 'crossed' ? 95 : 45;
   const host = required(root.querySelector<HTMLElement>('[data-renderer]'), 'renderer host');
   const playButton = required(root.querySelector<HTMLButtonElement>('[data-play]'), 'play button');
   const resetButton = required(root.querySelector<HTMLButtonElement>('[data-reset]'), 'reset button');
@@ -44,13 +63,17 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-open-belt-lab]'
   const driverWrapOutput = required(root.querySelector<HTMLElement>('[data-driver-wrap]'), 'wrap-angle readout');
   const beltLengthOutput = required(root.querySelector<HTMLElement>('[data-belt-length]'), 'belt-length readout');
 
-  const compiled = analyticBeltAdapter.compile(openBeltDriveModel);
+  const compiled = analyticBeltAdapter.compile(model);
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const defaults = { angle: 0, center: 180, rpm: 30 } as const;
   const params = new URLSearchParams(window.location.search);
 
   let angleDeg = clamp(Number(params.get('angle') ?? defaults.angle) || 0, 0, 360);
-  let centerMm = clamp(Number(params.get('center') ?? defaults.center) || defaults.center, 45, 260);
+  let centerMm = clamp(
+    Number(params.get('center') ?? defaults.center) || defaults.center,
+    minimumCenter,
+    260,
+  );
   let rpm = clamp(Number(params.get('rpm') ?? defaults.rpm) || defaults.rpm, 10, 120);
   let invalidParameterHandle: Vec2 | undefined;
   let selectedId: string | undefined;
@@ -101,7 +124,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-open-belt-lab]'
   }
 
   const renderer = createSvgMechanismRenderer(host, {
-    instanceId: 'open-belt-drive-main',
+    instanceId: `${routing}-belt-drive-main`,
     callbacks: {
       onSelect(id) {
         selectedId = id;
@@ -147,7 +170,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-open-belt-lab]'
 
   function render(): void {
     renderer.update(buildMechanismScene({
-      model: openBeltDriveModel,
+      model,
       state: currentState,
       parameters: { 'center-distance': quantity(centerMm, 'mm') },
       selectedId,
@@ -219,9 +242,16 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-open-belt-lab]'
   });
 
   centerInput.addEventListener('input', () => {
-    centerMm = Number(centerInput.value);
+    const candidate = Number(centerInput.value);
+    const candidateState = evaluate(candidate);
+    if (hasErrors(candidateState)) {
+      centerInput.value = String(centerMm);
+      status.textContent = 'That center distance does not admit a real belt tangent.';
+      return;
+    }
+    centerMm = candidate;
     invalidParameterHandle = undefined;
-    currentState = evaluate();
+    currentState = candidateState;
     render();
     syncUrl();
   });

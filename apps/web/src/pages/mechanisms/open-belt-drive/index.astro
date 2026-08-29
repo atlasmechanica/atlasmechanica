@@ -1,5 +1,5 @@
 ---
-import OpenBeltLab from '../../../components/OpenBeltLab.astro';
+import BeltDriveLab from '../../../components/BeltDriveLab.astro';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 ---
 
@@ -31,7 +31,7 @@ import BaseLayout from '../../../layouts/BaseLayout.astro';
         </a>
       </header>
 
-      <OpenBeltLab />
+      <BeltDriveLab routing="open" />
 
       <div class="content-grid">
         <article class="prose">
@@ -108,14 +108,14 @@ import BaseLayout from '../../../layouts/BaseLayout.astro';
               particularly clean example of changing one geometric relationship while preserving the basic transmission
               principle.
             </p>
-            <div class="next-card" aria-label="Next concept: crossed belt drive">
+            <a class="next-card" href="/mechanisms/crossed-belt-drive/" aria-label="Continue to crossed belt drive">
               <div class="next-card__number">002</div>
               <div>
                 <strong>Crossed Belt Drive</strong>
-                <p>Same transmission idea · reversed output direction · next production mechanism.</p>
+                <p>Same transmission idea · reversed output direction · continue the learning progression.</p>
               </div>
               <div class="next-card__arrow" aria-hidden="true">→</div>
-            </div>
+            </a>
           </section>
         </article>
 
