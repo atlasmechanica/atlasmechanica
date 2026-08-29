@@ -26,6 +26,7 @@ export const SCENE_STYLE_TOKENS = [
   'label',
   'handle',
   'invalid',
+  'cutout',
 ] as const;
 
 export type SceneStyleToken = (typeof SCENE_STYLE_TOKENS)[number];
