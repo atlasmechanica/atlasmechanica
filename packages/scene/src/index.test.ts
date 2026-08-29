@@ -120,7 +120,7 @@ describe('production Brown belt scene', () => {
     expect(scene.primitives.some((primitive) => primitive.id.startsWith('belt-driver-spoke-core-'))).toBe(false);
   });
 
-  it('keeps the weighted cast rim clear of the rope edge without moving the physical contact path', () => {
+  it('makes the weighted cast rim tangent to the rope edge without moving the physical contact path', () => {
     const scene = productionScene();
     const rope = scene.primitives.find((primitive) => primitive.id === 'belt-band-underlay');
     const driver = scene.primitives.find((primitive) => primitive.id === 'belt-driver');
@@ -136,11 +136,12 @@ describe('production Brown belt scene', () => {
     const contact = rope.points[0];
     if (contact === undefined) throw new TypeError('Missing physical rope contact');
     const pitchRadius = distance(driver.center, contact);
-    const ropeInnerRadius = pitchRadius - rope.width * 0.0005;
-    const rimOuterRadius = driver.radius + driver.width * 0.0005;
+    const worldUnitsPerReferencePixel = 0.64 / 1180;
+    const ropeInnerRadius = pitchRadius - rope.width * worldUnitsPerReferencePixel / 2;
+    const rimOuterRadius = driver.radius + driver.width * worldUnitsPerReferencePixel / 2;
 
     expect(pitchRadius).toBeCloseTo(0.045, 10);
-    expect(ropeInnerRadius - rimOuterRadius).toBeCloseTo(0.0005, 10);
+    expect(ropeInnerRadius - rimOuterRadius).toBeCloseTo(0, 10);
   });
 
   it('applies one consistent 1.35x weight to the Brown mechanism strokes', () => {
