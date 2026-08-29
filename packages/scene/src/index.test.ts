@@ -91,32 +91,31 @@ describe('production Brown belt scene', () => {
     expect(nearest(driverInterior)).toBeGreaterThan(0.04);
   });
 
-  it('uses strongly tapered cast spokes that remain clear of hub and inner rim', () => {
+  it('uses clearly tapered open cast-spoke edges that remain clear of hub and inner rim', () => {
     const scene = productionScene();
-    const spoke = scene.primitives.find((primitive) => primitive.id === 'belt-driver-spoke-0');
+    const leftEdge = scene.primitives.find((primitive) => primitive.id === 'belt-driver-spoke-0');
+    const rightEdge = scene.primitives.find((primitive) => primitive.id === 'belt-driver-spoke-0-edge');
     const hub = scene.primitives.find((primitive) => primitive.id === 'belt-driver-hub');
     const innerRim = scene.primitives.find((primitive) => primitive.id === 'belt-driver-rim-inner');
-    if (spoke?.type !== 'polyline' || hub?.type !== 'circle' || innerRim?.type !== 'circle') {
+    if (
+      leftEdge?.type !== 'segment' ||
+      rightEdge?.type !== 'segment' ||
+      hub?.type !== 'circle' ||
+      innerRim?.type !== 'circle'
+    ) {
       throw new TypeError('Missing production cast-spoke geometry');
     }
 
-    const rootLeft = spoke.points[0];
-    const tipLeft = spoke.points[1];
-    const tipRight = spoke.points[2];
-    const rootRight = spoke.points[3];
-    if (rootLeft === undefined || tipLeft === undefined || tipRight === undefined || rootRight === undefined) {
-      throw new TypeError('Incomplete cast-spoke outline');
-    }
+    const rootWidth = distance(leftEdge.a, rightEdge.a);
+    const tipWidth = distance(leftEdge.b, rightEdge.b);
+    const rootCenter = midpoint(leftEdge.a, rightEdge.a);
+    const tipCenter = midpoint(leftEdge.b, rightEdge.b);
 
-    const rootWidth = distance(rootLeft, rootRight);
-    const tipWidth = distance(tipLeft, tipRight);
-    const rootCenter = midpoint(rootLeft, rootRight);
-    const tipCenter = midpoint(tipLeft, tipRight);
-
-    expect(rootWidth / tipWidth).toBeGreaterThan(2.8);
+    expect(rootWidth / tipWidth).toBeCloseTo(2, 10);
     expect(distance(rootCenter, hub.center)).toBeGreaterThan(hub.radius);
     expect(distance(tipCenter, innerRim.center)).toBeLessThan(innerRim.radius);
-    expect(spoke.width).toBe(2.4);
+    expect(leftEdge.width).toBe(2.4);
+    expect(rightEdge.width).toBe(2.4);
     expect(scene.primitives.some((primitive) => primitive.id.startsWith('belt-driver-spoke-root-'))).toBe(false);
     expect(scene.primitives.some((primitive) => primitive.id.startsWith('belt-driver-spoke-core-'))).toBe(false);
   });
