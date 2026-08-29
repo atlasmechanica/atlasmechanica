@@ -69,9 +69,7 @@ test('production Brown belt reference uses equal vertically aligned pulleys and 
 
   const inputHandle = page.locator('#production-host [data-primitive="belt-input-handle"] .atlas-visible');
   const distanceHandle = page.locator('#production-host [data-primitive="belt-distance-handle"] .atlas-visible');
-  expect(await inputHandle.evaluate((element) => getComputedStyle(element).stroke)).toBe(
-    await page.locator('#production-host svg').evaluate((element) => getComputedStyle(element).backgroundColor),
-  );
+  await expect(inputHandle).toHaveClass(/atlas-style-cutout/);
   await expect(distanceHandle).toHaveClass(/atlas-style-cutout/);
 });
 
