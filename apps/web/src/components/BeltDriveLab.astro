@@ -92,5 +92,16 @@ const direction = crossed ? 'Reversed' : 'Same';
       height: auto;
       min-height: 0;
     }
+
+    /* The desktop status chip intentionally floats over the generous stage, but
+       the compact mobile 8:5 surface has no spare vertical field. Put the status
+       back into normal flow below the renderer so no message can obscure the
+       mechanism while retaining the same bubble treatment. */
+    .lab-status {
+      position: static;
+      width: fit-content;
+      max-width: calc(100% - 30px);
+      margin: 8px 15px 14px;
+    }
   }
 </style>

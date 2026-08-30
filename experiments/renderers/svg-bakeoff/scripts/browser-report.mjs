@@ -87,6 +87,42 @@ async function assertResponsiveRopeStroke(page, fixture) {
   return result;
 }
 
+async function assertMobileStatusBelowRenderer(page, fixture) {
+  const result = await page.locator('[data-belt-drive-lab]').evaluate((root) => {
+    const stage = root.querySelector('.lab-stage');
+    const renderer = root.querySelector('.lab-renderer');
+    const status = root.querySelector('.lab-status');
+    if (!(stage instanceof HTMLElement) || !(renderer instanceof HTMLElement) || !(status instanceof HTMLElement)) {
+      throw new Error('Missing mobile lab stage, renderer, or status');
+    }
+    const stageBox = stage.getBoundingClientRect();
+    const rendererBox = renderer.getBoundingClientRect();
+    const statusBox = status.getBoundingClientRect();
+    return {
+      stageHeight: stageBox.height,
+      rendererBottom: rendererBox.bottom,
+      statusTop: statusBox.top,
+      separation: statusBox.top - rendererBox.bottom,
+      statusPosition: getComputedStyle(status).position,
+      statusInsideStage:
+        statusBox.left >= stageBox.left - 0.5 &&
+        statusBox.right <= stageBox.right + 0.5 &&
+        statusBox.bottom <= stageBox.bottom + 0.5,
+    };
+  });
+
+  if (result.statusPosition !== 'static') {
+    throw new Error(`${fixture} status is ${result.statusPosition}; expected static mobile flow.`);
+  }
+  if (result.separation < -0.5) {
+    throw new Error(`${fixture} status overlaps the renderer by ${Math.abs(result.separation).toFixed(1)}px.`);
+  }
+  if (!result.statusInsideStage) {
+    throw new Error(`${fixture} status overflows the mobile lab stage.`);
+  }
+  return result;
+}
+
 let webLog = '';
 const webPreview = spawn(
   'npm',
@@ -111,8 +147,8 @@ try {
     await page.screenshot({ path: screenshot, fullPage: true });
 
     // Desktop product evidence remains calibrated to Atlas's 1180px max-width
-    // shell. At this width the new responsive stroke option intentionally leaves
-    // the already-approved nominal line weights unchanged.
+    // shell. At this width the responsive stroke option intentionally leaves the
+    // reviewed nominal line weights effectively unchanged.
     const sitePage = await browser.newPage({ viewport: { width: 1220, height: 1100 } });
     const goldenScreenshots = {};
     const desktopStrokeChecks = {};
@@ -127,21 +163,22 @@ try {
       goldenScreenshots[fixture] = path;
     }
 
-    // Mobile is a separate visual gate. This is where non-scaling strokes used
-    // to stay at 7px while the wheel geometry shrank, making the rope appear to
-    // eat into the pulley rim. The renderer must now reduce visible stroke widths
-    // in direct proportion to the real mobile product surface.
+    // Mobile is a separate visual gate. Capture the complete stage rather than
+    // only the SVG so the status-bubble composition is part of visual review.
     const mobilePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
     const mobileGoldenScreenshots = {};
     const mobileStrokeChecks = {};
+    const mobileLayoutChecks = {};
     for (const [fixture, route] of [
       ['open-belt', '/mechanisms/open-belt-drive/'],
       ['crossed-belt', '/mechanisms/crossed-belt-drive/'],
     ]) {
-      const { renderer } = await productRenderer(mobilePage, route, `${fixture} mobile`);
+      await productRenderer(mobilePage, route, `${fixture} mobile`);
       mobileStrokeChecks[fixture] = await assertResponsiveRopeStroke(mobilePage, `${fixture} mobile`);
+      mobileLayoutChecks[fixture] = await assertMobileStatusBelowRenderer(mobilePage, `${fixture} mobile`);
       const path = `renderer-bakeoff-${fixture}-mobile-${name}.png`;
-      await renderer.screenshot({ path });
+      const stage = mobilePage.locator('[data-belt-drive-lab] .lab-stage');
+      await stage.screenshot({ path });
       mobileGoldenScreenshots[fixture] = path;
     }
 
@@ -154,6 +191,7 @@ try {
         desktop: desktopStrokeChecks,
         mobile: mobileStrokeChecks,
       },
+      mobileLayoutChecks,
     };
     await browser.close();
   }
