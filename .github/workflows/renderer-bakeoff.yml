@@ -63,6 +63,8 @@ jobs:
         if: github.event.pull_request.head.repo.full_name == github.repository
         run: |
           mkdir -p /tmp/atlas-renderer-publish
+          cp experiments/renderers/svg-bakeoff/renderer-bakeoff-desktop-fold-chromium.png /tmp/atlas-renderer-publish/desktop-fold-chromium.png
+          cp experiments/renderers/svg-bakeoff/renderer-bakeoff-desktop-fold-webkit.png /tmp/atlas-renderer-publish/desktop-fold-webkit.png
           cp experiments/renderers/svg-bakeoff/renderer-bakeoff-open-belt-chromium.png /tmp/atlas-renderer-publish/open-belt-chromium.png
           cp experiments/renderers/svg-bakeoff/renderer-bakeoff-crossed-belt-chromium.png /tmp/atlas-renderer-publish/crossed-belt-chromium.png
           cp experiments/renderers/svg-bakeoff/renderer-bakeoff-open-belt-webkit.png /tmp/atlas-renderer-publish/open-belt-webkit.png
@@ -190,6 +192,8 @@ jobs:
             const { owner, repo } = context.repo;
             const branch = process.env.REVIEW_BRANCH;
             const files = [
+              'desktop-fold-chromium.png',
+              'desktop-fold-webkit.png',
               'open-belt-chromium.png',
               'crossed-belt-chromium.png',
               'open-belt-webkit.png',
@@ -271,7 +275,7 @@ jobs:
 
             const visualMarker = '<!-- atlas-visual-review -->';
             const raw = `https://raw.githubusercontent.com/${owner}/${repo}/${process.env.REVIEW_SHA}`;
-            const visualBody = `${visualMarker}\n## Visual review — approval required before merge\n\nTested head: \`${process.env.TESTED_SHA}\`\n\n### Brown / 507 movement 1 reference\n![Brown / 507 movement 1](https://507movements.com/img/mm_001.png)\n\n### Atlas desktop — Chromium\n\n![Atlas open belt Chromium](${raw}/open-belt-chromium.png)\n\n![Atlas crossed belt Chromium](${raw}/crossed-belt-chromium.png)\n\n### Atlas mobile — Chromium\n\n![Atlas open belt mobile Chromium](${raw}/open-belt-mobile-chromium.png)\n\n![Atlas crossed belt mobile Chromium](${raw}/crossed-belt-mobile-chromium.png)\n\n<details><summary>WebKit desktop + mobile screenshots</summary>\n\n![Atlas open belt WebKit](${raw}/open-belt-webkit.png)\n\n![Atlas crossed belt WebKit](${raw}/crossed-belt-webkit.png)\n\n![Atlas open belt mobile WebKit](${raw}/open-belt-mobile-webkit.png)\n\n![Atlas crossed belt mobile WebKit](${raw}/crossed-belt-mobile-webkit.png)\n</details>\n\n**Do not merge until both desktop and mobile visual review are explicitly approved.**`;
+            const visualBody = `${visualMarker}\n## Visual review — approval required before merge\n\nTested head: \`${process.env.TESTED_SHA}\`\n\n### Brown / 507 movement 1 reference\n![Brown / 507 movement 1](https://507movements.com/img/mm_001.png)\n\n### Atlas first viewport — Chromium\n\n![Atlas desktop first viewport Chromium](${raw}/desktop-fold-chromium.png)\n\n### Atlas desktop mechanism — Chromium\n\n![Atlas open belt Chromium](${raw}/open-belt-chromium.png)\n\n![Atlas crossed belt Chromium](${raw}/crossed-belt-chromium.png)\n\n### Atlas mobile — Chromium\n\n![Atlas open belt mobile Chromium](${raw}/open-belt-mobile-chromium.png)\n\n![Atlas crossed belt mobile Chromium](${raw}/crossed-belt-mobile-chromium.png)\n\n<details><summary>WebKit first viewport + desktop + mobile screenshots</summary>\n\n![Atlas desktop first viewport WebKit](${raw}/desktop-fold-webkit.png)\n\n![Atlas open belt WebKit](${raw}/open-belt-webkit.png)\n\n![Atlas crossed belt WebKit](${raw}/crossed-belt-webkit.png)\n\n![Atlas open belt mobile WebKit](${raw}/open-belt-mobile-webkit.png)\n\n![Atlas crossed belt mobile WebKit](${raw}/crossed-belt-mobile-webkit.png)\n</details>\n\n**Do not merge until first-viewport, desktop mechanism, and mobile visual review are explicitly approved.**`;
             const existingVisual = comments.find(comment => comment.user?.type === 'Bot' && comment.body?.includes(visualMarker));
             if (existingVisual) {
               await github.rest.issues.updateComment({ owner, repo, comment_id: existingVisual.id, body: visualBody });

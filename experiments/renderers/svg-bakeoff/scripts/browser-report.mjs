@@ -87,6 +87,38 @@ async function assertResponsiveRopeStroke(page, fixture) {
   return result;
 }
 
+async function assertDesktopLabAboveFold(page, fixture) {
+  const result = await page.locator('[data-belt-drive-lab]').evaluate((lab) => {
+    const renderer = lab.querySelector('.lab-renderer');
+    if (!(renderer instanceof HTMLElement)) throw new Error('Missing desktop mechanism renderer');
+    const labBox = lab.getBoundingClientRect();
+    const rendererBox = renderer.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const visibleRendererHeight = Math.max(
+      0,
+      Math.min(rendererBox.bottom, viewportHeight) - Math.max(rendererBox.top, 0),
+    );
+    return {
+      viewportHeight,
+      labTop: labBox.top,
+      rendererTop: rendererBox.top,
+      rendererHeight: rendererBox.height,
+      visibleRendererHeight,
+      visibleRendererFraction: visibleRendererHeight / rendererBox.height,
+    };
+  });
+
+  if (result.labTop > 335) {
+    throw new Error(`${fixture} lab starts at ${result.labTop.toFixed(1)}px; expected at or above 335px.`);
+  }
+  if (result.visibleRendererHeight < 500) {
+    throw new Error(
+      `${fixture} exposes only ${result.visibleRendererHeight.toFixed(1)}px of mechanism canvas in the first viewport; expected at least 500px.`,
+    );
+  }
+  return result;
+}
+
 async function assertMobileStatusBelowRenderer(page, fixture) {
   const result = await page.locator('[data-belt-drive-lab]').evaluate((root) => {
     const stage = root.querySelector('.lab-stage');
@@ -146,6 +178,15 @@ try {
     const screenshot = `renderer-bakeoff-${name}.png`;
     await page.screenshot({ path: screenshot, fullPage: true });
 
+    // A laptop-height first-viewport gate checks page composition, not just the
+    // renderer crop. The lab should be established early enough that a large
+    // portion of the actual mechanism canvas is visible immediately on load.
+    const foldPage = await browser.newPage({ viewport: { width: 1220, height: 900 } });
+    await productRenderer(foldPage, '/mechanisms/open-belt-drive/', 'open-belt desktop fold');
+    const desktopFoldCheck = await assertDesktopLabAboveFold(foldPage, 'open-belt desktop fold');
+    const desktopFoldScreenshot = `renderer-bakeoff-desktop-fold-${name}.png`;
+    await foldPage.screenshot({ path: desktopFoldScreenshot, fullPage: false });
+
     // Desktop product evidence remains calibrated to Atlas's 1180px max-width
     // shell. At this width the responsive stroke option intentionally leaves the
     // reviewed nominal line weights effectively unchanged.
@@ -185,6 +226,8 @@ try {
     results[name] = {
       metrics,
       screenshot,
+      desktopFoldScreenshot,
+      desktopFoldCheck,
       goldenScreenshots,
       mobileGoldenScreenshots,
       responsiveStrokeChecks: {

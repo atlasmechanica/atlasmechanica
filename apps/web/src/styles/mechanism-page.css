@@ -1,0 +1,25 @@
+@media (min-width: 641px) {
+  /* Mechanism pages should establish the interactive lab within the first
+     desktop viewport. Tighten only the vertical rhythm above the lab; keep the
+     title scale and the 8:5 mechanism surface unchanged. */
+  .page:has(.mechanism-heading) {
+    padding-top: 28px;
+  }
+
+  .page:has(.mechanism-heading) .breadcrumbs {
+    margin-bottom: 16px;
+  }
+
+  .page:has(.mechanism-heading) .mechanism-heading {
+    margin-bottom: 18px;
+  }
+
+  .page:has(.mechanism-heading) .mechanism-heading .eyebrow {
+    margin: 0 0 8px;
+  }
+
+  .page:has(.mechanism-heading) .mechanism-heading > div > p:not(.eyebrow) {
+    margin-top: 10px;
+    line-height: 1.45;
+  }
+}

@@ -13,10 +13,11 @@ import type { MechanismScene, ScenePrimitive, Vec2 } from './types.js';
 export { buildSchematicMechanismScene };
 
 const BROWN_ILLUSTRATION_STROKE_WEIGHT = 1.35;
-const BROWN_FRAMED_WORLD_WIDTH = 0.64;
-const BROWN_STROKE_REFERENCE_WIDTH_PX = 1180;
-const BROWN_WORLD_UNITS_PER_REFERENCE_PIXEL =
-  BROWN_FRAMED_WORLD_WIDTH / BROWN_STROKE_REFERENCE_WIDTH_PX;
+const BROWN_RENDER_ASPECT = 640 / 400;
+const BROWN_PRODUCT_STROKE_REFERENCE_WIDTH_PX = 1180;
+const DEFAULT_RENDER_STROKE_REFERENCE_WIDTH_PX = 640;
+const BROWN_FRAME_PADDING = 0.015;
+const BROWN_MIN_FRAME_HEIGHT = 0.30;
 
 function normalizedPositive(angle: number): number {
   const full = Math.PI * 2;
@@ -128,23 +129,54 @@ function correctOpenEqualPulleyWrap(scene: MechanismScene): MechanismScene {
   };
 }
 
-function frameBrownBeltPlate(scene: MechanismScene): MechanismScene {
-  if (!scene.id.startsWith('belt-')) return scene;
+function isVerticalBeltLayout(scene: MechanismScene): boolean {
   const driver = scene.primitives.find((primitive) => primitive.id === 'belt-driver');
   const driven = scene.primitives.find((primitive) => primitive.id === 'belt-driven');
-  if (driver?.type !== 'circle' || driven?.type !== 'circle') return scene;
-
+  if (driver?.type !== 'circle' || driven?.type !== 'circle') return false;
   const dx = Math.abs(driven.center.x - driver.center.x);
   const dy = Math.abs(driven.center.y - driver.center.y);
-  if (dy <= dx) return scene;
+  return dy > dx;
+}
+
+function frameBrownBeltPlate(
+  scene: MechanismScene,
+  schematic: MechanismScene,
+): MechanismScene {
+  if (!scene.id.startsWith('belt-') || !isVerticalBeltLayout(schematic)) return scene;
+  const driver = schematic.primitives.find((primitive) => primitive.id === 'belt-driver');
+  const driven = schematic.primitives.find((primitive) => primitive.id === 'belt-driven');
+  if (driver?.type !== 'circle' || driven?.type !== 'circle') return scene;
+
+  // Frame the physical pitch circles rather than the presentation-shrunk cast
+  // rims. Brown's vertical belt plate should read as a centered mechanism, not
+  // a small drawing parked low in a fixed 640×400 mm world window. Keep the
+  // renderer's 8:5 aspect so circles remain circles, but fit the current pulley
+  // span with a modest 15 mm allowance at each end. A 300 mm minimum keeps the
+  // framing stable as the user shortens the center distance; larger distances
+  // expand the plate automatically instead of clipping the driven pulley.
+  const minContentY = Math.min(
+    driver.center.y - driver.radius,
+    driven.center.y - driven.radius,
+  );
+  const maxContentY = Math.max(
+    driver.center.y + driver.radius,
+    driven.center.y + driven.radius,
+  );
+  const centerX = (driver.center.x + driven.center.x) / 2;
+  const centerY = (minContentY + maxContentY) / 2;
+  const frameHeight = Math.max(
+    BROWN_MIN_FRAME_HEIGHT,
+    maxContentY - minContentY + BROWN_FRAME_PADDING * 2,
+  );
+  const frameWidth = frameHeight * BROWN_RENDER_ASPECT;
 
   return {
     ...scene,
     viewport: {
-      minX: -0.32,
-      maxX: 0.32,
-      minY: -0.07,
-      maxY: 0.33,
+      minX: centerX - frameWidth / 2,
+      maxX: centerX + frameWidth / 2,
+      minY: centerY - frameHeight / 2,
+      maxY: centerY + frameHeight / 2,
     },
   };
 }
@@ -157,6 +189,18 @@ function clearBrownPulleyFromRope(
 
   const rope = scene.primitives.find((primitive) => primitive.id === 'belt-band-underlay');
   if (rope?.type !== 'polyline' || rope.width === undefined) return scene;
+
+  // Non-scaling strokes are authored in screen pixels while contact geometry
+  // lives in world units. The fitted Brown product plate is calibrated at the
+  // 1180 px website reference width; ordinary horizontal/default belt scenes
+  // still render against the native 640 px surface. Keep those two presentation
+  // contracts distinct so fitting the Brown plate cannot halve clearance in the
+  // generic renderer/bake-off path.
+  const framedWorldWidth = scene.viewport.maxX - scene.viewport.minX;
+  const strokeReferenceWidthPx = isVerticalBeltLayout(schematic)
+    ? BROWN_PRODUCT_STROKE_REFERENCE_WIDTH_PX
+    : DEFAULT_RENDER_STROKE_REFERENCE_WIDTH_PX;
+  const worldUnitsPerReferencePixel = framedWorldWidth / strokeReferenceWidthPx;
 
   const adjustedRadii = new Map<string, { outer: number; inner: number }>();
   for (const prefix of ['belt-driver', 'belt-driven'] as const) {
@@ -175,7 +219,7 @@ function clearBrownPulleyFromRope(
     const halfStrokeClearancePx =
       ((rope.width + visible.width) * BROWN_ILLUSTRATION_STROKE_WEIGHT) / 2;
     const targetOuterRadius =
-      physical.radius - halfStrokeClearancePx * BROWN_WORLD_UNITS_PER_REFERENCE_PIXEL;
+      physical.radius - halfStrokeClearancePx * worldUnitsPerReferencePixel;
     if (!(targetOuterRadius > 0)) continue;
 
     const scale = Math.min(1, targetOuterRadius / visible.radius);
@@ -299,7 +343,8 @@ function paintBrownRopeOverPulley(scene: MechanismScene): MechanismScene {
 export function buildMechanismScene(options: SceneBuildOptions) {
   const schematic = correctOpenEqualPulleyWrap(buildSchematicMechanismScene(options));
   const enriched = enrichMechanicalIllustration(schematic);
-  const cleared = clearBrownPulleyFromRope(enriched, schematic);
+  const framed = frameBrownBeltPlate(enriched, schematic);
+  const cleared = clearBrownPulleyFromRope(framed, schematic);
   const illustrated = weightBrownIllustration(replaceWithClassicCastSpokes(cleared));
-  return frameBrownBeltPlate(paintBrownRopeOverPulley(illustrated));
+  return paintBrownRopeOverPulley(illustrated);
 }

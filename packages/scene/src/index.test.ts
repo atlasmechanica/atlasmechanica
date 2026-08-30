@@ -56,12 +56,12 @@ function midpoint(a: Vec2, b: Vec2): Vec2 {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
 
-function productionScene(): MechanismScene {
+function productionScene(centerMm = 180): MechanismScene {
   const model = verticalReference(openBeltDriveModel);
   const parameters = {
     'driver-radius': quantity(45, 'mm'),
     'driven-radius': quantity(45, 'mm'),
-    'center-distance': quantity(180, 'mm'),
+    'center-distance': quantity(centerMm, 'mm'),
   };
   const state = analyticBeltAdapter.compile(model).createSession().evaluate({
     coordinates: { 'driver-angle': quantity(0, 'deg') },
@@ -89,6 +89,36 @@ describe('production Brown belt scene', () => {
     expect(nearest(driverExterior)).toBeLessThan(1e-9);
     expect(nearest(drivenInterior)).toBeGreaterThan(0.04);
     expect(nearest(driverInterior)).toBeGreaterThan(0.04);
+  });
+
+  it('fits and centers the Brown reference mechanism in an 8:5 plate', () => {
+    const scene = productionScene();
+    const width = scene.viewport.maxX - scene.viewport.minX;
+    const height = scene.viewport.maxY - scene.viewport.minY;
+    const centerX = (scene.viewport.minX + scene.viewport.maxX) / 2;
+    const centerY = (scene.viewport.minY + scene.viewport.maxY) / 2;
+
+    expect(width / height).toBeCloseTo(1.6, 12);
+    expect(height).toBeCloseTo(0.30, 12);
+    expect(width).toBeCloseTo(0.48, 12);
+    expect(centerX).toBeCloseTo(0, 12);
+    expect(centerY).toBeCloseTo(0.09, 12);
+    expect(scene.viewport.minY).toBeCloseTo(-0.06, 12);
+    expect(scene.viewport.maxY).toBeCloseTo(0.24, 12);
+  });
+
+  it('expands the Brown plate when center distance grows instead of clipping', () => {
+    const scene = productionScene(260);
+    const width = scene.viewport.maxX - scene.viewport.minX;
+    const height = scene.viewport.maxY - scene.viewport.minY;
+
+    expect(width / height).toBeCloseTo(1.6, 12);
+    expect(height).toBeCloseTo(0.38, 12);
+    expect(width).toBeCloseTo(0.608, 12);
+    expect(scene.viewport.minY).toBeCloseTo(-0.06, 12);
+    expect(scene.viewport.maxY).toBeCloseTo(0.32, 12);
+    expect(scene.viewport.minY).toBeLessThan(-0.045);
+    expect(scene.viewport.maxY).toBeGreaterThan(0.305);
   });
 
   it('uses clearly tapered open cast-spoke edges that remain clear of hub and inner rim', () => {
@@ -136,7 +166,8 @@ describe('production Brown belt scene', () => {
     const contact = rope.points[0];
     if (contact === undefined) throw new TypeError('Missing physical rope contact');
     const pitchRadius = distance(driver.center, contact);
-    const worldUnitsPerReferencePixel = 0.64 / 1180;
+    const worldWidth = scene.viewport.maxX - scene.viewport.minX;
+    const worldUnitsPerReferencePixel = worldWidth / 1180;
     const ropeInnerRadius = pitchRadius - rope.width * worldUnitsPerReferencePixel / 2;
     const rimOuterRadius = driver.radius + driver.width * worldUnitsPerReferencePixel / 2;
 
