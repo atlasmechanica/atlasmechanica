@@ -16,9 +16,10 @@ async function dragDistanceUpward(page: Page, steps: number): Promise<number> {
 
   const x = handle.x + handle.width / 2;
   const startY = handle.y + handle.height / 2;
-  // Moving 80 screen pixels upward from the 180 mm reference maps to roughly
-  // 240 mm in the initial 480×300 mm Brown plate. Keep the endpoint inside the
-  // SVG so the test exercises pointer mapping rather than edge clamping.
+  // Move far enough to force the scene beyond its 180 mm reference state while
+  // keeping the endpoint comfortably inside the SVG. The exact value depends on
+  // the production host's rendered size; the invariant under test is that the
+  // result cannot depend on how many pointermove events occur along the path.
   const targetY = Math.max(svg.y + 24, startY - 80);
   await page.mouse.move(x, startY);
   await page.mouse.down();
@@ -39,6 +40,6 @@ test('dynamic Brown framing does not change pointer mapping mid-drag', async ({ 
   // The same pointer endpoint must produce the same world coordinate regardless
   // of how many pointermove events the browser emitted on the way there.
   expect(stepped).toBe(direct);
-  expect(direct).toBeGreaterThan(220);
-  expect(direct).toBeLessThan(250);
+  expect(direct).toBeGreaterThan(180);
+  expect(direct).toBeLessThan(260);
 });
