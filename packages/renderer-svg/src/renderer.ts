@@ -63,6 +63,7 @@ interface ActiveHandle {
   id: string;
   handle: HandlePrimitive['handle'];
   pointerId: number;
+  viewport: MechanismScene['viewport'];
 }
 
 function svgElement<K extends keyof SVGElementTagNameMap>(name: K): SVGElementTagNameMap[K] {
@@ -287,9 +288,18 @@ export function createSvgMechanismRenderer(
 
     group.addEventListener('pointerdown', (event) => {
       const handle = group.dataset.handle as HandlePrimitive['handle'] | undefined;
-      if (handle === undefined || handle === 'invalid') return;
+      if (handle === undefined || handle === 'invalid' || currentScene === undefined) return;
       event.preventDefault();
-      activeHandle = { id: primitive.id, handle, pointerId: event.pointerId };
+      // A drag gesture must use one world transform from pointer-down through
+      // pointer-up. The scene is allowed to reframe while a parameter changes,
+      // but feeding those new bounds into the next pointermove makes the handle
+      // chase the cursor and makes the result depend on event frequency.
+      activeHandle = {
+        id: primitive.id,
+        handle,
+        pointerId: event.pointerId,
+        viewport: { ...currentScene.viewport },
+      };
       svg.setPointerCapture(event.pointerId);
     });
 
@@ -416,12 +426,12 @@ export function createSvgMechanismRenderer(
   };
 
   const pointerMove = (event: PointerEvent): void => {
-    if (activeHandle === undefined || currentScene === undefined) return;
+    if (activeHandle === undefined) return;
     const point = clientPointToWorld(
       event.clientX,
       event.clientY,
       svg.getBoundingClientRect(),
-      currentScene.viewport,
+      activeHandle.viewport,
       size,
     );
     if (activeHandle.handle === 'input') callbacks.onInputDrag?.(point);
