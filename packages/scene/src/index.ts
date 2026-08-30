@@ -14,7 +14,8 @@ export { buildSchematicMechanismScene };
 
 const BROWN_ILLUSTRATION_STROKE_WEIGHT = 1.35;
 const BROWN_RENDER_ASPECT = 640 / 400;
-const BROWN_STROKE_REFERENCE_WIDTH_PX = 1180;
+const BROWN_PRODUCT_STROKE_REFERENCE_WIDTH_PX = 1180;
+const DEFAULT_RENDER_STROKE_REFERENCE_WIDTH_PX = 640;
 const BROWN_FRAME_PADDING = 0.015;
 const BROWN_MIN_FRAME_HEIGHT = 0.30;
 
@@ -128,18 +129,23 @@ function correctOpenEqualPulleyWrap(scene: MechanismScene): MechanismScene {
   };
 }
 
+function isVerticalBeltLayout(scene: MechanismScene): boolean {
+  const driver = scene.primitives.find((primitive) => primitive.id === 'belt-driver');
+  const driven = scene.primitives.find((primitive) => primitive.id === 'belt-driven');
+  if (driver?.type !== 'circle' || driven?.type !== 'circle') return false;
+  const dx = Math.abs(driven.center.x - driver.center.x);
+  const dy = Math.abs(driven.center.y - driver.center.y);
+  return dy > dx;
+}
+
 function frameBrownBeltPlate(
   scene: MechanismScene,
   schematic: MechanismScene,
 ): MechanismScene {
-  if (!scene.id.startsWith('belt-')) return scene;
+  if (!scene.id.startsWith('belt-') || !isVerticalBeltLayout(schematic)) return scene;
   const driver = schematic.primitives.find((primitive) => primitive.id === 'belt-driver');
   const driven = schematic.primitives.find((primitive) => primitive.id === 'belt-driven');
   if (driver?.type !== 'circle' || driven?.type !== 'circle') return scene;
-
-  const dx = Math.abs(driven.center.x - driver.center.x);
-  const dy = Math.abs(driven.center.y - driver.center.y);
-  if (dy <= dx) return scene;
 
   // Frame the physical pitch circles rather than the presentation-shrunk cast
   // rims. Brown's vertical belt plate should read as a centered mechanism, not
@@ -184,13 +190,17 @@ function clearBrownPulleyFromRope(
   const rope = scene.primitives.find((primitive) => primitive.id === 'belt-band-underlay');
   if (rope?.type !== 'polyline' || rope.width === undefined) return scene;
 
-  // Non-scaling strokes are authored in screen pixels, while the pulley/rope
-  // contact geometry lives in world units. Derive the conversion from the
-  // fitted viewport so optical tangency remains exact when the Brown plate
-  // zooms in or expands with center distance.
+  // Non-scaling strokes are authored in screen pixels while contact geometry
+  // lives in world units. The fitted Brown product plate is calibrated at the
+  // 1180 px website reference width; ordinary horizontal/default belt scenes
+  // still render against the native 640 px surface. Keep those two presentation
+  // contracts distinct so fitting the Brown plate cannot halve clearance in the
+  // generic renderer/bake-off path.
   const framedWorldWidth = scene.viewport.maxX - scene.viewport.minX;
-  const worldUnitsPerReferencePixel =
-    framedWorldWidth / BROWN_STROKE_REFERENCE_WIDTH_PX;
+  const strokeReferenceWidthPx = isVerticalBeltLayout(schematic)
+    ? BROWN_PRODUCT_STROKE_REFERENCE_WIDTH_PX
+    : DEFAULT_RENDER_STROKE_REFERENCE_WIDTH_PX;
+  const worldUnitsPerReferencePixel = framedWorldWidth / strokeReferenceWidthPx;
 
   const adjustedRadii = new Map<string, { outer: number; inner: number }>();
   for (const prefix of ['belt-driver', 'belt-driven'] as const) {
