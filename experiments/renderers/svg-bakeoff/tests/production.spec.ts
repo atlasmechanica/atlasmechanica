@@ -99,23 +99,28 @@ test('production invalid parameter drag keeps the last valid crossed-belt state'
   const handle = await page.locator('#production-host [data-primitive="belt-distance-handle"] .atlas-hit-fill').boundingBox();
   if (!handle) throw new Error('Missing production parameter handle');
 
-  // Brown's reference composition is vertical, so center distance is the world-Y
-  // coordinate of the driven shaft. Aim at 50 mm in the fixed portrait viewport.
+  // Aim at a world center distance of 50 mm without assuming a particular Brown
+  // viewport. The driver/driven projected centers encode the current world-Y
+  // mapping, so interpolate between their SVG positions and then transform that
+  // SVG point into client coordinates. This remains stable as presentation
+  // framing evolves while still exercising the real pointer path.
   const target = await page.locator('#production-host svg').evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    const viewBoxWidth = 640;
-    const viewBoxHeight = 400;
-    const scale = Math.min(rect.width / viewBoxWidth, rect.height / viewBoxHeight);
-    const renderedWidth = viewBoxWidth * scale;
-    const renderedHeight = viewBoxHeight * scale;
-    const offsetX = (rect.width - renderedWidth) / 2;
-    const offsetY = (rect.height - renderedHeight) / 2;
-    const tx = (0 - (-0.13)) / (0.13 - (-0.13));
-    const ty = (0.33 - 0.05) / (0.33 - (-0.07));
-    return {
-      x: rect.left + offsetX + tx * renderedWidth,
-      y: rect.top + offsetY + ty * renderedHeight,
-    };
+    if (!(element instanceof SVGSVGElement)) throw new TypeError('Missing production SVG');
+    const driver = element.querySelector('[data-primitive="belt-driver"] .atlas-visible');
+    const driven = element.querySelector('[data-primitive="belt-driven"] .atlas-visible');
+    if (!(driver instanceof SVGEllipseElement) || !(driven instanceof SVGEllipseElement)) {
+      throw new TypeError('Missing projected pulley centers');
+    }
+    const driverCx = Number(driver.getAttribute('cx'));
+    const driverCy = Number(driver.getAttribute('cy'));
+    const drivenCy = Number(driven.getAttribute('cy'));
+    const point = element.createSVGPoint();
+    point.x = driverCx;
+    point.y = driverCy + (drivenCy - driverCy) * (50 / 180);
+    const matrix = element.getScreenCTM();
+    if (matrix === null) throw new TypeError('Missing SVG screen transform');
+    const client = point.matrixTransform(matrix);
+    return { x: client.x, y: client.y };
   });
 
   await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
