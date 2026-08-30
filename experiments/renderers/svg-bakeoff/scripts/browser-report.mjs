@@ -42,8 +42,13 @@ async function stopProcessGroup(child) {
 
 async function productRenderer(page, route, fixture) {
   await page.goto(`${webURL}${route}`);
-  const renderer = page.locator('[data-belt-drive-lab] .lab-renderer');
+  const lab = page.locator('[data-belt-drive-lab]');
+  const renderer = lab.locator('.lab-renderer');
   await renderer.locator('svg').waitFor({ state: 'visible' });
+  await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-zoom') === '1.00');
+  if ((page.viewportSize()?.width ?? 0) > 640) {
+    await page.waitForFunction(() => Boolean(document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-fit-viewport-height')));
+  }
   const box = await renderer.boundingBox();
   if (box === null) throw new Error(`Missing website renderer for ${fixture}`);
   if (Math.abs(box.width / box.height - 8 / 5) > 0.01) {
@@ -89,10 +94,16 @@ async function assertResponsiveRopeStroke(page, fixture) {
 
 async function assertDesktopLabAboveFold(page, fixture) {
   const result = await page.locator('[data-belt-drive-lab]').evaluate((lab) => {
+    const viewport = lab.querySelector('.lab-viewport');
     const renderer = lab.querySelector('.lab-renderer');
-    if (!(renderer instanceof HTMLElement)) throw new Error('Missing desktop mechanism renderer');
+    const driven = lab.querySelector('[data-primitive="belt-driven"] .atlas-visible');
+    if (!(viewport instanceof HTMLElement) || !(renderer instanceof HTMLElement) || !(driven instanceof SVGElement)) {
+      throw new Error('Missing fitted desktop viewport, renderer, or driven pulley');
+    }
     const labBox = lab.getBoundingClientRect();
+    const viewportBox = viewport.getBoundingClientRect();
     const rendererBox = renderer.getBoundingClientRect();
+    const drivenBox = driven.getBoundingClientRect();
     const viewportHeight = window.innerHeight;
     const visibleRendererHeight = Math.max(
       0,
@@ -101,22 +112,72 @@ async function assertDesktopLabAboveFold(page, fixture) {
     return {
       viewportHeight,
       labTop: labBox.top,
+      viewportTop: viewportBox.top,
+      viewportFrameHeight: viewportBox.height,
       rendererTop: rendererBox.top,
+      rendererBottom: rendererBox.bottom,
       rendererHeight: rendererBox.height,
+      drivenBottom: drivenBox.bottom,
       visibleRendererHeight,
       visibleRendererFraction: visibleRendererHeight / rendererBox.height,
+      fitViewportHeight: Number(lab.getAttribute('data-fit-viewport-height')),
+      fitCameraWidth: Number(lab.getAttribute('data-fit-camera-width')),
     };
   });
 
   if (result.labTop > 335) {
     throw new Error(`${fixture} lab starts at ${result.labTop.toFixed(1)}px; expected at or above 335px.`);
   }
-  if (result.visibleRendererHeight < 500) {
+  if (result.visibleRendererFraction < 0.995) {
     throw new Error(
-      `${fixture} exposes only ${result.visibleRendererHeight.toFixed(1)}px of mechanism canvas in the first viewport; expected at least 500px.`,
+      `${fixture} exposes only ${(result.visibleRendererFraction * 100).toFixed(1)}% of the mechanism canvas on load; expected the complete fitted view.`,
     );
   }
+  if (result.rendererBottom > result.viewportHeight - 12) {
+    throw new Error(
+      `${fixture} renderer ends at ${result.rendererBottom.toFixed(1)}px in a ${result.viewportHeight}px viewport; expected it fully above the fold.`,
+    );
+  }
+  if (result.drivenBottom > result.viewportHeight - 12) {
+    throw new Error(`${fixture} lower pulley remains below the initial viewport at ${result.drivenBottom.toFixed(1)}px.`);
+  }
   return result;
+}
+
+async function assertViewZoomControls(page, fixture) {
+  const lab = page.locator('[data-belt-drive-lab]');
+  const renderer = lab.locator('.lab-renderer');
+  const zoomIn = lab.locator('[data-zoom-in]');
+  const fit = lab.locator('[data-zoom-fit]');
+  const initial = await renderer.boundingBox();
+  if (initial === null) throw new Error(`Missing renderer before ${fixture} zoom check.`);
+
+  await zoomIn.click();
+  await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-zoom') === '1.20');
+  const zoomed = await renderer.boundingBox();
+  if (zoomed === null) throw new Error(`Missing renderer after ${fixture} zoom-in.`);
+  const widthRatio = zoomed.width / initial.width;
+  const heightRatio = zoomed.height / initial.height;
+  if (Math.abs(widthRatio - 1.2) > 0.02 || Math.abs(heightRatio - 1.2) > 0.02) {
+    throw new Error(`${fixture} zoom-in scaled renderer by ${widthRatio.toFixed(3)}×${heightRatio.toFixed(3)}; expected 1.2×.`);
+  }
+
+  await fit.click();
+  await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-zoom') === '1.00');
+  const fitted = await renderer.boundingBox();
+  if (fitted === null) throw new Error(`Missing renderer after ${fixture} fit reset.`);
+  if (Math.abs(fitted.width - initial.width) > 1 || Math.abs(fitted.height - initial.height) > 1) {
+    throw new Error(`${fixture} fit reset did not restore the initial renderer size.`);
+  }
+
+  return {
+    initialWidth: initial.width,
+    initialHeight: initial.height,
+    zoomedWidth: zoomed.width,
+    zoomedHeight: zoomed.height,
+    widthRatio,
+    heightRatio,
+  };
 }
 
 async function assertMobileStatusBelowRenderer(page, fixture) {
@@ -178,34 +239,35 @@ try {
     const screenshot = `renderer-bakeoff-${name}.png`;
     await page.screenshot({ path: screenshot, fullPage: true });
 
-    // A laptop-height first-viewport gate checks page composition, not just the
-    // renderer crop. The lab should be established early enough that a large
-    // portion of the actual mechanism canvas is visible immediately on load.
+    // The first-load product camera should fit the entire mechanism inside the
+    // remaining laptop viewport. The lower pulley must be visible without any
+    // initial page scroll, rather than merely exposing a large cropped region.
     const foldPage = await browser.newPage({ viewport: { width: 1220, height: 900 } });
     await productRenderer(foldPage, '/mechanisms/open-belt-drive/', 'open-belt desktop fold');
     const desktopFoldCheck = await assertDesktopLabAboveFold(foldPage, 'open-belt desktop fold');
     const desktopFoldScreenshot = `renderer-bakeoff-desktop-fold-${name}.png`;
     await foldPage.screenshot({ path: desktopFoldScreenshot, fullPage: false });
 
-    // Desktop product evidence remains calibrated to Atlas's 1180px max-width
-    // shell. At this width the responsive stroke option intentionally leaves the
-    // reviewed nominal line weights effectively unchanged.
+    // Desktop product evidence uses the same viewport-fit camera as the website.
+    // Stroke weights continue to scale against the actual fitted renderer width.
     const sitePage = await browser.newPage({ viewport: { width: 1220, height: 1100 } });
     const goldenScreenshots = {};
     const desktopStrokeChecks = {};
+    const zoomChecks = {};
     for (const [fixture, route] of [
       ['open-belt', '/mechanisms/open-belt-drive/'],
       ['crossed-belt', '/mechanisms/crossed-belt-drive/'],
     ]) {
       const { renderer } = await productRenderer(sitePage, route, fixture);
       desktopStrokeChecks[fixture] = await assertResponsiveRopeStroke(sitePage, fixture);
+      zoomChecks[fixture] = await assertViewZoomControls(sitePage, fixture);
       const path = `renderer-bakeoff-${fixture}-${name}.png`;
       await renderer.screenshot({ path });
       goldenScreenshots[fixture] = path;
     }
 
-    // Mobile is a separate visual gate. Capture the complete stage rather than
-    // only the SVG so the status-bubble composition is part of visual review.
+    // Mobile remains a separate visual gate. Capture the complete stage so the
+    // status-bubble composition and compact zoom controls are part of review.
     const mobilePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
     const mobileGoldenScreenshots = {};
     const mobileStrokeChecks = {};
@@ -230,6 +292,7 @@ try {
       desktopFoldCheck,
       goldenScreenshots,
       mobileGoldenScreenshots,
+      zoomChecks,
       responsiveStrokeChecks: {
         desktop: desktopStrokeChecks,
         mobile: mobileStrokeChecks,
