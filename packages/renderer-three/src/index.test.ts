@@ -44,4 +44,9 @@ describe('beltDepthProfile', () => {
     expect(profile[2]).toBeLessThan(0);
     expect(profile[3]).toBeLessThan(0);
   });
+
+  it('keeps the duplicated closing vertex at the same depth as the first vertex', () => {
+    const profile = beltDepthProfile(scene, belt, 0.01);
+    expect(profile.at(-1)).toBe(profile[0]);
+  });
 });
