@@ -30,7 +30,16 @@ const direction = crossed ? 'Reversed' : 'Same';
   </div>
 
   <div class="lab-stage">
-    <div class="lab-renderer" data-renderer aria-label={`Interactive ${routing} belt drive diagram`}></div>
+    <div class="lab-viewport" data-lab-viewport>
+      <div class="lab-camera" data-lab-camera>
+        <div class="lab-renderer" data-renderer aria-label={`Interactive ${routing} belt drive diagram`}></div>
+      </div>
+      <div class="lab-view-controls" role="group" aria-label="Diagram zoom">
+        <button type="button" data-zoom-out aria-label="Zoom out">−</button>
+        <button type="button" data-zoom-fit aria-label="Fit mechanism to viewport">100%</button>
+        <button type="button" data-zoom-in aria-label="Zoom in">+</button>
+      </div>
+    </div>
     <div class="lab-status" data-status aria-live="polite">Drag the mechanism or change a parameter.</div>
     <noscript>
       <p style="padding: 1rem">The interactive diagram requires JavaScript; the explanation and equations below remain available.</p>
@@ -72,18 +81,97 @@ const direction = crossed ? 'Reversed' : 'Same';
 </script>
 
 <style>
-  /* The native renderer projects into a 640×400 (8:5) viewBox. Keep the actual
-     product surface at that same aspect ratio so responsive layout scales the
-     mechanism and the review harness identically instead of letterboxing a
-     640×400 drawing inside the old fixed 430px-tall stage. */
   .lab-stage {
     min-height: 0;
   }
 
-  .lab-renderer {
-    height: auto;
+  /* The stage is a camera viewport rather than a canvas whose height is derived
+     from the full desktop width. The product script sizes this viewport to the
+     remaining first-screen height, then fits an undistorted 8:5 renderer inside
+     it. Zoom scales only the camera content, so inspecting detail never makes
+     the document itself taller. */
+  .lab-viewport {
+    position: relative;
+    width: 100%;
     min-height: 0;
     aspect-ratio: 8 / 5;
+    overflow: hidden;
+  }
+
+  .lab-camera {
+    --lab-zoom: 1;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 100%;
+    height: 100%;
+    transform: translate(-50%, -50%) scale(var(--lab-zoom));
+    transform-origin: center;
+  }
+
+  .lab-renderer {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .lab-view-controls {
+    position: absolute;
+    z-index: 2;
+    top: 12px;
+    right: 12px;
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(251,250,246,.92);
+    box-shadow: 0 2px 8px rgba(28,29,27,.07);
+  }
+
+  .lab-view-controls button {
+    min-width: 30px;
+    min-height: 30px;
+    padding: 0 7px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--ink);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .lab-view-controls button:hover,
+  .lab-view-controls button:focus-visible {
+    background: rgba(233,228,216,.6);
+  }
+
+  .lab-view-controls button:disabled {
+    opacity: .35;
+    cursor: default;
+  }
+
+  [data-zoom-fit] {
+    min-width: 48px !important;
+    font-family: var(--mono);
+    font-size: 10px !important;
+  }
+
+  @media (min-width: 641px) {
+    .lab-viewport {
+      /* JavaScript replaces this fallback with the exact height remaining in
+         the current viewport, capped so very tall monitors do not inflate the
+         mechanism back to the oversized presentation. */
+      height: min(50svh, 520px);
+      aspect-ratio: auto;
+    }
+
+    .lab-camera {
+      width: min(100%, 832px);
+      height: auto;
+      aspect-ratio: 8 / 5;
+    }
   }
 
   @media (max-width: 640px) {
@@ -93,15 +181,18 @@ const direction = crossed ? 'Reversed' : 'Same';
       min-height: 0;
     }
 
-    /* The desktop status chip intentionally floats over the generous stage, but
-       the compact mobile 8:5 surface has no spare vertical field. Put the status
-       back into normal flow below the renderer so no message can obscure the
-       mechanism while retaining the same bubble treatment. */
     .lab-status {
       position: static;
       width: fit-content;
       max-width: calc(100% - 30px);
       margin: 8px 15px 14px;
+    }
+
+    .lab-view-controls {
+      top: 8px;
+      right: 8px;
+      transform: scale(.92);
+      transform-origin: top right;
     }
   }
 </style>

@@ -11,6 +11,14 @@ type BeltRouting = 'open' | 'crossed';
 
 const referencePulleyRadiusMm = 45;
 const minimumCenterMm = 95;
+const desktopBreakpoint = '(min-width: 641px)';
+const desktopViewportMaxHeightPx = 520;
+const desktopViewportMinHeightPx = 160;
+const desktopViewportBottomClearancePx = 18;
+const rendererAspect = 8 / 5;
+const zoomMinimum = 0.6;
+const zoomMaximum = 2.4;
+const zoomStep = 0.2;
 
 function required<T extends Element>(element: T | null, name: string): T {
   if (element === null) throw new TypeError(`Belt drive lab is missing ${name}`);
@@ -93,9 +101,14 @@ function normalizedDegrees(value: number): number {
 for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]')) {
   const routing = routingFor(root);
   const model = modelFor(routing);
+  const viewport = required(root.querySelector<HTMLElement>('[data-lab-viewport]'), 'camera viewport');
+  const camera = required(root.querySelector<HTMLElement>('[data-lab-camera]'), 'camera');
   const host = required(root.querySelector<HTMLElement>('[data-renderer]'), 'renderer host');
   const playButton = required(root.querySelector<HTMLButtonElement>('[data-play]'), 'play button');
   const resetButton = required(root.querySelector<HTMLButtonElement>('[data-reset]'), 'reset button');
+  const zoomOutButton = required(root.querySelector<HTMLButtonElement>('[data-zoom-out]'), 'zoom-out button');
+  const zoomFitButton = required(root.querySelector<HTMLButtonElement>('[data-zoom-fit]'), 'fit-view button');
+  const zoomInButton = required(root.querySelector<HTMLButtonElement>('[data-zoom-in]'), 'zoom-in button');
   const angleInput = required(root.querySelector<HTMLInputElement>('[data-angle]'), 'angle input');
   const centerInput = required(root.querySelector<HTMLInputElement>('[data-center]'), 'center-distance input');
   const rpmInput = required(root.querySelector<HTMLInputElement>('[data-rpm]'), 'speed input');
@@ -112,6 +125,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
 
   const compiled = analyticBeltAdapter.compile(model);
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const desktopLayout = window.matchMedia(desktopBreakpoint);
   const defaults = { angle: 0, center: 180, rpm: 30 } as const;
   const params = new URLSearchParams(window.location.search);
 
@@ -122,11 +136,13 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
     260,
   );
   let rpm = clamp(Number(params.get('rpm') ?? defaults.rpm) || defaults.rpm, 10, 120);
+  let zoom = 1;
   let invalidParameterHandle: Vec2 | undefined;
   let selectedId: string | undefined;
   let playing = false;
   let animationFrame = 0;
   let previousTime = 0;
+  let fitFrame = 0;
 
   angleInput.value = String(angleDeg);
   centerInput.value = String(centerMm);
@@ -176,6 +192,53 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
     beltSpeedOutput.textContent = beltSpeed === undefined ? '—' : `${beltSpeed.toFixed(3)} m/s`;
     driverWrapOutput.textContent = driverWrap === undefined ? '—' : `${(driverWrap * 180 / Math.PI).toFixed(1)}°`;
     beltLengthOutput.textContent = beltLength === undefined ? '—' : `${(beltLength * 1000).toFixed(1)} mm`;
+  }
+
+  function applyZoom(next: number, announce = false): void {
+    zoom = clamp(Math.round(next * 100) / 100, zoomMinimum, zoomMaximum);
+    camera.style.setProperty('--lab-zoom', String(zoom));
+    camera.dataset.zoom = zoom.toFixed(2);
+    root.dataset.zoom = zoom.toFixed(2);
+    zoomFitButton.textContent = `${Math.round(zoom * 100)}%`;
+    zoomOutButton.disabled = zoom <= zoomMinimum + 1e-9;
+    zoomInButton.disabled = zoom >= zoomMaximum - 1e-9;
+    if (announce) {
+      status.textContent = Math.abs(zoom - 1) < 1e-9
+        ? 'Mechanism fitted to the viewport.'
+        : `Diagram zoom ${Math.round(zoom * 100)}%.`;
+    }
+  }
+
+  function fitViewportToWindow(): void {
+    if (!desktopLayout.matches) {
+      viewport.style.removeProperty('height');
+      camera.style.removeProperty('width');
+      camera.style.removeProperty('height');
+      delete root.dataset.fitViewportHeight;
+      delete root.dataset.fitCameraWidth;
+      return;
+    }
+
+    const viewportTop = viewport.getBoundingClientRect().top;
+    const remainingHeight = window.innerHeight - viewportTop - desktopViewportBottomClearancePx;
+    const targetHeight = clamp(
+      remainingHeight,
+      desktopViewportMinHeightPx,
+      desktopViewportMaxHeightPx,
+    );
+    const cameraWidth = Math.min(viewport.clientWidth, targetHeight * rendererAspect);
+    const cameraHeight = cameraWidth / rendererAspect;
+
+    viewport.style.height = `${cameraHeight}px`;
+    camera.style.width = `${cameraWidth}px`;
+    camera.style.height = `${cameraHeight}px`;
+    root.dataset.fitViewportHeight = cameraHeight.toFixed(2);
+    root.dataset.fitCameraWidth = cameraWidth.toFixed(2);
+  }
+
+  function scheduleViewportFit(): void {
+    cancelAnimationFrame(fitFrame);
+    fitFrame = requestAnimationFrame(fitViewportToWindow);
   }
 
   const renderer = createSvgMechanismRenderer(host, {
@@ -291,10 +354,21 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
     centerInput.value = String(centerMm);
     rpmInput.value = String(rpm);
     currentState = evaluate();
-    status.textContent = 'Reset to the Brown reference proportions.';
+    applyZoom(1);
+    status.textContent = 'Reset to the Brown reference proportions and fitted view.';
     render();
     syncUrl();
   });
+
+  zoomOutButton.addEventListener('click', () => applyZoom(zoom - zoomStep, true));
+  zoomFitButton.addEventListener('click', () => applyZoom(1, true));
+  zoomInButton.addEventListener('click', () => applyZoom(zoom + zoomStep, true));
+
+  viewport.addEventListener('wheel', (event) => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    applyZoom(zoom + (event.deltaY < 0 ? 0.1 : -0.1), false);
+  }, { passive: false });
 
   angleInput.addEventListener('input', () => {
     angleDeg = Number(angleInput.value);
@@ -333,5 +407,10 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
     }
   });
 
+  window.addEventListener('resize', scheduleViewportFit);
+  desktopLayout.addEventListener('change', scheduleViewportFit);
+
+  applyZoom(1);
   render();
+  scheduleViewportFit();
 }
