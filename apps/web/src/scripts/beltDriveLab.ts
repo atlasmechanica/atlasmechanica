@@ -5,9 +5,11 @@ import {
 } from '@atlasmechanica/kinematics';
 import { hasErrors, quantity, type ModelState, type SimulationModel } from '@atlasmechanica/model';
 import { createSvgMechanismRenderer } from '@atlasmechanica/renderer-svg';
-import { buildMechanismScene, type Vec2 } from '@atlasmechanica/scene';
+import type { ThreeMechanismRenderer } from '@atlasmechanica/renderer-three';
+import { buildMechanismScene, type MechanismScene, type Vec2 } from '@atlasmechanica/scene';
 
 type BeltRouting = 'open' | 'crossed';
+type ViewMode = '2d' | '3d';
 
 const referencePulleyRadiusMm = 45;
 const minimumCenterMm = 95;
@@ -103,7 +105,10 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
   const model = modelFor(routing);
   const viewport = required(root.querySelector<HTMLElement>('[data-lab-viewport]'), 'camera viewport');
   const camera = required(root.querySelector<HTMLElement>('[data-lab-camera]'), 'camera');
-  const host = required(root.querySelector<HTMLElement>('[data-renderer]'), 'renderer host');
+  const host2d = required(root.querySelector<HTMLElement>('[data-renderer]'), '2D renderer host');
+  const host3d = required(root.querySelector<HTMLElement>('[data-renderer-three]'), '3D renderer host');
+  const view2dButton = required(root.querySelector<HTMLButtonElement>('[data-view-2d]'), '2D view button');
+  const view3dButton = required(root.querySelector<HTMLButtonElement>('[data-view-3d]'), '3D view button');
   const playButton = required(root.querySelector<HTMLButtonElement>('[data-play]'), 'play button');
   const resetButton = required(root.querySelector<HTMLButtonElement>('[data-reset]'), 'reset button');
   const zoomOutButton = required(root.querySelector<HTMLButtonElement>('[data-zoom-out]'), 'zoom-out button');
@@ -137,6 +142,9 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
   );
   let rpm = clamp(Number(params.get('rpm') ?? defaults.rpm) || defaults.rpm, 10, 120);
   let zoom = 1;
+  let viewMode: ViewMode = '2d';
+  let threeRenderer: ThreeMechanismRenderer | undefined;
+  let threeRendererPromise: Promise<ThreeMechanismRenderer> | undefined;
   let invalidParameterHandle: Vec2 | undefined;
   let selectedId: string | undefined;
   let playing = false;
@@ -166,6 +174,11 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
   }
 
   let currentState = evaluate();
+  let currentScene: MechanismScene = buildMechanismScene({
+    model,
+    state: currentState,
+    parameters: parameters(),
+  });
 
   function syncUrl(): void {
     const query = new URLSearchParams();
@@ -194,14 +207,33 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
     beltLengthOutput.textContent = beltLength === undefined ? '—' : `${(beltLength * 1000).toFixed(1)} mm`;
   }
 
+  function syncViewControls(): void {
+    const is2d = viewMode === '2d';
+    root.dataset.viewMode = viewMode;
+    view2dButton.setAttribute('aria-pressed', String(is2d));
+    view3dButton.setAttribute('aria-pressed', String(!is2d));
+    if (is2d) {
+      camera.style.setProperty('--lab-zoom', String(zoom));
+      camera.dataset.zoom = zoom.toFixed(2);
+      root.dataset.zoom = zoom.toFixed(2);
+      zoomFitButton.textContent = `${Math.round(zoom * 100)}%`;
+      zoomFitButton.setAttribute('aria-label', 'Fit mechanism to viewport');
+      zoomOutButton.disabled = zoom <= zoomMinimum + 1e-9;
+      zoomInButton.disabled = zoom >= zoomMaximum - 1e-9;
+    } else {
+      camera.style.setProperty('--lab-zoom', '1');
+      camera.dataset.zoom = '1.00';
+      root.dataset.zoom = '1.00';
+      zoomFitButton.textContent = 'Front';
+      zoomFitButton.setAttribute('aria-label', 'Return 3D camera to front view');
+      zoomOutButton.disabled = false;
+      zoomInButton.disabled = false;
+    }
+  }
+
   function applyZoom(next: number, announce = false): void {
     zoom = clamp(Math.round(next * 100) / 100, zoomMinimum, zoomMaximum);
-    camera.style.setProperty('--lab-zoom', String(zoom));
-    camera.dataset.zoom = zoom.toFixed(2);
-    root.dataset.zoom = zoom.toFixed(2);
-    zoomFitButton.textContent = `${Math.round(zoom * 100)}%`;
-    zoomOutButton.disabled = zoom <= zoomMinimum + 1e-9;
-    zoomInButton.disabled = zoom >= zoomMaximum - 1e-9;
+    syncViewControls();
     if (announce) {
       status.textContent = Math.abs(zoom - 1) < 1e-9
         ? 'Mechanism fitted to the viewport.'
@@ -241,7 +273,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
     fitFrame = requestAnimationFrame(fitViewportToWindow);
   }
 
-  const renderer = createSvgMechanismRenderer(host, {
+  const renderer2d = createSvgMechanismRenderer(host2d, {
     instanceId: `${routing}-belt-drive-main`,
     keyboardParameterAxis: 'y',
     responsiveStrokeReferenceWidth: 1180,
@@ -295,14 +327,64 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
   });
 
   function render(): void {
-    renderer.update(buildMechanismScene({
+    currentScene = buildMechanismScene({
       model,
       state: currentState,
       parameters: parameters(),
       selectedId,
       invalidParameterHandle,
-    }));
+    });
+    renderer2d.update(currentScene);
+    if (viewMode === '3d') threeRenderer?.update(currentScene);
     updateReadouts(currentState);
+  }
+
+  async function ensureThreeRenderer(): Promise<ThreeMechanismRenderer> {
+    if (threeRenderer !== undefined) return threeRenderer;
+    if (threeRendererPromise !== undefined) return threeRendererPromise;
+    threeRendererPromise = import('@atlasmechanica/renderer-three').then(({ createThreeMechanismRenderer }) => {
+      const created = createThreeMechanismRenderer(host3d, {
+        ariaLabel: `Interactive 3D ${routing} belt drive`,
+      });
+      created.update(currentScene);
+      threeRenderer = created;
+      return created;
+    });
+    return threeRendererPromise;
+  }
+
+  async function switchView(next: ViewMode): Promise<void> {
+    if (next === viewMode) return;
+    if (next === '2d') {
+      viewMode = '2d';
+      host3d.hidden = true;
+      host2d.hidden = false;
+      syncViewControls();
+      status.textContent = '2D reference view. Drag the mechanism or change a parameter.';
+      return;
+    }
+
+    view3dButton.disabled = true;
+    root.setAttribute('aria-busy', 'true');
+    status.textContent = 'Loading 3D mechanism view…';
+    try {
+      const renderer3d = await ensureThreeRenderer();
+      viewMode = '3d';
+      host2d.hidden = true;
+      host3d.hidden = false;
+      renderer3d.update(currentScene);
+      syncViewControls();
+      requestAnimationFrame(() => renderer3d.fitView());
+      status.textContent = '3D view. Drag to orbit, scroll or pinch to zoom, and right-drag to pan.';
+    } catch (error) {
+      host3d.hidden = true;
+      host2d.hidden = false;
+      status.textContent = '3D view is unavailable in this browser. The 2D mechanism remains active.';
+      console.error(error);
+    } finally {
+      view3dButton.disabled = false;
+      root.removeAttribute('aria-busy');
+    }
   }
 
   function setPlaying(next: boolean): void {
@@ -355,17 +437,36 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
     rpmInput.value = String(rpm);
     currentState = evaluate();
     applyZoom(1);
-    status.textContent = 'Reset to the Brown reference proportions and fitted view.';
     render();
+    if (viewMode === '3d') threeRenderer?.fitView();
+    status.textContent = viewMode === '3d'
+      ? 'Reset to the Brown reference proportions and front 3D view.'
+      : 'Reset to the Brown reference proportions and fitted view.';
     syncUrl();
   });
 
-  zoomOutButton.addEventListener('click', () => applyZoom(zoom - zoomStep, true));
-  zoomFitButton.addEventListener('click', () => applyZoom(1, true));
-  zoomInButton.addEventListener('click', () => applyZoom(zoom + zoomStep, true));
+  view2dButton.addEventListener('click', () => { void switchView('2d'); });
+  view3dButton.addEventListener('click', () => { void switchView('3d'); });
+
+  zoomOutButton.addEventListener('click', () => {
+    if (viewMode === '3d') threeRenderer?.zoomBy(0.84);
+    else applyZoom(zoom - zoomStep, true);
+  });
+  zoomFitButton.addEventListener('click', () => {
+    if (viewMode === '3d') {
+      threeRenderer?.fitView();
+      status.textContent = '3D camera returned to the front view.';
+    } else {
+      applyZoom(1, true);
+    }
+  });
+  zoomInButton.addEventListener('click', () => {
+    if (viewMode === '3d') threeRenderer?.zoomBy(1.19);
+    else applyZoom(zoom + zoomStep, true);
+  });
 
   viewport.addEventListener('wheel', (event) => {
-    if (!event.ctrlKey && !event.metaKey) return;
+    if (viewMode !== '2d' || (!event.ctrlKey && !event.metaKey)) return;
     event.preventDefault();
     applyZoom(zoom + (event.deltaY < 0 ? 0.1 : -0.1), false);
   }, { passive: false });
