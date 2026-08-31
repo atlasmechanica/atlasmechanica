@@ -43,7 +43,7 @@ async function stopProcessGroup(child) {
 async function productRenderer(page, route, fixture) {
   await page.goto(`${webURL}${route}`);
   const lab = page.locator('[data-belt-drive-lab]');
-  const renderer = lab.locator('.lab-renderer');
+  const renderer = lab.locator('[data-renderer]');
   await renderer.locator('svg').waitFor({ state: 'visible' });
   await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-zoom') === '1.00');
   if ((page.viewportSize()?.width ?? 0) > 640) {
@@ -60,7 +60,7 @@ async function productRenderer(page, route, fixture) {
 async function assertResponsiveRopeStroke(page, fixture) {
   await page.waitForFunction(
     ({ referenceWidth }) => {
-      const host = document.querySelector('[data-belt-drive-lab] .lab-renderer');
+      const host = document.querySelector('[data-belt-drive-lab] [data-renderer]');
       const rope = host?.querySelector('[data-primitive="belt-band-underlay"] .atlas-visible');
       if (!(host instanceof HTMLElement) || !(rope instanceof SVGElement)) return false;
       const nominal = Number(rope.getAttribute('data-nominal-stroke-width'));
@@ -72,7 +72,7 @@ async function assertResponsiveRopeStroke(page, fixture) {
     { referenceWidth: productStrokeReferenceWidth },
   );
 
-  const result = await page.locator('[data-belt-drive-lab] .lab-renderer').evaluate((host, referenceWidth) => {
+  const result = await page.locator('[data-belt-drive-lab] [data-renderer]').evaluate((host, referenceWidth) => {
     const rope = host.querySelector('[data-primitive="belt-band-underlay"] .atlas-visible');
     if (!(rope instanceof SVGElement)) throw new Error('Missing visible rope underlay');
     const nominal = Number(rope.getAttribute('data-nominal-stroke-width'));
@@ -95,7 +95,7 @@ async function assertResponsiveRopeStroke(page, fixture) {
 async function assertDesktopLabAboveFold(page, fixture) {
   const result = await page.locator('[data-belt-drive-lab]').evaluate((lab) => {
     const viewport = lab.querySelector('.lab-viewport');
-    const renderer = lab.querySelector('.lab-renderer');
+    const renderer = lab.querySelector('[data-renderer]');
     const driven = lab.querySelector('[data-primitive="belt-driven"] .atlas-visible');
     if (!(viewport instanceof HTMLElement) || !(renderer instanceof HTMLElement) || !(driven instanceof SVGElement)) {
       throw new Error('Missing fitted desktop viewport, renderer, or driven pulley');
@@ -146,7 +146,7 @@ async function assertDesktopLabAboveFold(page, fixture) {
 
 async function assertViewZoomControls(page, fixture) {
   const lab = page.locator('[data-belt-drive-lab]');
-  const renderer = lab.locator('.lab-renderer');
+  const renderer = lab.locator('[data-renderer]');
   const zoomIn = lab.locator('[data-zoom-in]');
   const fit = lab.locator('[data-zoom-fit]');
   const initial = await renderer.boundingBox();
@@ -180,10 +180,194 @@ async function assertViewZoomControls(page, fixture) {
   };
 }
 
+async function setRangeValue(page, locator, value) {
+  await locator.evaluate((element, next) => {
+    if (!(element instanceof HTMLInputElement)) throw new Error('Expected range input');
+    element.value = String(next);
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  }, value);
+}
+
+async function assertThreeView(page, fixture, screenshotPath) {
+  const lab = page.locator('[data-belt-drive-lab]');
+  await lab.locator('[data-view-3d]').click();
+  await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-view-mode') === '3d');
+  const host = lab.locator('[data-renderer-three]');
+  const canvas = host.locator('canvas');
+  await canvas.waitFor({ state: 'visible' });
+  await page.waitForFunction(() => {
+    const host = document.querySelector('[data-renderer-three]');
+    if (!(host instanceof HTMLElement)) return false;
+    const values = host.dataset.cameraPosition?.split(',').map(Number) ?? [];
+    return values.length === 3 && Number.isFinite(values[2]) && (values[2] ?? 0) > 0.5;
+  });
+
+  const initialCamera = await host.getAttribute('data-camera-position');
+  const initialBuildCount = Number(await host.getAttribute('data-geometry-build-count'));
+  const initialPoseCount = Number(await host.getAttribute('data-pose-update-count'));
+  const box = await canvas.boundingBox();
+  if (
+    initialCamera === null ||
+    box === null ||
+    !Number.isFinite(initialBuildCount) ||
+    !Number.isFinite(initialPoseCount)
+  ) {
+    throw new Error(`Missing ${fixture} 3D camera, cache counters, or canvas.`);
+  }
+
+  // Angle/Play updates change only pulley pose. The physical rim/belt geometry
+  // should stay resident rather than being re-tessellated every render tick.
+  const angle = lab.locator('[data-angle]');
+  for (const value of [17, 43, 79, 121]) await setRangeValue(page, angle, value);
+  await page.waitForFunction((before) => {
+    const host = document.querySelector('[data-renderer-three]');
+    return host instanceof HTMLElement && Number(host.dataset.poseUpdateCount) >= before + 4;
+  }, initialPoseCount);
+  const poseOnlyBuildCount = Number(await host.getAttribute('data-geometry-build-count'));
+  const poseUpdates = Number(await host.getAttribute('data-pose-update-count'));
+  if (poseOnlyBuildCount !== initialBuildCount) {
+    throw new Error(
+      `${fixture} rebuilt 3D geometry during angle-only updates (${initialBuildCount} → ${poseOnlyBuildCount}).`,
+    );
+  }
+  await setRangeValue(page, angle, 0);
+
+  // Use a readable three-quarter view for evidence: enough movement to prove
+  // orbit controls and show physical depth without turning the mechanism edge-on.
+  const startX = box.x + box.width * 0.52;
+  const startY = box.y + box.height * 0.47;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + Math.min(82, box.width * 0.12), startY + Math.min(30, box.height * 0.06), { steps: 7 });
+  await page.mouse.up();
+  await page.waitForFunction((before) => {
+    const host = document.querySelector('[data-renderer-three]');
+    return host instanceof HTMLElement && host.dataset.cameraPosition !== before;
+  }, initialCamera);
+
+  const rotatedCamera = await host.getAttribute('data-camera-position');
+  if (rotatedCamera === null || rotatedCamera === initialCamera) {
+    throw new Error(`${fixture} OrbitControls drag did not move the 3D camera.`);
+  }
+
+  // Toggling through the historical 2D reference is not an implicit camera
+  // reset. Returning to 3D must resume the exact inspection orbit.
+  await lab.locator('[data-view-2d]').click();
+  await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-view-mode') === '2d');
+  await lab.locator('[data-view-3d]').click();
+  await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-view-mode') === '3d');
+  const returnedCamera = await host.getAttribute('data-camera-position');
+  if (returnedCamera !== rotatedCamera) {
+    throw new Error(`${fixture} 3D orbit changed across a 2D round-trip: ${rotatedCamera} → ${returnedCamera}.`);
+  }
+  await canvas.screenshot({ path: screenshotPath });
+
+  await lab.locator('[data-zoom-fit]').click();
+  await page.waitForFunction((before) => {
+    const host = document.querySelector('[data-renderer-three]');
+    return host instanceof HTMLElement && host.dataset.cameraPosition !== before;
+  }, rotatedCamera);
+  const resetCamera = await host.getAttribute('data-camera-position');
+  if (resetCamera !== initialCamera) {
+    throw new Error(`${fixture} Front reset returned ${resetCamera}; expected initial camera ${initialCamera}.`);
+  }
+
+  await lab.locator('[data-view-2d]').click();
+  await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-view-mode') === '2d');
+  return {
+    initialCamera,
+    rotatedCamera,
+    returnedCamera,
+    resetCamera,
+    initialBuildCount,
+    poseOnlyBuildCount,
+    poseUpdates,
+  };
+}
+
+async function assertThreeSwitchCancellation(browser) {
+  const page = await browser.newPage({ viewport: { width: 1220, height: 900 } });
+  await productRenderer(page, '/mechanisms/open-belt-drive/', '3D cancellation');
+  let delayedChunk = false;
+  await page.route('**/_astro/*.js', async (route) => {
+    delayedChunk = true;
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    await route.continue();
+  });
+
+  const lab = page.locator('[data-belt-drive-lab]');
+  await lab.locator('[data-view-3d]').click();
+  await lab.locator('[data-view-2d]').click();
+  await page.waitForTimeout(700);
+  const result = await lab.evaluate((root) => {
+    const host2d = root.querySelector('[data-renderer]');
+    const host3d = root.querySelector('[data-renderer-three]');
+    if (!(host2d instanceof HTMLElement) || !(host3d instanceof HTMLElement)) {
+      throw new Error('Missing 2D or 3D host during cancellation check');
+    }
+    return {
+      viewMode: root.getAttribute('data-view-mode'),
+      busy: root.getAttribute('aria-busy'),
+      twoDHidden: host2d.hidden,
+      threeDHidden: host3d.hidden,
+    };
+  });
+  await page.close();
+
+  if (!delayedChunk) throw new Error('3D cancellation regression did not intercept the lazy Three.js chunk.');
+  if (result.viewMode !== '2d' || result.twoDHidden || !result.threeDHidden || result.busy !== null) {
+    throw new Error(`Pending 3D import stole the requested 2D view: ${JSON.stringify(result)}.`);
+  }
+  return result;
+}
+
+async function assertThreeSwitchRetry(browser) {
+  const page = await browser.newPage({ viewport: { width: 1220, height: 900 } });
+  await productRenderer(page, '/mechanisms/open-belt-drive/', '3D retry');
+  let failedChunk = false;
+  let lazyRequests = 0;
+  await page.route('**/_astro/*.js', async (route) => {
+    lazyRequests += 1;
+    if (!failedChunk) {
+      failedChunk = true;
+      await route.abort('failed');
+      return;
+    }
+    await route.continue();
+  });
+
+  const lab = page.locator('[data-belt-drive-lab]');
+  await lab.locator('[data-view-3d]').click();
+  await page.waitForFunction(() => {
+    const root = document.querySelector('[data-belt-drive-lab]');
+    const status = root?.querySelector('[data-status]');
+    return root?.getAttribute('aria-busy') === null && status?.textContent?.includes('unavailable');
+  });
+  const afterFailure = await lab.getAttribute('data-view-mode');
+  if (afterFailure !== '2d') throw new Error(`Failed 3D load left view mode at ${afterFailure}.`);
+
+  await lab.locator('[data-view-3d]').click();
+  await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-view-mode') === '3d');
+  const host = lab.locator('[data-renderer-three]');
+  await host.locator('canvas').waitFor({ state: 'visible' });
+  const result = {
+    failedChunk,
+    lazyRequests,
+    viewMode: await lab.getAttribute('data-view-mode'),
+    renderer: await host.getAttribute('data-renderer'),
+  };
+  await page.close();
+
+  if (!failedChunk || result.viewMode !== '3d' || result.renderer !== 'three') {
+    throw new Error(`3D retry did not recover after the transient failure: ${JSON.stringify(result)}.`);
+  }
+  return result;
+}
+
 async function assertMobileStatusBelowRenderer(page, fixture) {
   const result = await page.locator('[data-belt-drive-lab]').evaluate((root) => {
     const stage = root.querySelector('.lab-stage');
-    const renderer = root.querySelector('.lab-renderer');
+    const renderer = root.querySelector('[data-renderer]');
     const status = root.querySelector('.lab-status');
     if (!(stage instanceof HTMLElement) || !(renderer instanceof HTMLElement) || !(status instanceof HTMLElement)) {
       throw new Error('Missing mobile lab stage, renderer, or status');
@@ -239,19 +423,16 @@ try {
     const screenshot = `renderer-bakeoff-${name}.png`;
     await page.screenshot({ path: screenshot, fullPage: true });
 
-    // The first-load product camera should fit the entire mechanism inside the
-    // remaining laptop viewport. The lower pulley must be visible without any
-    // initial page scroll, rather than merely exposing a large cropped region.
     const foldPage = await browser.newPage({ viewport: { width: 1220, height: 900 } });
     await productRenderer(foldPage, '/mechanisms/open-belt-drive/', 'open-belt desktop fold');
     const desktopFoldCheck = await assertDesktopLabAboveFold(foldPage, 'open-belt desktop fold');
     const desktopFoldScreenshot = `renderer-bakeoff-desktop-fold-${name}.png`;
     await foldPage.screenshot({ path: desktopFoldScreenshot, fullPage: false });
 
-    // Desktop product evidence uses the same viewport-fit camera as the website.
-    // Stroke weights continue to scale against the actual fitted renderer width.
     const sitePage = await browser.newPage({ viewport: { width: 1220, height: 1100 } });
     const goldenScreenshots = {};
+    const threeScreenshots = {};
+    const threeViewChecks = {};
     const desktopStrokeChecks = {};
     const zoomChecks = {};
     for (const [fixture, route] of [
@@ -264,10 +445,15 @@ try {
       const path = `renderer-bakeoff-${fixture}-${name}.png`;
       await renderer.screenshot({ path });
       goldenScreenshots[fixture] = path;
+
+      const threePath = `renderer-bakeoff-${fixture}-three-${name}.png`;
+      threeViewChecks[fixture] = await assertThreeView(sitePage, fixture, threePath);
+      threeScreenshots[fixture] = threePath;
     }
 
-    // Mobile remains a separate visual gate. Capture the complete stage so the
-    // status-bubble composition and compact zoom controls are part of review.
+    const threeSwitchCancellation = await assertThreeSwitchCancellation(browser);
+    const threeSwitchRetry = await assertThreeSwitchRetry(browser);
+
     const mobilePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
     const mobileGoldenScreenshots = {};
     const mobileStrokeChecks = {};
@@ -291,6 +477,10 @@ try {
       desktopFoldScreenshot,
       desktopFoldCheck,
       goldenScreenshots,
+      threeScreenshots,
+      threeViewChecks,
+      threeSwitchCancellation,
+      threeSwitchRetry,
       mobileGoldenScreenshots,
       zoomChecks,
       responsiveStrokeChecks: {
