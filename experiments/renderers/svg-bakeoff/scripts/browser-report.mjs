@@ -205,18 +205,21 @@ async function assertThreeView(page, fixture, screenshotPath) {
   const initialCamera = await host.getAttribute('data-camera-position');
   const initialBuildCount = Number(await host.getAttribute('data-geometry-build-count'));
   const initialPoseCount = Number(await host.getAttribute('data-pose-update-count'));
+  const initialRopePhase = Number(await host.getAttribute('data-rope-phase'));
   const box = await canvas.boundingBox();
   if (
     initialCamera === null ||
     box === null ||
     !Number.isFinite(initialBuildCount) ||
-    !Number.isFinite(initialPoseCount)
+    !Number.isFinite(initialPoseCount) ||
+    !Number.isFinite(initialRopePhase)
   ) {
-    throw new Error(`Missing ${fixture} 3D camera, cache counters, or canvas.`);
+    throw new Error(`Missing ${fixture} 3D camera, cache counters, rope phase, or canvas.`);
   }
 
-  // Angle/Play updates change only pulley pose. The physical rim/belt geometry
-  // should stay resident rather than being re-tessellated every render tick.
+  // Angle/Play updates change only pulley pose and material phase. The physical
+  // rim/belt geometry should stay resident rather than being re-tessellated,
+  // while the helical texture must visibly advance along the cached rope.
   const angle = lab.locator('[data-angle]');
   for (const value of [17, 43, 79, 121]) await setRangeValue(page, angle, value);
   await page.waitForFunction((before) => {
@@ -225,12 +228,25 @@ async function assertThreeView(page, fixture, screenshotPath) {
   }, initialPoseCount);
   const poseOnlyBuildCount = Number(await host.getAttribute('data-geometry-build-count'));
   const poseUpdates = Number(await host.getAttribute('data-pose-update-count'));
+  const movingRopePhase = Number(await host.getAttribute('data-rope-phase'));
   if (poseOnlyBuildCount !== initialBuildCount) {
     throw new Error(
       `${fixture} rebuilt 3D geometry during angle-only updates (${initialBuildCount} → ${poseOnlyBuildCount}).`,
     );
   }
+  if (!Number.isFinite(movingRopePhase) || Math.abs(movingRopePhase - initialRopePhase) < 1e-4) {
+    throw new Error(
+      `${fixture} cord phase did not move during angle-only updates (${initialRopePhase} → ${movingRopePhase}).`,
+    );
+  }
   await setRangeValue(page, angle, 0);
+  await page.waitForFunction((initial) => {
+    const host = document.querySelector('[data-renderer-three]');
+    if (!(host instanceof HTMLElement)) return false;
+    const phase = Number(host.dataset.ropePhase);
+    return Number.isFinite(phase) && Math.abs(phase - initial) < 1e-6;
+  }, initialRopePhase);
+  const resetRopePhase = Number(await host.getAttribute('data-rope-phase'));
 
   // Use a readable three-quarter view for evidence: enough movement to prove
   // orbit controls and show physical depth without turning the mechanism edge-on.
@@ -282,6 +298,9 @@ async function assertThreeView(page, fixture, screenshotPath) {
     initialBuildCount,
     poseOnlyBuildCount,
     poseUpdates,
+    initialRopePhase,
+    movingRopePhase,
+    resetRopePhase,
   };
 }
 
