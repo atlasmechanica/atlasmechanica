@@ -1,0 +1,588 @@
+import type {
+  CirclePrimitive,
+  MechanismScene,
+  PolylinePrimitive,
+  SegmentPrimitive,
+  Vec2,
+} from '@atlasmechanica/scene';
+import {
+  AmbientLight,
+  Curve,
+  CylinderGeometry,
+  DirectionalLight,
+  ExtrudeGeometry,
+  Group,
+  MathUtils,
+  Mesh,
+  MeshStandardMaterial,
+  OrthographicCamera,
+  Path,
+  Shape,
+  SRGBColorSpace,
+  Scene as ThreeScene,
+  TubeGeometry,
+  Vector3,
+  WebGLRenderer,
+} from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+
+const TAU = Math.PI * 2;
+const RUST = 0xc45a35;
+const ROPE_BLUE = 0x2f668e;
+const DARK_METAL = 0x444846;
+const PAPER = 0xfbfaf6;
+const STROKE_REFERENCE_WIDTH = 1180;
+
+export interface ThreeMechanismRendererOptions {
+  ariaLabel?: string | undefined;
+}
+
+export interface ThreeMechanismRenderer {
+  update(scene: MechanismScene): void;
+  fitView(): void;
+  zoomBy(factor: number): void;
+  destroy(): void;
+}
+
+class PolylineCurve3 extends Curve<Vector3> {
+  private readonly points: Vector3[];
+  private readonly cumulative: number[];
+  private readonly totalLength: number;
+
+  constructor(points: Vector3[], closed: boolean) {
+    super();
+    const normalized = points.map((point) => point.clone());
+    if (closed && normalized.length > 2) {
+      const first = normalized[0];
+      const last = normalized[normalized.length - 1];
+      if (first !== undefined && last !== undefined && first.distanceToSquared(last) > 1e-16) {
+        normalized.push(first.clone());
+      }
+    }
+    this.points = normalized;
+    this.cumulative = [0];
+    let total = 0;
+    for (let index = 0; index < normalized.length - 1; index += 1) {
+      const a = normalized[index];
+      const b = normalized[index + 1];
+      if (a === undefined || b === undefined) continue;
+      total += a.distanceTo(b);
+      this.cumulative.push(total);
+    }
+    this.totalLength = total;
+  }
+
+  override getPoint(t: number, target = new Vector3()): Vector3 {
+    if (this.points.length === 0) return target.set(0, 0, 0);
+    if (this.points.length === 1 || !(this.totalLength > 0)) {
+      return target.copy(this.points[0] ?? new Vector3());
+    }
+
+    const distance = MathUtils.clamp(t, 0, 1) * this.totalLength;
+    for (let index = 0; index < this.cumulative.length - 1; index += 1) {
+      const startDistance = this.cumulative[index] ?? 0;
+      const endDistance = this.cumulative[index + 1] ?? startDistance;
+      if (distance > endDistance && index < this.cumulative.length - 2) continue;
+      const a = this.points[index];
+      const b = this.points[index + 1];
+      if (a === undefined || b === undefined) break;
+      const span = endDistance - startDistance;
+      const local = span > 0 ? (distance - startDistance) / span : 0;
+      return target.copy(a).lerp(b, MathUtils.clamp(local, 0, 1));
+    }
+    return target.copy(this.points[this.points.length - 1] ?? new Vector3());
+  }
+}
+
+function hasStyle(primitive: { styles: readonly string[] }, style: string): boolean {
+  return primitive.styles.includes(style as never);
+}
+
+function sceneWidth(scene: MechanismScene): number {
+  return scene.viewport.maxX - scene.viewport.minX;
+}
+
+function sceneHeight(scene: MechanismScene): number {
+  return scene.viewport.maxY - scene.viewport.minY;
+}
+
+function sceneCenter(scene: MechanismScene): Vec2 {
+  return {
+    x: (scene.viewport.minX + scene.viewport.maxX) / 2,
+    y: (scene.viewport.minY + scene.viewport.maxY) / 2,
+  };
+}
+
+function mechanismDepth(scene: MechanismScene): number {
+  const span = Math.min(sceneWidth(scene), sceneHeight(scene));
+  return MathUtils.clamp(span * 0.035, 0.006, 0.014);
+}
+
+function strokeWorld(scene: MechanismScene, width = 3): number {
+  return Math.max(sceneWidth(scene) * width / STROKE_REFERENCE_WIDTH, sceneWidth(scene) * 0.0015);
+}
+
+function annulusGeometry(outerRadius: number, innerRadius: number, depth: number): ExtrudeGeometry {
+  const shape = new Shape();
+  shape.absarc(0, 0, outerRadius, 0, TAU, false);
+  const hole = new Path();
+  hole.absarc(0, 0, Math.max(0.0001, innerRadius), 0, TAU, true);
+  shape.holes.push(hole);
+  const radialThickness = Math.max(outerRadius - innerRadius, depth * 0.5);
+  const bevel = Math.min(depth * 0.14, radialThickness * 0.09);
+  const geometry = new ExtrudeGeometry(shape, {
+    depth,
+    bevelEnabled: true,
+    bevelSegments: 2,
+    bevelSize: bevel,
+    bevelThickness: bevel,
+    curveSegments: 64,
+  });
+  geometry.translate(0, 0, -depth / 2);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function spokeGeometry(left: SegmentPrimitive, right: SegmentPrimitive, depth: number): ExtrudeGeometry {
+  const shape = new Shape();
+  shape.moveTo(left.a.x, left.a.y);
+  shape.lineTo(left.b.x, left.b.y);
+  shape.lineTo(right.b.x, right.b.y);
+  shape.lineTo(right.a.x, right.a.y);
+  shape.closePath();
+  const geometry = new ExtrudeGeometry(shape, {
+    depth,
+    bevelEnabled: true,
+    bevelSegments: 1,
+    bevelSize: depth * 0.08,
+    bevelThickness: depth * 0.08,
+  });
+  geometry.translate(0, 0, -depth / 2);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function segmentIntersection(
+  a: Vec2,
+  b: Vec2,
+  c: Vec2,
+  d: Vec2,
+): { t: number; u: number } | undefined {
+  const rx = b.x - a.x;
+  const ry = b.y - a.y;
+  const sx = d.x - c.x;
+  const sy = d.y - c.y;
+  const denominator = rx * sy - ry * sx;
+  if (Math.abs(denominator) < 1e-12) return undefined;
+  const qx = c.x - a.x;
+  const qy = c.y - a.y;
+  const t = (qx * sy - qy * sx) / denominator;
+  const u = (qx * ry - qy * rx) / denominator;
+  if (!(t > 0.04 && t < 0.96 && u > 0.04 && u < 0.96)) return undefined;
+  return { t, u };
+}
+
+function crossingSegments(points: Vec2[]): [number, number] | undefined {
+  const segmentCount = points.length - 1;
+  for (let first = 0; first < segmentCount; first += 1) {
+    const a = points[first];
+    const b = points[first + 1];
+    if (a === undefined || b === undefined) continue;
+    for (let second = first + 2; second < segmentCount; second += 1) {
+      if (first === 0 && second === segmentCount - 1) continue;
+      const c = points[second];
+      const d = points[second + 1];
+      if (c === undefined || d === undefined) continue;
+      if (segmentIntersection(a, b, c, d) !== undefined) return [first, second];
+    }
+  }
+  return undefined;
+}
+
+function normalizedDirection(segment: SegmentPrimitive): Vec2 {
+  const dx = segment.b.x - segment.a.x;
+  const dy = segment.b.y - segment.a.y;
+  const length = Math.hypot(dx, dy) || 1;
+  return { x: dx / length, y: dy / length };
+}
+
+function segmentDirection(points: Vec2[], index: number): Vec2 {
+  const a = points[index];
+  const b = points[index + 1];
+  if (a === undefined || b === undefined) return { x: 1, y: 0 };
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const length = Math.hypot(dx, dy) || 1;
+  return { x: dx / length, y: dy / length };
+}
+
+function alignment(a: Vec2, b: Vec2): number {
+  return Math.abs(a.x * b.x + a.y * b.y);
+}
+
+function wrappedIndex(index: number, count: number): number {
+  return ((index % count) + count) % count;
+}
+
+function spreadSegmentDepth(depths: number[], index: number, value: number): void {
+  const count = depths.length;
+  if (count < 4) return;
+  const assignments: Array<[number, number]> = [
+    [index, 1],
+    [index + 1, 1],
+    [index - 1, 0.66],
+    [index + 2, 0.66],
+    [index - 2, 0.33],
+    [index + 3, 0.33],
+  ];
+  for (const [rawIndex, scale] of assignments) {
+    const target = wrappedIndex(rawIndex, count);
+    const next = value * scale;
+    if (Math.abs(next) > Math.abs(depths[target] ?? 0)) depths[target] = next;
+  }
+}
+
+/**
+ * Give crossed belts real axial separation at the crossing rather than relying
+ * on the SVG drafting cutout. The top/under choice comes from the same crossing
+ * bridge cue generated by the shared scene, so both renderers preserve the same
+ * over/under semantics.
+ */
+export function beltDepthProfile(scene: MechanismScene, belt: PolylinePrimitive, depth: number): number[] {
+  const count = belt.points.length;
+  const result = Array.from({ length: count }, () => depth * 0.55);
+  if (scene.id !== 'belt-reversed') return result;
+
+  const crossing = crossingSegments(belt.points);
+  const bridge = scene.primitives.find((primitive): primitive is SegmentPrimitive => {
+    return primitive.id === 'belt-crossing-bridge-outline' && primitive.type === 'segment';
+  });
+  if (crossing === undefined || bridge === undefined) return result;
+
+  const bridgeDirection = normalizedDirection(bridge);
+  const [first, second] = crossing;
+  const firstAlignment = alignment(segmentDirection(belt.points, first), bridgeDirection);
+  const secondAlignment = alignment(segmentDirection(belt.points, second), bridgeDirection);
+  const top = firstAlignment >= secondAlignment ? first : second;
+  const under = top === first ? second : first;
+
+  result.fill(0);
+  spreadSegmentDepth(result, top, depth * 0.95);
+  spreadSegmentDepth(result, under, -depth * 0.95);
+  return result;
+}
+
+function beltCurve(scene: MechanismScene, belt: PolylinePrimitive, depth: number): PolylineCurve3 {
+  const depths = beltDepthProfile(scene, belt, depth);
+  const points = belt.points.map((point, index) => new Vector3(point.x, point.y, depths[index] ?? 0));
+  return new PolylineCurve3(points, true);
+}
+
+function addCylinderBetween(
+  group: Group,
+  a: Vec2,
+  b: Vec2,
+  radius: number,
+  z: number,
+  material: MeshStandardMaterial,
+): void {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const length = Math.hypot(dx, dy);
+  if (!(length > 1e-9)) return;
+  const geometry = new CylinderGeometry(radius, radius, length, 10, 1, false);
+  const mesh = new Mesh(geometry, material);
+  mesh.position.set((a.x + b.x) / 2, (a.y + b.y) / 2, z);
+  mesh.rotation.z = Math.atan2(dy, dx) - Math.PI / 2;
+  mesh.castShadow = true;
+  group.add(mesh);
+}
+
+function findCircle(scene: MechanismScene, id: string): CirclePrimitive | undefined {
+  const primitive = scene.primitives.find((candidate) => candidate.id === id);
+  return primitive?.type === 'circle' ? primitive : undefined;
+}
+
+function findSegment(scene: MechanismScene, id: string): SegmentPrimitive | undefined {
+  const primitive = scene.primitives.find((candidate) => candidate.id === id);
+  return primitive?.type === 'segment' ? primitive : undefined;
+}
+
+function buildPulley(
+  group: Group,
+  scene: MechanismScene,
+  prefix: 'belt-driver' | 'belt-driven',
+  depth: number,
+  pulleyMaterial: MeshStandardMaterial,
+  axleMaterial: MeshStandardMaterial,
+): boolean {
+  const outer = findCircle(scene, prefix);
+  const inner = findCircle(scene, `${prefix}-rim-inner`);
+  const hub = findCircle(scene, `${prefix}-hub`);
+  if (outer === undefined || inner === undefined || hub === undefined) return false;
+
+  const rim = new Mesh(annulusGeometry(outer.radius, inner.radius, depth), pulleyMaterial);
+  rim.position.set(outer.center.x, outer.center.y, 0);
+  rim.castShadow = true;
+  group.add(rim);
+
+  const hubGeometry = new CylinderGeometry(hub.radius, hub.radius, depth * 1.15, 48);
+  hubGeometry.rotateX(Math.PI / 2);
+  const hubMesh = new Mesh(hubGeometry, pulleyMaterial);
+  hubMesh.position.set(hub.center.x, hub.center.y, 0);
+  hubMesh.castShadow = true;
+  group.add(hubMesh);
+
+  const axleGeometry = new CylinderGeometry(hub.radius * 0.38, hub.radius * 0.38, depth * 2.2, 32);
+  axleGeometry.rotateX(Math.PI / 2);
+  const axle = new Mesh(axleGeometry, axleMaterial);
+  axle.position.set(hub.center.x, hub.center.y, 0);
+  axle.castShadow = true;
+  group.add(axle);
+
+  for (let index = 0; index < 4; index += 1) {
+    const left = findSegment(scene, `${prefix}-spoke-${index}`);
+    const right = findSegment(scene, `${prefix}-spoke-${index}-edge`);
+    if (left === undefined || right === undefined) continue;
+    const spoke = new Mesh(spokeGeometry(left, right, depth * 0.72), pulleyMaterial);
+    spoke.castShadow = true;
+    group.add(spoke);
+  }
+  return true;
+}
+
+function buildBeltAssembly(
+  group: Group,
+  scene: MechanismScene,
+  pulleyMaterial: MeshStandardMaterial,
+  beltMaterial: MeshStandardMaterial,
+  axleMaterial: MeshStandardMaterial,
+): boolean {
+  if (!scene.id.startsWith('belt-')) return false;
+  const belt = scene.primitives.find((primitive): primitive is PolylinePrimitive => {
+    return primitive.id === 'belt-band-underlay' && primitive.type === 'polyline';
+  });
+  if (belt === undefined) return false;
+
+  const depth = mechanismDepth(scene);
+  buildPulley(group, scene, 'belt-driver', depth, pulleyMaterial, axleMaterial);
+  buildPulley(group, scene, 'belt-driven', depth, pulleyMaterial, axleMaterial);
+
+  const radius = Math.max(strokeWorld(scene, belt.width ?? 7) * 0.46, depth * 0.11);
+  const tubularSegments = Math.max(128, Math.min(420, belt.points.length * 4));
+  const ropeGeometry = new TubeGeometry(beltCurve(scene, belt, depth), tubularSegments, radius, 10, true);
+  const rope = new Mesh(ropeGeometry, beltMaterial);
+  rope.castShadow = true;
+  group.add(rope);
+  return true;
+}
+
+function buildGenericScene(
+  group: Group,
+  scene: MechanismScene,
+  pulleyMaterial: MeshStandardMaterial,
+  beltMaterial: MeshStandardMaterial,
+  axleMaterial: MeshStandardMaterial,
+): void {
+  const depth = mechanismDepth(scene);
+  for (const primitive of scene.primitives) {
+    if (primitive.layer !== 'mechanism' || hasStyle(primitive, 'cutout')) continue;
+    const material = hasStyle(primitive, 'belt') ? beltMaterial
+      : hasStyle(primitive, 'pulley') ? pulleyMaterial
+        : axleMaterial;
+    if (primitive.type === 'circle') {
+      const tube = Math.max(strokeWorld(scene, primitive.width ?? 3) / 2, depth * 0.07);
+      const outer = primitive.radius + tube;
+      const inner = Math.max(primitive.radius - tube, outer * 0.2);
+      const mesh = new Mesh(annulusGeometry(outer, inner, depth * 0.45), material);
+      mesh.position.set(primitive.center.x, primitive.center.y, 0);
+      group.add(mesh);
+    } else if (primitive.type === 'segment') {
+      addCylinderBetween(group, primitive.a, primitive.b, strokeWorld(scene, primitive.width ?? 3) / 2, 0, material);
+    } else if (primitive.type === 'polyline' && primitive.points.length > 2) {
+      const curve = new PolylineCurve3(
+        primitive.points.map((point) => new Vector3(point.x, point.y, 0)),
+        false,
+      );
+      const geometry = new TubeGeometry(curve, Math.max(24, primitive.points.length * 3), strokeWorld(scene, primitive.width ?? 3) / 2, 8, false);
+      group.add(new Mesh(geometry, material));
+    }
+  }
+}
+
+function disposeGeometry(root: Group): void {
+  root.traverse((object) => {
+    if (object instanceof Mesh) object.geometry.dispose();
+  });
+  root.clear();
+}
+
+export function createThreeMechanismRenderer(
+  host: HTMLElement,
+  options: ThreeMechanismRendererOptions = {},
+): ThreeMechanismRenderer {
+  const threeScene = new ThreeScene();
+  threeScene.background = null;
+
+  const camera = new OrthographicCamera(-1, 1, 1, -1, 0.001, 20);
+  camera.up.set(0, 1, 0);
+
+  const renderer = new WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+  renderer.outputColorSpace = SRGBColorSpace;
+  renderer.setClearColor(PAPER, 0);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.domElement.setAttribute('role', 'img');
+  renderer.domElement.setAttribute('aria-label', options.ariaLabel ?? 'Interactive 3D mechanism view');
+  renderer.domElement.style.width = '100%';
+  renderer.domElement.style.height = '100%';
+  renderer.domElement.style.display = 'block';
+  renderer.domElement.style.touchAction = 'none';
+  host.replaceChildren(renderer.domElement);
+  host.dataset.renderer = 'three';
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enablePan = true;
+  controls.enableRotate = true;
+  controls.enableZoom = true;
+  controls.enableDamping = false;
+  controls.screenSpacePanning = true;
+  controls.rotateSpeed = 0.75;
+  controls.zoomSpeed = 0.9;
+  controls.panSpeed = 0.75;
+  controls.minZoom = 0.55;
+  controls.maxZoom = 4;
+
+  const pulleyMaterial = new MeshStandardMaterial({ color: RUST, metalness: 0.16, roughness: 0.58 });
+  const beltMaterial = new MeshStandardMaterial({ color: ROPE_BLUE, metalness: 0.02, roughness: 0.82 });
+  const axleMaterial = new MeshStandardMaterial({ color: DARK_METAL, metalness: 0.42, roughness: 0.48 });
+
+  threeScene.add(new AmbientLight(0xffffff, 1.75));
+  const key = new DirectionalLight(0xffffff, 2.2);
+  key.position.set(0.4, 0.7, 1.2);
+  threeScene.add(key);
+  const fill = new DirectionalLight(0xdde9f0, 0.8);
+  fill.position.set(-0.8, -0.2, 0.5);
+  threeScene.add(fill);
+
+  const mechanism = new Group();
+  threeScene.add(mechanism);
+
+  let currentScene: MechanismScene | undefined;
+  let previousCenter: Vec2 | undefined;
+  let destroyed = false;
+
+  function syncCameraDataset(): void {
+    host.dataset.cameraPosition = [camera.position.x, camera.position.y, camera.position.z]
+      .map((value) => value.toFixed(5)).join(',');
+    host.dataset.cameraTarget = [controls.target.x, controls.target.y, controls.target.z]
+      .map((value) => value.toFixed(5)).join(',');
+    host.dataset.cameraZoom = camera.zoom.toFixed(3);
+  }
+
+  function draw(): void {
+    if (destroyed) return;
+    syncCameraDataset();
+    renderer.render(threeScene, camera);
+  }
+
+  function configureFrustum(scene: MechanismScene): void {
+    const hostWidth = Math.max(1, host.clientWidth);
+    const hostHeight = Math.max(1, host.clientHeight);
+    const hostAspect = hostWidth / hostHeight;
+    const width = sceneWidth(scene) * 1.10;
+    const height = sceneHeight(scene) * 1.10;
+    let halfWidth = width / 2;
+    let halfHeight = height / 2;
+    if (hostAspect > width / height) halfWidth = halfHeight * hostAspect;
+    else halfHeight = halfWidth / hostAspect;
+    camera.left = -halfWidth;
+    camera.right = halfWidth;
+    camera.top = halfHeight;
+    camera.bottom = -halfHeight;
+    camera.updateProjectionMatrix();
+  }
+
+  function shiftToSceneCenter(scene: MechanismScene): void {
+    const next = sceneCenter(scene);
+    if (previousCenter === undefined) {
+      previousCenter = next;
+      return;
+    }
+    const dx = next.x - previousCenter.x;
+    const dy = next.y - previousCenter.y;
+    camera.position.x += dx;
+    camera.position.y += dy;
+    controls.target.x += dx;
+    controls.target.y += dy;
+    previousCenter = next;
+  }
+
+  function fitView(): void {
+    if (currentScene === undefined) return;
+    const center = sceneCenter(currentScene);
+    const span = Math.max(sceneWidth(currentScene), sceneHeight(currentScene));
+    configureFrustum(currentScene);
+    camera.zoom = 1;
+    camera.position.set(center.x, center.y, Math.max(0.75, span * 2.8));
+    camera.up.set(0, 1, 0);
+    controls.target.set(center.x, center.y, 0);
+    controls.update();
+    previousCenter = center;
+    draw();
+  }
+
+  function resize(): void {
+    if (destroyed) return;
+    const width = Math.max(1, host.clientWidth);
+    const height = Math.max(1, host.clientHeight);
+    renderer.setSize(width, height, false);
+    if (currentScene !== undefined) configureFrustum(currentScene);
+    draw();
+  }
+
+  controls.addEventListener('change', draw);
+  const resizeObserver = new ResizeObserver(resize);
+  resizeObserver.observe(host);
+
+  return {
+    update(scene) {
+      if (destroyed) throw new TypeError('Cannot update a destroyed Three.js mechanism renderer');
+      currentScene = scene;
+      shiftToSceneCenter(scene);
+      configureFrustum(scene);
+      disposeGeometry(mechanism);
+      if (!buildBeltAssembly(mechanism, scene, pulleyMaterial, beltMaterial, axleMaterial)) {
+        buildGenericScene(mechanism, scene, pulleyMaterial, beltMaterial, axleMaterial);
+      }
+      if (previousCenter === undefined) fitView();
+      else draw();
+    },
+
+    fitView,
+
+    zoomBy(factor) {
+      if (destroyed || !(factor > 0)) return;
+      camera.zoom = MathUtils.clamp(camera.zoom * factor, controls.minZoom, controls.maxZoom);
+      camera.updateProjectionMatrix();
+      controls.update();
+      draw();
+    },
+
+    destroy() {
+      if (destroyed) return;
+      destroyed = true;
+      resizeObserver.disconnect();
+      controls.dispose();
+      disposeGeometry(mechanism);
+      pulleyMaterial.dispose();
+      beltMaterial.dispose();
+      axleMaterial.dispose();
+      renderer.dispose();
+      host.replaceChildren();
+      delete host.dataset.renderer;
+      delete host.dataset.cameraPosition;
+      delete host.dataset.cameraTarget;
+      delete host.dataset.cameraZoom;
+    },
+  };
+}
