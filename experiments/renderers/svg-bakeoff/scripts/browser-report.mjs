@@ -180,6 +180,14 @@ async function assertViewZoomControls(page, fixture) {
   };
 }
 
+async function setRangeValue(page, locator, value) {
+  await locator.evaluate((element, next) => {
+    if (!(element instanceof HTMLInputElement)) throw new Error('Expected range input');
+    element.value = String(next);
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  }, value);
+}
+
 async function assertThreeView(page, fixture, screenshotPath) {
   const lab = page.locator('[data-belt-drive-lab]');
   await lab.locator('[data-view-3d]').click();
@@ -195,12 +203,37 @@ async function assertThreeView(page, fixture, screenshotPath) {
   });
 
   const initialCamera = await host.getAttribute('data-camera-position');
+  const initialBuildCount = Number(await host.getAttribute('data-geometry-build-count'));
+  const initialPoseCount = Number(await host.getAttribute('data-pose-update-count'));
   const box = await canvas.boundingBox();
-  if (initialCamera === null || box === null) throw new Error(`Missing ${fixture} 3D camera or canvas.`);
+  if (
+    initialCamera === null ||
+    box === null ||
+    !Number.isFinite(initialBuildCount) ||
+    !Number.isFinite(initialPoseCount)
+  ) {
+    throw new Error(`Missing ${fixture} 3D camera, cache counters, or canvas.`);
+  }
+
+  // Angle/Play updates change only pulley pose. The physical rim/belt geometry
+  // should stay resident rather than being re-tessellated every render tick.
+  const angle = lab.locator('[data-angle]');
+  for (const value of [17, 43, 79, 121]) await setRangeValue(page, angle, value);
+  await page.waitForFunction((before) => {
+    const host = document.querySelector('[data-renderer-three]');
+    return host instanceof HTMLElement && Number(host.dataset.poseUpdateCount) >= before + 4;
+  }, initialPoseCount);
+  const poseOnlyBuildCount = Number(await host.getAttribute('data-geometry-build-count'));
+  const poseUpdates = Number(await host.getAttribute('data-pose-update-count'));
+  if (poseOnlyBuildCount !== initialBuildCount) {
+    throw new Error(
+      `${fixture} rebuilt 3D geometry during angle-only updates (${initialBuildCount} → ${poseOnlyBuildCount}).`,
+    );
+  }
+  await setRangeValue(page, angle, 0);
 
   // Use a readable three-quarter view for evidence: enough movement to prove
-  // orbit controls and show physical depth without turning the mechanism almost
-  // edge-on, which obscures the pulley/spoke construction we actually review.
+  // orbit controls and show physical depth without turning the mechanism edge-on.
   const startX = box.x + box.width * 0.52;
   const startY = box.y + box.height * 0.47;
   await page.mouse.move(startX, startY);
@@ -216,6 +249,17 @@ async function assertThreeView(page, fixture, screenshotPath) {
   if (rotatedCamera === null || rotatedCamera === initialCamera) {
     throw new Error(`${fixture} OrbitControls drag did not move the 3D camera.`);
   }
+
+  // Toggling through the historical 2D reference is not an implicit camera
+  // reset. Returning to 3D must resume the exact inspection orbit.
+  await lab.locator('[data-view-2d]').click();
+  await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-view-mode') === '2d');
+  await lab.locator('[data-view-3d]').click();
+  await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-view-mode') === '3d');
+  const returnedCamera = await host.getAttribute('data-camera-position');
+  if (returnedCamera !== rotatedCamera) {
+    throw new Error(`${fixture} 3D orbit changed across a 2D round-trip: ${rotatedCamera} → ${returnedCamera}.`);
+  }
   await canvas.screenshot({ path: screenshotPath });
 
   await lab.locator('[data-zoom-fit]').click();
@@ -230,7 +274,15 @@ async function assertThreeView(page, fixture, screenshotPath) {
 
   await lab.locator('[data-view-2d]').click();
   await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-view-mode') === '2d');
-  return { initialCamera, rotatedCamera, resetCamera };
+  return {
+    initialCamera,
+    rotatedCamera,
+    returnedCamera,
+    resetCamera,
+    initialBuildCount,
+    poseOnlyBuildCount,
+    poseUpdates,
+  };
 }
 
 async function assertThreeSwitchCancellation(browser) {
@@ -265,6 +317,49 @@ async function assertThreeSwitchCancellation(browser) {
   if (!delayedChunk) throw new Error('3D cancellation regression did not intercept the lazy Three.js chunk.');
   if (result.viewMode !== '2d' || result.twoDHidden || !result.threeDHidden || result.busy !== null) {
     throw new Error(`Pending 3D import stole the requested 2D view: ${JSON.stringify(result)}.`);
+  }
+  return result;
+}
+
+async function assertThreeSwitchRetry(browser) {
+  const page = await browser.newPage({ viewport: { width: 1220, height: 900 } });
+  await productRenderer(page, '/mechanisms/open-belt-drive/', '3D retry');
+  let failedChunk = false;
+  let lazyRequests = 0;
+  await page.route('**/_astro/*.js', async (route) => {
+    lazyRequests += 1;
+    if (!failedChunk) {
+      failedChunk = true;
+      await route.abort('failed');
+      return;
+    }
+    await route.continue();
+  });
+
+  const lab = page.locator('[data-belt-drive-lab]');
+  await lab.locator('[data-view-3d]').click();
+  await page.waitForFunction(() => {
+    const root = document.querySelector('[data-belt-drive-lab]');
+    const status = root?.querySelector('[data-status]');
+    return root?.getAttribute('aria-busy') === null && status?.textContent?.includes('unavailable');
+  });
+  const afterFailure = await lab.getAttribute('data-view-mode');
+  if (afterFailure !== '2d') throw new Error(`Failed 3D load left view mode at ${afterFailure}.`);
+
+  await lab.locator('[data-view-3d]').click();
+  await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-view-mode') === '3d');
+  const host = lab.locator('[data-renderer-three]');
+  await host.locator('canvas').waitFor({ state: 'visible' });
+  const result = {
+    failedChunk,
+    lazyRequests,
+    viewMode: await lab.getAttribute('data-view-mode'),
+    renderer: await host.getAttribute('data-renderer'),
+  };
+  await page.close();
+
+  if (!failedChunk || result.viewMode !== '3d' || result.renderer !== 'three') {
+    throw new Error(`3D retry did not recover after the transient failure: ${JSON.stringify(result)}.`);
   }
   return result;
 }
@@ -357,6 +452,7 @@ try {
     }
 
     const threeSwitchCancellation = await assertThreeSwitchCancellation(browser);
+    const threeSwitchRetry = await assertThreeSwitchRetry(browser);
 
     const mobilePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
     const mobileGoldenScreenshots = {};
@@ -384,6 +480,7 @@ try {
       threeScreenshots,
       threeViewChecks,
       threeSwitchCancellation,
+      threeSwitchRetry,
       mobileGoldenScreenshots,
       zoomChecks,
       responsiveStrokeChecks: {
