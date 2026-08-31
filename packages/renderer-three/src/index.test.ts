@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MechanismScene, PolylinePrimitive } from '@atlasmechanica/scene';
-import { beltCordTextureOffset, beltSpatialPoints } from './index.js';
+import { beltCordTextureDelta, beltSpatialPoints, shortestAngularDelta } from './index.js';
 
 const belt: PolylinePrimitive = {
   type: 'polyline',
@@ -53,45 +53,23 @@ const motionBelt: PolylinePrimitive = {
   ],
 };
 
-function motionScene(angle: number): MechanismScene {
-  const root = { x: Math.cos(angle), y: Math.sin(angle) };
-  const tip = { x: root.x * 1.5, y: root.y * 1.5 };
-  return {
-    id: 'belt-same',
-    title: 'Moving open belt',
-    viewport: { minX: -2, maxX: 2, minY: -1, maxY: 3 },
-    primitives: [
-      motionBelt,
-      {
-        type: 'circle',
-        id: 'belt-driver',
-        layer: 'mechanism',
-        styles: ['pulley'],
-        center: { x: 0, y: 0 },
-        radius: 0.95,
-        width: 4,
-      },
-      {
-        type: 'segment',
-        id: 'belt-driver-spoke-0',
-        layer: 'mechanism',
-        styles: ['pulley'],
-        a: root,
-        b: tip,
-        width: 3,
-      },
-      {
-        type: 'segment',
-        id: 'belt-driver-spoke-0-edge',
-        layer: 'mechanism',
-        styles: ['pulley'],
-        a: root,
-        b: tip,
-        width: 3,
-      },
-    ],
-  };
-}
+const motionScene: MechanismScene = {
+  id: 'belt-same',
+  title: 'Moving open belt',
+  viewport: { minX: -2, maxX: 2, minY: -1, maxY: 3 },
+  primitives: [
+    motionBelt,
+    {
+      type: 'circle',
+      id: 'belt-driver',
+      layer: 'mechanism',
+      styles: ['pulley'],
+      center: { x: 0, y: 0 },
+      radius: 0.95,
+      width: 4,
+    },
+  ],
+};
 
 describe('beltSpatialPoints', () => {
   it('keeps the open belt centered on the pulley midplane', () => {
@@ -128,16 +106,20 @@ describe('beltSpatialPoints', () => {
   });
 });
 
-describe('beltCordTextureOffset', () => {
-  it('advances the cached cord material with driver rotation and resets with angle', () => {
-    const pathLength = 8;
-    const initial = beltCordTextureOffset(motionScene(0), motionBelt, pathLength);
-    const quarterTurn = beltCordTextureOffset(motionScene(Math.PI / 2), motionBelt, pathLength);
-    const expectedQuarterTurn = ((-(Math.PI / 2) / pathLength * 22) % 1 + 1) % 1;
+describe('3D cord motion', () => {
+  it('uses the short angular step across the atan2 branch cut', () => {
+    const degrees = (value: number) => value * Math.PI / 180;
+    expect(shortestAngularDelta(degrees(179), degrees(-179))).toBeCloseTo(degrees(2), 12);
+    expect(shortestAngularDelta(degrees(-179), degrees(179))).toBeCloseTo(degrees(-2), 12);
+    expect(shortestAngularDelta(degrees(-1), degrees(1))).toBeCloseTo(degrees(2), 12);
+  });
 
-    expect(initial).toBeCloseTo(0, 12);
-    expect(quarterTurn).toBeCloseTo(expectedQuarterTurn, 12);
-    expect(quarterTurn).not.toBeCloseTo(initial, 6);
-    expect(beltCordTextureOffset(motionScene(0), motionBelt, pathLength)).toBeCloseTo(initial, 12);
+  it('converts incremental driver rotation into cached texture travel', () => {
+    const pathLength = 8;
+    const quarterTurn = beltCordTextureDelta(motionScene, motionBelt, pathLength, Math.PI / 2);
+    const expected = -(Math.PI / 2) / pathLength * 22;
+
+    expect(quarterTurn).toBeCloseTo(expected, 12);
+    expect(beltCordTextureDelta(motionScene, motionBelt, pathLength, 0)).toBe(0);
   });
 });
