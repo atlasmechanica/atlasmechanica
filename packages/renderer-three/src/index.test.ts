@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MechanismScene, PolylinePrimitive } from '@atlasmechanica/scene';
-import { beltSpatialPoints } from './index.js';
+import { beltCordTextureOffset, beltSpatialPoints } from './index.js';
 
 const belt: PolylinePrimitive = {
   type: 'polyline',
@@ -42,6 +42,57 @@ const openScene: MechanismScene = {
   primitives: [belt],
 };
 
+const motionBelt: PolylinePrimitive = {
+  ...belt,
+  points: [
+    { x: 1, y: 0 },
+    { x: 1, y: 2 },
+    { x: -1, y: 2 },
+    { x: -1, y: 0 },
+    { x: 1, y: 0 },
+  ],
+};
+
+function motionScene(angle: number): MechanismScene {
+  const root = { x: Math.cos(angle), y: Math.sin(angle) };
+  const tip = { x: root.x * 1.5, y: root.y * 1.5 };
+  return {
+    id: 'belt-same',
+    title: 'Moving open belt',
+    viewport: { minX: -2, maxX: 2, minY: -1, maxY: 3 },
+    primitives: [
+      motionBelt,
+      {
+        type: 'circle',
+        id: 'belt-driver',
+        layer: 'mechanism',
+        styles: ['pulley'],
+        center: { x: 0, y: 0 },
+        radius: 0.95,
+        width: 4,
+      },
+      {
+        type: 'segment',
+        id: 'belt-driver-spoke-0',
+        layer: 'mechanism',
+        styles: ['pulley'],
+        a: root,
+        b: tip,
+        width: 3,
+      },
+      {
+        type: 'segment',
+        id: 'belt-driver-spoke-0-edge',
+        layer: 'mechanism',
+        styles: ['pulley'],
+        a: root,
+        b: tip,
+        width: 3,
+      },
+    ],
+  };
+}
+
 describe('beltSpatialPoints', () => {
   it('keeps the open belt centered on the pulley midplane', () => {
     const points = beltSpatialPoints(openScene, belt, 0.01);
@@ -74,5 +125,19 @@ describe('beltSpatialPoints', () => {
     expect(points.at(-1)?.z).toBe(0);
     expect(points.at(-1)?.x).toBe(points[0]?.x);
     expect(points.at(-1)?.y).toBe(points[0]?.y);
+  });
+});
+
+describe('beltCordTextureOffset', () => {
+  it('advances the cached cord material with driver rotation and resets with angle', () => {
+    const pathLength = 8;
+    const initial = beltCordTextureOffset(motionScene(0), motionBelt, pathLength);
+    const quarterTurn = beltCordTextureOffset(motionScene(Math.PI / 2), motionBelt, pathLength);
+    const expectedQuarterTurn = ((-(Math.PI / 2) / pathLength * 22) % 1 + 1) % 1;
+
+    expect(initial).toBeCloseTo(0, 12);
+    expect(quarterTurn).toBeCloseTo(expectedQuarterTurn, 12);
+    expect(quarterTurn).not.toBeCloseTo(initial, 6);
+    expect(beltCordTextureOffset(motionScene(0), motionBelt, pathLength)).toBeCloseTo(initial, 12);
   });
 });
