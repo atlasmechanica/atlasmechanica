@@ -120,6 +120,6 @@ describe('3D cord motion', () => {
     const expected = -(Math.PI / 2) / pathLength * 22;
 
     expect(quarterTurn).toBeCloseTo(expected, 12);
-    expect(beltCordTextureDelta(motionScene, motionBelt, pathLength, 0)).toBe(0);
+    expect(beltCordTextureDelta(motionScene, motionBelt, pathLength, 0)).toBeCloseTo(0, 12);
   });
 });
