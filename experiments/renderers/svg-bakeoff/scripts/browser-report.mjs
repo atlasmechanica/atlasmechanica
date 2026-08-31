@@ -198,11 +198,14 @@ async function assertThreeView(page, fixture, screenshotPath) {
   const box = await canvas.boundingBox();
   if (initialCamera === null || box === null) throw new Error(`Missing ${fixture} 3D camera or canvas.`);
 
+  // Use a readable three-quarter view for evidence: enough movement to prove
+  // orbit controls and show physical depth without turning the mechanism almost
+  // edge-on, which obscures the pulley/spoke construction we actually review.
   const startX = box.x + box.width * 0.52;
   const startY = box.y + box.height * 0.47;
   await page.mouse.move(startX, startY);
   await page.mouse.down();
-  await page.mouse.move(startX + Math.min(150, box.width * 0.22), startY + Math.min(70, box.height * 0.14), { steps: 7 });
+  await page.mouse.move(startX + Math.min(82, box.width * 0.12), startY + Math.min(30, box.height * 0.06), { steps: 7 });
   await page.mouse.up();
   await page.waitForFunction((before) => {
     const host = document.querySelector('[data-renderer-three]');
@@ -213,7 +216,7 @@ async function assertThreeView(page, fixture, screenshotPath) {
   if (rotatedCamera === null || rotatedCamera === initialCamera) {
     throw new Error(`${fixture} OrbitControls drag did not move the 3D camera.`);
   }
-  await host.screenshot({ path: screenshotPath });
+  await canvas.screenshot({ path: screenshotPath });
 
   await lab.locator('[data-zoom-fit]').click();
   await page.waitForFunction((before) => {
@@ -228,6 +231,42 @@ async function assertThreeView(page, fixture, screenshotPath) {
   await lab.locator('[data-view-2d]').click();
   await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-view-mode') === '2d');
   return { initialCamera, rotatedCamera, resetCamera };
+}
+
+async function assertThreeSwitchCancellation(browser) {
+  const page = await browser.newPage({ viewport: { width: 1220, height: 900 } });
+  await productRenderer(page, '/mechanisms/open-belt-drive/', '3D cancellation');
+  let delayedChunk = false;
+  await page.route('**/_astro/*.js', async (route) => {
+    delayedChunk = true;
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    await route.continue();
+  });
+
+  const lab = page.locator('[data-belt-drive-lab]');
+  await lab.locator('[data-view-3d]').click();
+  await lab.locator('[data-view-2d]').click();
+  await page.waitForTimeout(700);
+  const result = await lab.evaluate((root) => {
+    const host2d = root.querySelector('[data-renderer]');
+    const host3d = root.querySelector('[data-renderer-three]');
+    if (!(host2d instanceof HTMLElement) || !(host3d instanceof HTMLElement)) {
+      throw new Error('Missing 2D or 3D host during cancellation check');
+    }
+    return {
+      viewMode: root.getAttribute('data-view-mode'),
+      busy: root.getAttribute('aria-busy'),
+      twoDHidden: host2d.hidden,
+      threeDHidden: host3d.hidden,
+    };
+  });
+  await page.close();
+
+  if (!delayedChunk) throw new Error('3D cancellation regression did not intercept the lazy Three.js chunk.');
+  if (result.viewMode !== '2d' || result.twoDHidden || !result.threeDHidden || result.busy !== null) {
+    throw new Error(`Pending 3D import stole the requested 2D view: ${JSON.stringify(result)}.`);
+  }
+  return result;
 }
 
 async function assertMobileStatusBelowRenderer(page, fixture) {
@@ -317,6 +356,8 @@ try {
       threeScreenshots[fixture] = threePath;
     }
 
+    const threeSwitchCancellation = await assertThreeSwitchCancellation(browser);
+
     const mobilePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
     const mobileGoldenScreenshots = {};
     const mobileStrokeChecks = {};
@@ -342,6 +383,7 @@ try {
       goldenScreenshots,
       threeScreenshots,
       threeViewChecks,
+      threeSwitchCancellation,
       mobileGoldenScreenshots,
       zoomChecks,
       responsiveStrokeChecks: {
