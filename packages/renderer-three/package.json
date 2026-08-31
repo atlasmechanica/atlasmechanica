@@ -1,0 +1,16 @@
+{
+  "name": "@atlasmechanica/renderer-three",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@atlasmechanica/scene": "file:../scene",
+    "three": ">=0.180.0 <0.200.0"
+  },
+  "devDependencies": {
+    "@types/three": ">=0.180.0 <0.200.0"
+  }
+}
