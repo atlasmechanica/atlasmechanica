@@ -143,6 +143,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
   let rpm = clamp(Number(params.get('rpm') ?? defaults.rpm) || defaults.rpm, 10, 120);
   let zoom = 1;
   let viewMode: ViewMode = '2d';
+  let requestedViewMode: ViewMode = '2d';
   let threeRenderer: ThreeMechanismRenderer | undefined;
   let threeRendererPromise: Promise<ThreeMechanismRenderer> | undefined;
   let invalidParameterHandle: Vec2 | undefined;
@@ -354,12 +355,23 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
   }
 
   async function switchView(next: ViewMode): Promise<void> {
-    if (next === viewMode) return;
+    requestedViewMode = next;
+    if (next === viewMode) {
+      if (next === '2d') {
+        host3d.hidden = true;
+        host2d.hidden = false;
+        syncViewControls();
+        root.removeAttribute('aria-busy');
+        status.textContent = '2D reference view. Drag the mechanism or change a parameter.';
+      }
+      return;
+    }
     if (next === '2d') {
       viewMode = '2d';
       host3d.hidden = true;
       host2d.hidden = false;
       syncViewControls();
+      root.removeAttribute('aria-busy');
       status.textContent = '2D reference view. Drag the mechanism or change a parameter.';
       return;
     }
@@ -369,6 +381,11 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
     status.textContent = 'Loading 3D mechanism view…';
     try {
       const renderer3d = await ensureThreeRenderer();
+      if (requestedViewMode !== '3d') {
+        host3d.hidden = true;
+        host2d.hidden = false;
+        return;
+      }
       viewMode = '3d';
       host2d.hidden = true;
       host3d.hidden = false;
@@ -377,10 +394,12 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
       requestAnimationFrame(() => renderer3d.fitView());
       status.textContent = '3D view. Drag to orbit, scroll or pinch to zoom, and right-drag to pan.';
     } catch (error) {
-      host3d.hidden = true;
-      host2d.hidden = false;
-      status.textContent = '3D view is unavailable in this browser. The 2D mechanism remains active.';
-      console.error(error);
+      if (requestedViewMode === '3d') {
+        host3d.hidden = true;
+        host2d.hidden = false;
+        status.textContent = '3D view is unavailable in this browser. The 2D mechanism remains active.';
+        console.error(error);
+      }
     } finally {
       view3dButton.disabled = false;
       root.removeAttribute('aria-busy');
