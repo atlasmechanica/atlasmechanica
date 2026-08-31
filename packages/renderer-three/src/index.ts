@@ -364,6 +364,10 @@ function localSegment(segment: SegmentPrimitive, center: Vec2, phase: number): S
   };
 }
 
+function keyNumber(value: number): number {
+  return Math.round(value * 1e12) / 1e12;
+}
+
 function normalizedSpokeKey(scene: MechanismScene, prefix: PulleyPrefix): unknown[] {
   const outer = findCircle(scene, prefix);
   if (outer === undefined) return [];
@@ -376,8 +380,10 @@ function normalizedSpokeKey(scene: MechanismScene, prefix: PulleyPrefix): unknow
     const localLeft = localSegment(left, outer.center, phase);
     const localRight = localSegment(right, outer.center, phase);
     result.push([
-      localLeft.a.x, localLeft.a.y, localLeft.b.x, localLeft.b.y,
-      localRight.a.x, localRight.a.y, localRight.b.x, localRight.b.y,
+      keyNumber(localLeft.a.x), keyNumber(localLeft.a.y),
+      keyNumber(localLeft.b.x), keyNumber(localLeft.b.y),
+      keyNumber(localRight.a.x), keyNumber(localRight.a.y),
+      keyNumber(localRight.b.x), keyNumber(localRight.b.y),
     ]);
   }
   return result;
@@ -386,16 +392,26 @@ function normalizedSpokeKey(scene: MechanismScene, prefix: PulleyPrefix): unknow
 function circleKey(circle: CirclePrimitive | undefined): unknown {
   return circle === undefined
     ? null
-    : [circle.center.x, circle.center.y, circle.radius, circle.width ?? null];
+    : [
+      keyNumber(circle.center.x),
+      keyNumber(circle.center.y),
+      keyNumber(circle.radius),
+      circle.width === undefined ? null : keyNumber(circle.width),
+    ];
 }
 
 function beltGeometryKey(scene: MechanismScene, belt: PolylinePrimitive): string {
   const bridge = findSegment(scene, 'belt-crossing-bridge-outline');
   return JSON.stringify([
     scene.id,
-    [scene.viewport.minX, scene.viewport.maxX, scene.viewport.minY, scene.viewport.maxY],
-    belt.width ?? null,
-    belt.points.map((point) => [point.x, point.y]),
+    [
+      keyNumber(scene.viewport.minX),
+      keyNumber(scene.viewport.maxX),
+      keyNumber(scene.viewport.minY),
+      keyNumber(scene.viewport.maxY),
+    ],
+    belt.width === undefined ? null : keyNumber(belt.width),
+    belt.points.map((point) => [keyNumber(point.x), keyNumber(point.y)]),
     circleKey(findCircle(scene, 'belt-driver')),
     circleKey(findCircle(scene, 'belt-driver-rim-inner')),
     circleKey(findCircle(scene, 'belt-driver-hub')),
@@ -404,7 +420,10 @@ function beltGeometryKey(scene: MechanismScene, belt: PolylinePrimitive): string
     circleKey(findCircle(scene, 'belt-driven-rim-inner')),
     circleKey(findCircle(scene, 'belt-driven-hub')),
     normalizedSpokeKey(scene, 'belt-driven'),
-    bridge === undefined ? null : [bridge.a.x, bridge.a.y, bridge.b.x, bridge.b.y],
+    bridge === undefined ? null : [
+      keyNumber(bridge.a.x), keyNumber(bridge.a.y),
+      keyNumber(bridge.b.x), keyNumber(bridge.b.y),
+    ],
   ]);
 }
 
