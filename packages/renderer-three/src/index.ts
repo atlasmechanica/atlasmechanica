@@ -54,6 +54,7 @@ interface BeltAssemblyCache {
   key: string;
   driver: Group;
   driven: Group;
+  pathLength: number;
 }
 
 interface CrossingSpan {
@@ -357,6 +358,73 @@ export function beltSpatialPoints(
   return result;
 }
 
+function spatialPolylineLength(points: BeltSpatialPoint[]): number {
+  let total = 0;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const a = points[index];
+    const b = points[index + 1];
+    if (a === undefined || b === undefined) continue;
+    total += Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+  }
+  return total;
+}
+
+function beltPathPhaseSign(belt: PolylinePrimitive, driver: CirclePrimitive): 1 | -1 {
+  const contact = belt.points[0];
+  const next = belt.points[1];
+  if (contact === undefined || next === undefined) return 1;
+  const segmentLength = Math.hypot(next.x - contact.x, next.y - contact.y);
+  if (!(segmentLength > 0)) return 1;
+
+  const pathTangent = {
+    x: (next.x - contact.x) / segmentLength,
+    y: (next.y - contact.y) / segmentLength,
+  };
+  const radial = {
+    x: contact.x - driver.center.x,
+    y: contact.y - driver.center.y,
+  };
+  const positiveRotationVelocity = { x: -radial.y, y: radial.x };
+  const dot =
+    positiveRotationVelocity.x * pathTangent.x +
+    positiveRotationVelocity.y * pathTangent.y;
+  return dot >= 0 ? 1 : -1;
+}
+
+function wrapUnit(value: number): number {
+  return ((value % 1) + 1) % 1;
+}
+
+/**
+ * Translate pulley phase into material travel along the cached rope tube. This
+ * mirrors the 2D lay-mark convention: positive driver rotation advances the
+ * rope by angle × physical pitch radius along the path. Moving the UV texture
+ * rather than rebuilding TubeGeometry keeps Play cheap while making the cord
+ * visibly travel through both open and crossed mechanisms.
+ */
+export function beltCordTextureOffset(
+  scene: MechanismScene,
+  belt: PolylinePrimitive,
+  pathLength: number,
+  repeats = CORD_WRAP_REPEATS,
+): number {
+  if (!(pathLength > 0) || !(repeats > 0)) return 0;
+  const driver = findCircle(scene, 'belt-driver');
+  const contact = belt.points[0];
+  if (driver === undefined || contact === undefined) return 0;
+  const pitchRadius = Math.hypot(
+    contact.x - driver.center.x,
+    contact.y - driver.center.y,
+  );
+  if (!(pitchRadius > 0)) return 0;
+
+  const travel = beltPathPhaseSign(belt, driver) * pulleyPhase(scene, 'belt-driver') * pitchRadius;
+  // TubeGeometry's U coordinate increases along the belt path. A material mark
+  // moving forward by `travel` therefore samples the texture from U-travel,
+  // hence the negative offset.
+  return wrapUnit(-(travel / pathLength) * repeats);
+}
+
 function beltCurve(
   scene: MechanismScene,
   belt: PolylinePrimitive,
@@ -567,9 +635,13 @@ function buildBeltAssembly(
 
   const radius = Math.max(strokeWorld(scene, belt.width ?? 7) * 0.46, depth * 0.11);
   const crossingOffset = radius * CROSSING_CLEARANCE_RADII;
+  const spatialPoints = beltSpatialPoints(scene, belt, crossingOffset);
   const tubularSegments = Math.max(128, Math.min(420, belt.points.length * 4));
   const ropeGeometry = new TubeGeometry(
-    beltCurve(scene, belt, crossingOffset),
+    new PolylineCurve3(
+      spatialPoints.map((point) => new Vector3(point.x, point.y, point.z)),
+      true,
+    ),
     tubularSegments,
     radius,
     12,
@@ -583,6 +655,7 @@ function buildBeltAssembly(
     key: beltGeometryKey(scene, belt),
     driver,
     driven,
+    pathLength: spatialPolylineLength(spatialPoints),
   };
 }
 
@@ -657,6 +730,7 @@ export function createThreeMechanismRenderer(
   host.dataset.geometryBuildCount = '0';
   host.dataset.poseUpdateCount = '0';
   host.dataset.ropeTexture = 'helical-wrap';
+  host.dataset.ropePhase = '0.000000';
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enablePan = true;
@@ -749,6 +823,13 @@ export function createThreeMechanismRenderer(
     previousCenter = next;
   }
 
+  function updateCordPhase(scene: MechanismScene, belt: PolylinePrimitive): void {
+    if (beltCache === undefined || !(beltCache.pathLength > 0)) return;
+    const phase = beltCordTextureOffset(scene, belt, beltCache.pathLength);
+    cordWrapTexture.offset.x = phase;
+    host.dataset.ropePhase = phase.toFixed(6);
+  }
+
   function updateMechanism(scene: MechanismScene): void {
     const belt = findBelt(scene);
     if (belt !== undefined && beltCache !== undefined) {
@@ -756,6 +837,7 @@ export function createThreeMechanismRenderer(
       if (nextKey === beltCache.key) {
         updatePulleyPose(beltCache.driver, scene, 'belt-driver');
         updatePulleyPose(beltCache.driven, scene, 'belt-driven');
+        updateCordPhase(scene, belt);
         poseUpdateCount += 1;
         return;
       }
@@ -775,6 +857,8 @@ export function createThreeMechanismRenderer(
     }
     if (beltCache === undefined) {
       buildGenericScene(mechanism, scene, pulleyMaterial, beltMaterial, axleMaterial);
+    } else if (belt !== undefined) {
+      updateCordPhase(scene, belt);
     }
     geometryBuildCount += 1;
   }
@@ -848,6 +932,7 @@ export function createThreeMechanismRenderer(
       delete host.dataset.geometryBuildCount;
       delete host.dataset.poseUpdateCount;
       delete host.dataset.ropeTexture;
+      delete host.dataset.ropePhase;
     },
   };
 }
