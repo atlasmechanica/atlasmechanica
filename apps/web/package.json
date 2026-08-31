@@ -13,6 +13,7 @@
     "@atlasmechanica/kinematics": "file:../../packages/kinematics",
     "@atlasmechanica/model": "file:../../packages/model",
     "@atlasmechanica/renderer-svg": "file:../../packages/renderer-svg",
+    "@atlasmechanica/renderer-three": "file:../../packages/renderer-three",
     "@atlasmechanica/scene": "file:../../packages/scene",
     "astro": "7.2.9"
   },
