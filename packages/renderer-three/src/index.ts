@@ -33,6 +33,8 @@ const DARK_METAL = 0x444846;
 const PAPER = 0xfbfaf6;
 const STROKE_REFERENCE_WIDTH = 1180;
 
+type PulleyPrefix = 'belt-driver' | 'belt-driven';
+
 export interface ThreeMechanismRendererOptions {
   ariaLabel?: string | undefined;
 }
@@ -42,6 +44,12 @@ export interface ThreeMechanismRenderer {
   fitView(): void;
   zoomBy(factor: number): void;
   destroy(): void;
+}
+
+interface BeltAssemblyCache {
+  key: string;
+  driver: Group;
+  driven: Group;
 }
 
 class PolylineCurve3 extends Curve<Vector3> {
@@ -220,13 +228,22 @@ function alignment(a: Vec2, b: Vec2): number {
   return Math.abs(a.x * b.x + a.y * b.y);
 }
 
+function samePoint(a: Vec2 | undefined, b: Vec2 | undefined): boolean {
+  if (a === undefined || b === undefined) return false;
+  return Math.hypot(a.x - b.x, a.y - b.y) <= 1e-10;
+}
+
 function wrappedIndex(index: number, count: number): number {
   return ((index % count) + count) % count;
 }
 
-function spreadSegmentDepth(depths: number[], index: number, value: number): void {
-  const count = depths.length;
-  if (count < 4) return;
+function spreadSegmentDepth(
+  depths: number[],
+  index: number,
+  value: number,
+  wrappedCount: number,
+): void {
+  if (wrappedCount < 4) return;
   const assignments: Array<[number, number]> = [
     [index, 1],
     [index + 1, 1],
@@ -236,7 +253,7 @@ function spreadSegmentDepth(depths: number[], index: number, value: number): voi
     [index + 3, 0.33],
   ];
   for (const [rawIndex, scale] of assignments) {
-    const target = wrappedIndex(rawIndex, count);
+    const target = wrappedIndex(rawIndex, wrappedCount);
     const next = value * scale;
     if (Math.abs(next) > Math.abs(depths[target] ?? 0)) depths[target] = next;
   }
@@ -265,10 +282,13 @@ export function beltDepthProfile(scene: MechanismScene, belt: PolylinePrimitive,
   const secondAlignment = alignment(segmentDirection(belt.points, second), bridgeDirection);
   const top = firstAlignment >= secondAlignment ? first : second;
   const under = top === first ? second : first;
+  const duplicatedClosure = count > 2 && samePoint(belt.points[0], belt.points[count - 1]);
+  const wrappedCount = duplicatedClosure ? count - 1 : count;
 
   result.fill(0);
-  spreadSegmentDepth(result, top, depth * 0.95);
-  spreadSegmentDepth(result, under, -depth * 0.95);
+  spreadSegmentDepth(result, top, depth * 0.95, wrappedCount);
+  spreadSegmentDepth(result, under, -depth * 0.95, wrappedCount);
+  if (duplicatedClosure) result[count - 1] = result[0] ?? 0;
   return result;
 }
 
@@ -308,35 +328,117 @@ function findSegment(scene: MechanismScene, id: string): SegmentPrimitive | unde
   return primitive?.type === 'segment' ? primitive : undefined;
 }
 
-function buildPulley(
-  group: Group,
+function findBelt(scene: MechanismScene): PolylinePrimitive | undefined {
+  const primitive = scene.primitives.find((candidate) => candidate.id === 'belt-band-underlay');
+  return primitive?.type === 'polyline' ? primitive : undefined;
+}
+
+function pulleyPhase(scene: MechanismScene, prefix: PulleyPrefix): number {
+  const outer = findCircle(scene, prefix);
+  const left = findSegment(scene, `${prefix}-spoke-0`);
+  const right = findSegment(scene, `${prefix}-spoke-0-edge`);
+  if (outer === undefined || left === undefined || right === undefined) return 0;
+  const root = {
+    x: (left.a.x + right.a.x) / 2,
+    y: (left.a.y + right.a.y) / 2,
+  };
+  return Math.atan2(root.y - outer.center.y, root.x - outer.center.x);
+}
+
+function localPoint(point: Vec2, center: Vec2, phase: number): Vec2 {
+  const dx = point.x - center.x;
+  const dy = point.y - center.y;
+  const cosine = Math.cos(phase);
+  const sine = Math.sin(phase);
+  return {
+    x: dx * cosine + dy * sine,
+    y: -dx * sine + dy * cosine,
+  };
+}
+
+function localSegment(segment: SegmentPrimitive, center: Vec2, phase: number): SegmentPrimitive {
+  return {
+    ...segment,
+    a: localPoint(segment.a, center, phase),
+    b: localPoint(segment.b, center, phase),
+  };
+}
+
+function normalizedSpokeKey(scene: MechanismScene, prefix: PulleyPrefix): unknown[] {
+  const outer = findCircle(scene, prefix);
+  if (outer === undefined) return [];
+  const phase = pulleyPhase(scene, prefix);
+  const result: unknown[] = [];
+  for (let index = 0; index < 4; index += 1) {
+    const left = findSegment(scene, `${prefix}-spoke-${index}`);
+    const right = findSegment(scene, `${prefix}-spoke-${index}-edge`);
+    if (left === undefined || right === undefined) continue;
+    const localLeft = localSegment(left, outer.center, phase);
+    const localRight = localSegment(right, outer.center, phase);
+    result.push([
+      localLeft.a.x, localLeft.a.y, localLeft.b.x, localLeft.b.y,
+      localRight.a.x, localRight.a.y, localRight.b.x, localRight.b.y,
+    ]);
+  }
+  return result;
+}
+
+function circleKey(circle: CirclePrimitive | undefined): unknown {
+  return circle === undefined
+    ? null
+    : [circle.center.x, circle.center.y, circle.radius, circle.width ?? null];
+}
+
+function beltGeometryKey(scene: MechanismScene, belt: PolylinePrimitive): string {
+  const bridge = findSegment(scene, 'belt-crossing-bridge-outline');
+  return JSON.stringify([
+    scene.id,
+    [scene.viewport.minX, scene.viewport.maxX, scene.viewport.minY, scene.viewport.maxY],
+    belt.width ?? null,
+    belt.points.map((point) => [point.x, point.y]),
+    circleKey(findCircle(scene, 'belt-driver')),
+    circleKey(findCircle(scene, 'belt-driver-rim-inner')),
+    circleKey(findCircle(scene, 'belt-driver-hub')),
+    normalizedSpokeKey(scene, 'belt-driver'),
+    circleKey(findCircle(scene, 'belt-driven')),
+    circleKey(findCircle(scene, 'belt-driven-rim-inner')),
+    circleKey(findCircle(scene, 'belt-driven-hub')),
+    normalizedSpokeKey(scene, 'belt-driven'),
+    bridge === undefined ? null : [bridge.a.x, bridge.a.y, bridge.b.x, bridge.b.y],
+  ]);
+}
+
+function buildPulleyGroup(
   scene: MechanismScene,
-  prefix: 'belt-driver' | 'belt-driven',
+  prefix: PulleyPrefix,
   depth: number,
   pulleyMaterial: MeshStandardMaterial,
   axleMaterial: MeshStandardMaterial,
-): boolean {
+): Group | undefined {
   const outer = findCircle(scene, prefix);
   const inner = findCircle(scene, `${prefix}-rim-inner`);
   const hub = findCircle(scene, `${prefix}-hub`);
-  if (outer === undefined || inner === undefined || hub === undefined) return false;
+  if (outer === undefined || inner === undefined || hub === undefined) return undefined;
+
+  const phase = pulleyPhase(scene, prefix);
+  const group = new Group();
+  group.name = prefix;
+  group.position.set(outer.center.x, outer.center.y, 0);
+  group.rotation.z = phase;
 
   const rim = new Mesh(annulusGeometry(outer.radius, inner.radius, depth), pulleyMaterial);
-  rim.position.set(outer.center.x, outer.center.y, 0);
   rim.castShadow = true;
   group.add(rim);
 
   const hubGeometry = new CylinderGeometry(hub.radius, hub.radius, depth * 1.15, 48);
   hubGeometry.rotateX(Math.PI / 2);
   const hubMesh = new Mesh(hubGeometry, pulleyMaterial);
-  hubMesh.position.set(hub.center.x, hub.center.y, 0);
   hubMesh.castShadow = true;
   group.add(hubMesh);
 
   const axleGeometry = new CylinderGeometry(hub.radius * 0.38, hub.radius * 0.38, depth * 2.2, 32);
   axleGeometry.rotateX(Math.PI / 2);
   const axle = new Mesh(axleGeometry, axleMaterial);
-  axle.position.set(hub.center.x, hub.center.y, 0);
   axle.castShadow = true;
   group.add(axle);
 
@@ -344,29 +446,36 @@ function buildPulley(
     const left = findSegment(scene, `${prefix}-spoke-${index}`);
     const right = findSegment(scene, `${prefix}-spoke-${index}-edge`);
     if (left === undefined || right === undefined) continue;
-    const spoke = new Mesh(spokeGeometry(left, right, depth * 0.72), pulleyMaterial);
+    const localLeft = localSegment(left, outer.center, phase);
+    const localRight = localSegment(right, outer.center, phase);
+    const spoke = new Mesh(spokeGeometry(localLeft, localRight, depth * 0.72), pulleyMaterial);
     spoke.castShadow = true;
     group.add(spoke);
   }
-  return true;
+  return group;
+}
+
+function updatePulleyPose(group: Group, scene: MechanismScene, prefix: PulleyPrefix): void {
+  const outer = findCircle(scene, prefix);
+  if (outer === undefined) return;
+  group.position.set(outer.center.x, outer.center.y, 0);
+  group.rotation.z = pulleyPhase(scene, prefix);
 }
 
 function buildBeltAssembly(
   group: Group,
   scene: MechanismScene,
+  belt: PolylinePrimitive,
   pulleyMaterial: MeshStandardMaterial,
   beltMaterial: MeshStandardMaterial,
   axleMaterial: MeshStandardMaterial,
-): boolean {
-  if (!scene.id.startsWith('belt-')) return false;
-  const belt = scene.primitives.find((primitive): primitive is PolylinePrimitive => {
-    return primitive.id === 'belt-band-underlay' && primitive.type === 'polyline';
-  });
-  if (belt === undefined) return false;
-
+): BeltAssemblyCache | undefined {
+  if (!scene.id.startsWith('belt-')) return undefined;
   const depth = mechanismDepth(scene);
-  buildPulley(group, scene, 'belt-driver', depth, pulleyMaterial, axleMaterial);
-  buildPulley(group, scene, 'belt-driven', depth, pulleyMaterial, axleMaterial);
+  const driver = buildPulleyGroup(scene, 'belt-driver', depth, pulleyMaterial, axleMaterial);
+  const driven = buildPulleyGroup(scene, 'belt-driven', depth, pulleyMaterial, axleMaterial);
+  if (driver === undefined || driven === undefined) return undefined;
+  group.add(driver, driven);
 
   const radius = Math.max(strokeWorld(scene, belt.width ?? 7) * 0.46, depth * 0.11);
   const tubularSegments = Math.max(128, Math.min(420, belt.points.length * 4));
@@ -374,7 +483,12 @@ function buildBeltAssembly(
   const rope = new Mesh(ropeGeometry, beltMaterial);
   rope.castShadow = true;
   group.add(rope);
-  return true;
+
+  return {
+    key: beltGeometryKey(scene, belt),
+    driver,
+    driven,
+  };
 }
 
 function buildGenericScene(
@@ -404,7 +518,13 @@ function buildGenericScene(
         primitive.points.map((point) => new Vector3(point.x, point.y, 0)),
         false,
       );
-      const geometry = new TubeGeometry(curve, Math.max(24, primitive.points.length * 3), strokeWorld(scene, primitive.width ?? 3) / 2, 8, false);
+      const geometry = new TubeGeometry(
+        curve,
+        Math.max(24, primitive.points.length * 3),
+        strokeWorld(scene, primitive.width ?? 3) / 2,
+        8,
+        false,
+      );
       group.add(new Mesh(geometry, material));
     }
   }
@@ -439,6 +559,8 @@ export function createThreeMechanismRenderer(
   renderer.domElement.style.touchAction = 'none';
   host.replaceChildren(renderer.domElement);
   host.dataset.renderer = 'three';
+  host.dataset.geometryBuildCount = '0';
+  host.dataset.poseUpdateCount = '0';
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enablePan = true;
@@ -469,6 +591,9 @@ export function createThreeMechanismRenderer(
 
   let currentScene: MechanismScene | undefined;
   let previousCenter: Vec2 | undefined;
+  let beltCache: BeltAssemblyCache | undefined;
+  let geometryBuildCount = 0;
+  let poseUpdateCount = 0;
   let destroyed = false;
 
   function syncCameraDataset(): void {
@@ -477,6 +602,8 @@ export function createThreeMechanismRenderer(
     host.dataset.cameraTarget = [controls.target.x, controls.target.y, controls.target.z]
       .map((value) => value.toFixed(5)).join(',');
     host.dataset.cameraZoom = camera.zoom.toFixed(3);
+    host.dataset.geometryBuildCount = String(geometryBuildCount);
+    host.dataset.poseUpdateCount = String(poseUpdateCount);
   }
 
   function draw(): void {
@@ -517,6 +644,36 @@ export function createThreeMechanismRenderer(
     previousCenter = next;
   }
 
+  function updateMechanism(scene: MechanismScene): void {
+    const belt = findBelt(scene);
+    if (belt !== undefined && beltCache !== undefined) {
+      const nextKey = beltGeometryKey(scene, belt);
+      if (nextKey === beltCache.key) {
+        updatePulleyPose(beltCache.driver, scene, 'belt-driver');
+        updatePulleyPose(beltCache.driven, scene, 'belt-driven');
+        poseUpdateCount += 1;
+        return;
+      }
+    }
+
+    disposeGeometry(mechanism);
+    beltCache = undefined;
+    if (belt !== undefined) {
+      beltCache = buildBeltAssembly(
+        mechanism,
+        scene,
+        belt,
+        pulleyMaterial,
+        beltMaterial,
+        axleMaterial,
+      );
+    }
+    if (beltCache === undefined) {
+      buildGenericScene(mechanism, scene, pulleyMaterial, beltMaterial, axleMaterial);
+    }
+    geometryBuildCount += 1;
+  }
+
   function fitView(): void {
     if (currentScene === undefined) return;
     const center = sceneCenter(currentScene);
@@ -551,10 +708,7 @@ export function createThreeMechanismRenderer(
       currentScene = scene;
       shiftToSceneCenter(scene);
       configureFrustum(scene);
-      disposeGeometry(mechanism);
-      if (!buildBeltAssembly(mechanism, scene, pulleyMaterial, beltMaterial, axleMaterial)) {
-        buildGenericScene(mechanism, scene, pulleyMaterial, beltMaterial, axleMaterial);
-      }
+      updateMechanism(scene);
       if (firstScene) fitView();
       else draw();
     },
@@ -575,6 +729,7 @@ export function createThreeMechanismRenderer(
       resizeObserver.disconnect();
       controls.dispose();
       disposeGeometry(mechanism);
+      beltCache = undefined;
       pulleyMaterial.dispose();
       beltMaterial.dispose();
       axleMaterial.dispose();
@@ -584,6 +739,8 @@ export function createThreeMechanismRenderer(
       delete host.dataset.cameraPosition;
       delete host.dataset.cameraTarget;
       delete host.dataset.cameraZoom;
+      delete host.dataset.geometryBuildCount;
+      delete host.dataset.poseUpdateCount;
     },
   };
 }
