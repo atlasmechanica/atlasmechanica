@@ -343,13 +343,24 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
   async function ensureThreeRenderer(): Promise<ThreeMechanismRenderer> {
     if (threeRenderer !== undefined) return threeRenderer;
     if (threeRendererPromise !== undefined) return threeRendererPromise;
-    threeRendererPromise = import('@atlasmechanica/renderer-three').then(({ createThreeMechanismRenderer }) => {
-      const created = createThreeMechanismRenderer(host3d, {
-        ariaLabel: `Interactive 3D ${routing} belt drive`,
-      });
-      created.update(currentScene);
-      threeRenderer = created;
-      return created;
+
+    const pending = import('@atlasmechanica/renderer-three').then(({ createThreeMechanismRenderer }) => {
+      let created: ThreeMechanismRenderer | undefined;
+      try {
+        created = createThreeMechanismRenderer(host3d, {
+          ariaLabel: `Interactive 3D ${routing} belt drive`,
+        });
+        created.update(currentScene);
+        threeRenderer = created;
+        return created;
+      } catch (error) {
+        created?.destroy();
+        throw error;
+      }
+    });
+    threeRendererPromise = pending.catch((error: unknown) => {
+      threeRendererPromise = undefined;
+      throw error;
     });
     return threeRendererPromise;
   }
@@ -391,12 +402,13 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
       host3d.hidden = false;
       renderer3d.update(currentScene);
       syncViewControls();
-      requestAnimationFrame(() => renderer3d.fitView());
       status.textContent = '3D view. Drag to orbit, scroll or pinch to zoom, and right-drag to pan.';
     } catch (error) {
       if (requestedViewMode === '3d') {
+        viewMode = '2d';
         host3d.hidden = true;
         host2d.hidden = false;
+        syncViewControls();
         status.textContent = '3D view is unavailable in this browser. The 2D mechanism remains active.';
         console.error(error);
       }
