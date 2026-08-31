@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MechanismScene, PolylinePrimitive } from '@atlasmechanica/scene';
-import { beltSpatialPoints } from './index.js';
+import { beltCordTextureDelta, beltSpatialPoints, shortestAngularDelta } from './index.js';
 
 const belt: PolylinePrimitive = {
   type: 'polyline',
@@ -42,6 +42,35 @@ const openScene: MechanismScene = {
   primitives: [belt],
 };
 
+const motionBelt: PolylinePrimitive = {
+  ...belt,
+  points: [
+    { x: 1, y: 0 },
+    { x: 1, y: 2 },
+    { x: -1, y: 2 },
+    { x: -1, y: 0 },
+    { x: 1, y: 0 },
+  ],
+};
+
+const motionScene: MechanismScene = {
+  id: 'belt-same',
+  title: 'Moving open belt',
+  viewport: { minX: -2, maxX: 2, minY: -1, maxY: 3 },
+  primitives: [
+    motionBelt,
+    {
+      type: 'circle',
+      id: 'belt-driver',
+      layer: 'mechanism',
+      styles: ['pulley'],
+      center: { x: 0, y: 0 },
+      radius: 0.95,
+      width: 4,
+    },
+  ],
+};
+
 describe('beltSpatialPoints', () => {
   it('keeps the open belt centered on the pulley midplane', () => {
     const points = beltSpatialPoints(openScene, belt, 0.01);
@@ -74,5 +103,23 @@ describe('beltSpatialPoints', () => {
     expect(points.at(-1)?.z).toBe(0);
     expect(points.at(-1)?.x).toBe(points[0]?.x);
     expect(points.at(-1)?.y).toBe(points[0]?.y);
+  });
+});
+
+describe('3D cord motion', () => {
+  it('uses the short angular step across the atan2 branch cut', () => {
+    const degrees = (value: number) => value * Math.PI / 180;
+    expect(shortestAngularDelta(degrees(179), degrees(-179))).toBeCloseTo(degrees(2), 12);
+    expect(shortestAngularDelta(degrees(-179), degrees(179))).toBeCloseTo(degrees(-2), 12);
+    expect(shortestAngularDelta(degrees(-1), degrees(1))).toBeCloseTo(degrees(2), 12);
+  });
+
+  it('converts incremental driver rotation into cached texture travel', () => {
+    const pathLength = 8;
+    const quarterTurn = beltCordTextureDelta(motionScene, motionBelt, pathLength, Math.PI / 2);
+    const expected = -(Math.PI / 2) / pathLength * 22;
+
+    expect(quarterTurn).toBeCloseTo(expected, 12);
+    expect(beltCordTextureDelta(motionScene, motionBelt, pathLength, 0)).toBeCloseTo(0, 12);
   });
 });

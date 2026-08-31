@@ -188,6 +188,11 @@ async function setRangeValue(page, locator, value) {
   }, value);
 }
 
+function phaseDistance(a, b) {
+  const raw = Math.abs(a - b) % 1;
+  return Math.min(raw, 1 - raw);
+}
+
 async function assertThreeView(page, fixture, screenshotPath) {
   const lab = page.locator('[data-belt-drive-lab]');
   await lab.locator('[data-view-3d]').click();
@@ -205,18 +210,21 @@ async function assertThreeView(page, fixture, screenshotPath) {
   const initialCamera = await host.getAttribute('data-camera-position');
   const initialBuildCount = Number(await host.getAttribute('data-geometry-build-count'));
   const initialPoseCount = Number(await host.getAttribute('data-pose-update-count'));
+  const initialRopePhase = Number(await host.getAttribute('data-rope-phase'));
   const box = await canvas.boundingBox();
   if (
     initialCamera === null ||
     box === null ||
     !Number.isFinite(initialBuildCount) ||
-    !Number.isFinite(initialPoseCount)
+    !Number.isFinite(initialPoseCount) ||
+    !Number.isFinite(initialRopePhase)
   ) {
-    throw new Error(`Missing ${fixture} 3D camera, cache counters, or canvas.`);
+    throw new Error(`Missing ${fixture} 3D camera, cache counters, rope phase, or canvas.`);
   }
 
-  // Angle/Play updates change only pulley pose. The physical rim/belt geometry
-  // should stay resident rather than being re-tessellated every render tick.
+  // Angle/Play updates change only pulley pose and material phase. The physical
+  // rim/belt geometry should stay resident rather than being re-tessellated,
+  // while the helical texture must visibly advance along the cached rope.
   const angle = lab.locator('[data-angle]');
   for (const value of [17, 43, 79, 121]) await setRangeValue(page, angle, value);
   await page.waitForFunction((before) => {
@@ -225,12 +233,67 @@ async function assertThreeView(page, fixture, screenshotPath) {
   }, initialPoseCount);
   const poseOnlyBuildCount = Number(await host.getAttribute('data-geometry-build-count'));
   const poseUpdates = Number(await host.getAttribute('data-pose-update-count'));
+  const movingRopePhase = Number(await host.getAttribute('data-rope-phase'));
   if (poseOnlyBuildCount !== initialBuildCount) {
     throw new Error(
       `${fixture} rebuilt 3D geometry during angle-only updates (${initialBuildCount} → ${poseOnlyBuildCount}).`,
     );
   }
+  if (!Number.isFinite(movingRopePhase) || phaseDistance(movingRopePhase, initialRopePhase) < 1e-4) {
+    throw new Error(
+      `${fixture} cord phase did not move during angle-only updates (${initialRopePhase} → ${movingRopePhase}).`,
+    );
+  }
+
+  // Scrubbing back to the starting angle must return to the same UV phase even
+  // when floating-point accumulation lands on the equivalent 1.0 side of the
+  // texture seam.
   await setRangeValue(page, angle, 0);
+  await page.waitForFunction((initial) => {
+    const host = document.querySelector('[data-renderer-three]');
+    if (!(host instanceof HTMLElement)) return false;
+    const phase = Number(host.dataset.ropePhase);
+    if (!Number.isFinite(phase)) return false;
+    const raw = Math.abs(phase - initial) % 1;
+    return Math.min(raw, 1 - raw) < 1e-5;
+  }, initialRopePhase);
+  const scrubReturnRopePhase = Number(await host.getAttribute('data-rope-phase'));
+
+  // Exercise the atan2 branch cut directly. A real 179° -> 181° driver move is
+  // a +2° physical step, so the rope phase should move a small amount rather
+  // than snapping by almost a full revolution.
+  await setRangeValue(page, angle, 179);
+  const branchCutPhase179 = Number(await host.getAttribute('data-rope-phase'));
+  await setRangeValue(page, angle, 181);
+  const branchCutPhase181 = Number(await host.getAttribute('data-rope-phase'));
+  const branchCutPhaseStep = phaseDistance(branchCutPhase179, branchCutPhase181);
+  if (!(branchCutPhaseStep > 0.001 && branchCutPhaseStep < 0.08)) {
+    throw new Error(
+      `${fixture} cord phase snapped across 180° (${branchCutPhase179} → ${branchCutPhase181}; circular step ${branchCutPhaseStep}).`,
+    );
+  }
+  const branchCutBuildCount = Number(await host.getAttribute('data-geometry-build-count'));
+  if (branchCutBuildCount !== initialBuildCount) {
+    throw new Error(
+      `${fixture} rebuilt 3D geometry while crossing 180° (${initialBuildCount} → ${branchCutBuildCount}).`,
+    );
+  }
+
+  // The actual product Reset action must clear accumulated material travel as
+  // well as the mechanical angle, so a reset always returns to the canonical
+  // cord texture phase.
+  await lab.locator('[data-reset]').click();
+  await page.waitForFunction(() => {
+    const host = document.querySelector('[data-renderer-three]');
+    return host instanceof HTMLElement && Math.abs(Number(host.dataset.ropePhase)) < 1e-6;
+  });
+  const resetRopePhase = Number(await host.getAttribute('data-rope-phase'));
+  const resetBuildCount = Number(await host.getAttribute('data-geometry-build-count'));
+  if (resetBuildCount !== initialBuildCount) {
+    throw new Error(
+      `${fixture} rebuilt 3D geometry during Reset (${initialBuildCount} → ${resetBuildCount}).`,
+    );
+  }
 
   // Use a readable three-quarter view for evidence: enough movement to prove
   // orbit controls and show physical depth without turning the mechanism edge-on.
@@ -282,6 +345,14 @@ async function assertThreeView(page, fixture, screenshotPath) {
     initialBuildCount,
     poseOnlyBuildCount,
     poseUpdates,
+    initialRopePhase,
+    movingRopePhase,
+    scrubReturnRopePhase,
+    branchCutPhase179,
+    branchCutPhase181,
+    branchCutPhaseStep,
+    resetRopePhase,
+    resetBuildCount,
   };
 }
 

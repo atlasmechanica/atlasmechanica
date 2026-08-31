@@ -478,6 +478,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
     rpmInput.value = String(rpm);
     currentState = evaluate();
     applyZoom(1);
+    threeRenderer?.resetMotionPhase();
     render();
     if (viewMode === '3d') threeRenderer?.fitView();
     status.textContent = viewMode === '3d'
