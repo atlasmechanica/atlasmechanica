@@ -34,7 +34,7 @@ const ROPE_BLUE = 0x2f668e;
 const DARK_METAL = 0x444846;
 const PAPER = 0xfbfaf6;
 const STROKE_REFERENCE_WIDTH = 1180;
-const CORD_WRAP_REPEATS = 32;
+const CORD_WRAP_REPEATS = 22;
 const CROSSING_CLEARANCE_RADII = 1.45;
 
 type PulleyPrefix = 'belt-driver' | 'belt-driven';
@@ -201,22 +201,22 @@ function createCordWrapTexture(): CanvasTexture {
     context.beginPath();
     context.moveTo(offset, 64);
     context.lineTo(offset + 64, 0);
-    context.strokeStyle = 'rgba(78, 92, 103, 0.34)';
-    context.lineWidth = 8;
+    context.strokeStyle = 'rgba(22, 39, 52, 0.82)';
+    context.lineWidth = 14;
     context.stroke();
 
     context.beginPath();
     context.moveTo(offset, 64);
     context.lineTo(offset + 64, 0);
-    context.strokeStyle = 'rgba(255, 255, 255, 0.72)';
-    context.lineWidth = 2;
+    context.strokeStyle = 'rgba(255, 255, 255, 0.48)';
+    context.lineWidth = 3;
     context.stroke();
   }
 
   const texture = new CanvasTexture(canvas);
   texture.wrapS = RepeatWrapping;
   texture.wrapT = RepeatWrapping;
-  texture.repeat.set(CORD_WRAP_REPEATS, 1);
+  texture.repeat.set(CORD_WRAP_REPEATS, 2);
   texture.colorSpace = SRGBColorSpace;
   return texture;
 }
@@ -572,7 +572,7 @@ function buildBeltAssembly(
     beltCurve(scene, belt, crossingOffset),
     tubularSegments,
     radius,
-    10,
+    12,
     true,
   );
   const rope = new Mesh(ropeGeometry, beltMaterial);
@@ -676,6 +676,8 @@ export function createThreeMechanismRenderer(
   const beltMaterial = new MeshStandardMaterial({
     color: ROPE_BLUE,
     map: cordWrapTexture,
+    bumpMap: cordWrapTexture,
+    bumpScale: 0.18,
     metalness: 0.02,
     roughness: 0.84,
   });
