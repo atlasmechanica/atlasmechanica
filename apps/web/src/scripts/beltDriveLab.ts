@@ -122,7 +122,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
   const centerOutput = required(root.querySelector<HTMLOutputElement>('[data-center-output]'), 'center output');
   const rpmOutput = required(root.querySelector<HTMLOutputElement>('[data-rpm-output]'), 'speed output');
   const directionOutput = required(root.querySelector<HTMLElement>('[data-direction]'), 'direction readout');
-  const ratioOutput = required(root.querySelector<HTMLElement>('[data-ratio]'), 'ratio readout');
+  const ratioOutput = required(root.querySelector<HTMLElement>('[data-ratio]'), 'ratio output');
   const outputRpm = required(root.querySelector<HTMLElement>('[data-output-rpm]'), 'output-speed readout');
   const beltSpeedOutput = required(root.querySelector<HTMLElement>('[data-belt-speed]'), 'belt-speed readout');
   const driverWrapOutput = required(root.querySelector<HTMLElement>('[data-driver-wrap]'), 'wrap-angle readout');
@@ -146,6 +146,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
   let requestedViewMode: ViewMode = '2d';
   let threeRenderer: ThreeMechanismRenderer | undefined;
   let threeRendererPromise: Promise<ThreeMechanismRenderer> | undefined;
+  let threeRendererLoadAttempt = 0;
   let invalidParameterHandle: Vec2 | undefined;
   let selectedId: string | undefined;
   let playing = false;
@@ -340,11 +341,20 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-belt-drive-lab]
     updateReadouts(currentState);
   }
 
+  function loadThreeRendererModule() {
+    const useAlternate = threeRendererLoadAttempt % 2 === 1;
+    threeRendererLoadAttempt += 1;
+    return useAlternate
+      ? import('./threeRendererLoaderB.js')
+      : import('./threeRendererLoaderA.js');
+  }
+
   async function ensureThreeRenderer(): Promise<ThreeMechanismRenderer> {
     if (threeRenderer !== undefined) return threeRenderer;
     if (threeRendererPromise !== undefined) return threeRendererPromise;
 
-    const pending = import('@atlasmechanica/renderer-three').then(({ createThreeMechanismRenderer }) => {
+    const pending = loadThreeRendererModule().then(({ createThreeMechanismRenderer, loaderVariant }) => {
+      root.dataset.threeLoaderVariant = loaderVariant;
       let created: ThreeMechanismRenderer | undefined;
       try {
         created = createThreeMechanismRenderer(host3d, {
