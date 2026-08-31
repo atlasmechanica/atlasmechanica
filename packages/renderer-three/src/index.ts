@@ -547,6 +547,7 @@ export function createThreeMechanismRenderer(
   return {
     update(scene) {
       if (destroyed) throw new TypeError('Cannot update a destroyed Three.js mechanism renderer');
+      const firstScene = currentScene === undefined;
       currentScene = scene;
       shiftToSceneCenter(scene);
       configureFrustum(scene);
@@ -554,7 +555,7 @@ export function createThreeMechanismRenderer(
       if (!buildBeltAssembly(mechanism, scene, pulleyMaterial, beltMaterial, axleMaterial)) {
         buildGenericScene(mechanism, scene, pulleyMaterial, beltMaterial, axleMaterial);
       }
-      if (previousCenter === undefined) fitView();
+      if (firstScene) fitView();
       else draw();
     },
 
