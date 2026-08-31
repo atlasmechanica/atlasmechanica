@@ -46,6 +46,7 @@ export interface ThreeMechanismRendererOptions {
 export interface ThreeMechanismRenderer {
   update(scene: MechanismScene): void;
   fitView(): void;
+  resetMotionPhase(): void;
   zoomBy(factor: number): void;
   destroy(): void;
 }
@@ -395,20 +396,24 @@ function wrapUnit(value: number): number {
   return ((value % 1) + 1) % 1;
 }
 
+/** Return the signed shortest angular step between two principal angles. */
+export function shortestAngularDelta(previous: number, current: number): number {
+  return Math.atan2(Math.sin(current - previous), Math.cos(current - previous));
+}
+
 /**
- * Translate pulley phase into material travel along the cached rope tube. This
- * mirrors the 2D lay-mark convention: positive driver rotation advances the
- * rope by angle × physical pitch radius along the path. Moving the UV texture
- * rather than rebuilding TubeGeometry keeps Play cheap while making the cord
- * visibly travel through both open and crossed mechanisms.
+ * Convert an incremental driver rotation into UV travel along the cached rope.
+ * The pitch radius comes from the solver-owned rope contact rather than the
+ * presentation-shrunk rust rim, matching the physical no-slip belt relation.
  */
-export function beltCordTextureOffset(
+export function beltCordTextureDelta(
   scene: MechanismScene,
   belt: PolylinePrimitive,
   pathLength: number,
+  angleDelta: number,
   repeats = CORD_WRAP_REPEATS,
 ): number {
-  if (!(pathLength > 0) || !(repeats > 0)) return 0;
+  if (!(pathLength > 0) || !(repeats > 0) || !Number.isFinite(angleDelta)) return 0;
   const driver = findCircle(scene, 'belt-driver');
   const contact = belt.points[0];
   if (driver === undefined || contact === undefined) return 0;
@@ -418,21 +423,10 @@ export function beltCordTextureOffset(
   );
   if (!(pitchRadius > 0)) return 0;
 
-  const travel = beltPathPhaseSign(belt, driver) * pulleyPhase(scene, 'belt-driver') * pitchRadius;
+  const travel = beltPathPhaseSign(belt, driver) * angleDelta * pitchRadius;
   // TubeGeometry's U coordinate increases along the belt path. A material mark
-  // moving forward by `travel` therefore samples the texture from U-travel,
-  // hence the negative offset.
-  return wrapUnit(-(travel / pathLength) * repeats);
-}
-
-function beltCurve(
-  scene: MechanismScene,
-  belt: PolylinePrimitive,
-  crossingOffset: number,
-): PolylineCurve3 {
-  const points = beltSpatialPoints(scene, belt, crossingOffset)
-    .map((point) => new Vector3(point.x, point.y, point.z));
-  return new PolylineCurve3(points, true);
+  // moving forward by `travel` therefore samples the texture from U-travel.
+  return -(travel / pathLength) * repeats;
 }
 
 function addCylinderBetween(
@@ -770,6 +764,7 @@ export function createThreeMechanismRenderer(
 
   let currentScene: MechanismScene | undefined;
   let previousCenter: Vec2 | undefined;
+  let previousDriverPhase: number | undefined;
   let beltCache: BeltAssemblyCache | undefined;
   let geometryBuildCount = 0;
   let poseUpdateCount = 0;
@@ -825,7 +820,17 @@ export function createThreeMechanismRenderer(
 
   function updateCordPhase(scene: MechanismScene, belt: PolylinePrimitive): void {
     if (beltCache === undefined || !(beltCache.pathLength > 0)) return;
-    const phase = beltCordTextureOffset(scene, belt, beltCache.pathLength);
+    const driverPhase = pulleyPhase(scene, 'belt-driver');
+    if (previousDriverPhase === undefined) {
+      previousDriverPhase = driverPhase;
+      host.dataset.ropePhase = cordWrapTexture.offset.x.toFixed(6);
+      return;
+    }
+
+    const angleDelta = shortestAngularDelta(previousDriverPhase, driverPhase);
+    previousDriverPhase = driverPhase;
+    const phaseDelta = beltCordTextureDelta(scene, belt, beltCache.pathLength, angleDelta);
+    const phase = wrapUnit(cordWrapTexture.offset.x + phaseDelta);
     cordWrapTexture.offset.x = phase;
     host.dataset.ropePhase = phase.toFixed(6);
   }
@@ -877,6 +882,13 @@ export function createThreeMechanismRenderer(
     draw();
   }
 
+  function resetMotionPhase(): void {
+    previousDriverPhase = undefined;
+    cordWrapTexture.offset.x = 0;
+    host.dataset.ropePhase = '0.000000';
+    draw();
+  }
+
   function resize(): void {
     if (destroyed) return;
     const width = Math.max(1, host.clientWidth);
@@ -904,6 +916,8 @@ export function createThreeMechanismRenderer(
 
     fitView,
 
+    resetMotionPhase,
+
     zoomBy(factor) {
       if (destroyed || !(factor > 0)) return;
       camera.zoom = MathUtils.clamp(camera.zoom * factor, controls.minZoom, controls.maxZoom);
@@ -919,6 +933,7 @@ export function createThreeMechanismRenderer(
       controls.dispose();
       disposeGeometry(mechanism);
       beltCache = undefined;
+      previousDriverPhase = undefined;
       pulleyMaterial.dispose();
       beltMaterial.dispose();
       axleMaterial.dispose();
