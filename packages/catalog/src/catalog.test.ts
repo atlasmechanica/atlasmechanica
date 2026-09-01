@@ -54,6 +54,29 @@ describe('catalog manifests', () => {
     expect(sourceOnlyCatalog.occurrences.get('brown:003')).toBe(sourceOnly);
   });
 
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 1.5])(
+    'rejects invalid occurrence ordinal %s',
+    (ordinal) => {
+      expect(() =>
+        createCatalog({
+          collections: [brown507Collection],
+          subjects: [],
+          occurrences: [
+            {
+              schemaVersion: brown001.schemaVersion,
+              id: 'brown:invalid-ordinal',
+              collection: 'brown-507',
+              ordinal,
+              displayNumber: String(ordinal),
+              status: 'cataloged',
+              source: {},
+            },
+          ],
+        }),
+      ).toThrow('ordinal must be a finite integer');
+    },
+  );
+
   it('rejects empty classification metadata at the classified stage', () => {
     expect(() =>
       createCatalog({

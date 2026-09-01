@@ -11,9 +11,10 @@ const anchorId = occurrence.id.replaceAll(':', '-');
 const collectionNumber = collection.sequence === undefined
   ? null
   : String(collection.sequence).padStart(3, '0');
-const eyebrow = collectionNumber && collection.author
-  ? `Collection ${collectionNumber} · ${collection.author}`
-  : collection.author ?? collection.title;
+const collectionIdentity = collection.author ?? collection.title;
+const eyebrow = collectionNumber
+  ? `Collection ${collectionNumber} · ${collectionIdentity}`
+  : collectionIdentity;
 const citation = collection.author
   ? `${collection.author}, movement ${occurrence.ordinal} · online transcription reference`
   : `${collection.title}, movement ${occurrence.ordinal}`;

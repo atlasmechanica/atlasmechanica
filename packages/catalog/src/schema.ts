@@ -173,6 +173,12 @@ export function createCatalog(manifests: CatalogManifestSet): CatalogIndex {
       );
     }
 
+    if (!Number.isFinite(occurrence.ordinal) || !Number.isInteger(occurrence.ordinal)) {
+      throw new Error(
+        `Collection occurrence ${occurrence.id} ordinal must be a finite integer`,
+      );
+    }
+
     const ordinalKey = `${occurrence.collection}\u0000${occurrence.ordinal}`;
     if (collectionOrdinals.has(ordinalKey)) {
       throw new Error(
