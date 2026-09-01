@@ -70,10 +70,10 @@ export function resolveMechanismLabFromFamily(
 
   const sceneCompiler: MechanismSceneCompiler = Object.freeze({
     id: registeredSceneCompiler.id,
-    supports(candidate): boolean {
+    supports(candidate: SimulationModel): boolean {
       return registeredSceneCompiler.supports(candidate);
     },
-    build(options) {
+    build(options: Parameters<MechanismSceneCompiler['build']>[0]) {
       const scene = registeredSceneCompiler.build(options);
       assertSceneInteractionBindings(definition, scene);
       return scene;
