@@ -1,16 +1,16 @@
 import type { ModelId } from '@atlasmechanica/model';
-import { beltLabProvider } from './providers/belt.js';
-import { fourBarLabProvider } from './providers/fourBar.js';
+import { beltLabFamily } from './families/belt.js';
+import { fourBarLabFamily } from './families/fourBar.js';
 import {
-  resolveMechanismLabFromProvider,
-  type MechanismLabRuntimeProvider,
+  resolveMechanismLabFromFamily,
+  type MechanismLabFamily,
   type ResolvedMechanismLab,
-} from './provider.js';
+} from './family.js';
 
-const PROVIDERS_BY_MODEL: Readonly<Record<string, MechanismLabRuntimeProvider>> = Object.freeze({
-  'foundation:belt-drive:open': beltLabProvider,
-  'foundation:belt-drive:crossed': beltLabProvider,
-  'foundation:four-bar:crank-rocker': fourBarLabProvider,
+const FAMILIES_BY_MODEL: Readonly<Record<string, MechanismLabFamily>> = Object.freeze({
+  'foundation:belt-drive:open': beltLabFamily,
+  'foundation:belt-drive:crossed': beltLabFamily,
+  'foundation:four-bar:crank-rocker': fourBarLabFamily,
 });
 
 /** Eager resolver intended for server/build-time use. */
@@ -19,9 +19,9 @@ export function resolveMechanismLab(
   adapterId: string,
   labId?: string,
 ): ResolvedMechanismLab {
-  const provider = PROVIDERS_BY_MODEL[modelId];
-  if (provider === undefined) throw new TypeError(`No mechanism lab runtime provider for model ${modelId}`);
-  return resolveMechanismLabFromProvider(provider, modelId, adapterId, labId);
+  const family = FAMILIES_BY_MODEL[modelId];
+  if (family === undefined) throw new TypeError(`No mechanism lab family for model ${modelId}`);
+  return resolveMechanismLabFromFamily(family, modelId, adapterId, labId);
 }
 
-export type { ResolvedMechanismLab } from './provider.js';
+export type { ResolvedMechanismLab } from './family.js';
