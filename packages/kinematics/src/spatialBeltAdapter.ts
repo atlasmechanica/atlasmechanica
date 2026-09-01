@@ -106,6 +106,13 @@ function invalidState(
   };
 }
 
+function assertFinite(value: number, label: string): number {
+  if (!Number.isFinite(value)) {
+    throw new RangeError(`${label} must be finite`);
+  }
+  return value;
+}
+
 function resolveParameters(
   model: SimulationModel,
   overrides: Partial<Record<ParameterId, QuantityValue>>,
@@ -113,19 +120,22 @@ function resolveParameters(
   const values: ParameterValues = {};
   for (const [id, definition] of Object.entries(model.parameters)) {
     const authored = overrides[id] ?? definition.default;
-    const value = canonicalNumber(authored, definition.kind);
-    if (!Number.isFinite(value)) {
-      throw new RangeError(`${id} must be finite`);
-    }
+    const value = assertFinite(canonicalNumber(authored, definition.kind), id);
 
     if (definition.domain?.min !== undefined) {
-      const minimum = canonicalNumber(definition.domain.min, definition.kind);
+      const minimum = assertFinite(
+        canonicalNumber(definition.domain.min, definition.kind),
+        `${id} minimum`,
+      );
       if (value < minimum) {
         throw new RangeError(`${id} must be >= ${minimum} in canonical units`);
       }
     }
     if (definition.domain?.max !== undefined) {
-      const maximum = canonicalNumber(definition.domain.max, definition.kind);
+      const maximum = assertFinite(
+        canonicalNumber(definition.domain.max, definition.kind),
+        `${id} maximum`,
+      );
       if (value > maximum) {
         throw new RangeError(`${id} must be <= ${maximum} in canonical units`);
       }
@@ -197,6 +207,14 @@ function sameDirection(a: Vec3, b: Vec3): boolean {
   return an !== undefined
     && bn !== undefined
     && dot(an, bn) >= 1 - PROFILE_TOLERANCE;
+}
+
+function parallel(a: Vec3, b: Vec3): boolean {
+  const an = normalize(a);
+  const bn = normalize(b);
+  return an !== undefined
+    && bn !== undefined
+    && Math.abs(dot(an, bn)) >= 1 - PROFILE_TOLERANCE;
 }
 
 function perpendicular(a: Vec3, b: Vec3): boolean {
@@ -301,19 +319,45 @@ function resolveContactRadii(
   return radii;
 }
 
-function hasLoopClearance(
+function pulleyPairHasClearance(
+  a: ContactContext,
+  b: ContactContext,
+  ra: number,
+  rb: number,
+): boolean {
+  const delta = subtract(b.center, a.center);
+  const centerDistance = magnitude(delta);
+  if (!Number.isFinite(centerDistance)) return false;
+
+  if (parallel(a.pulley.axis, b.pulley.axis)) {
+    const axis = normalize(a.pulley.axis);
+    if (axis === undefined) return false;
+    const axialSeparation = Math.abs(dot(delta, axis));
+    // Pitch circles on distinct parallel planes do not intersect in the
+    // zero-thickness v0 model. Pulley thickness is intentionally not modeled yet.
+    if (axialSeparation > PROFILE_TOLERANCE) return true;
+  }
+
+  return centerDistance > ra + rb + PROFILE_TOLERANCE;
+}
+
+function hasPulleyClearance(
   contacts: readonly ContactContext[],
   radii: ReadonlyMap<string, number>,
 ): boolean {
-  for (let index = 0; index < contacts.length; index += 1) {
-    const a = contacts[index];
-    const b = contacts[(index + 1) % contacts.length];
-    if (a === undefined || b === undefined) return false;
+  for (let first = 0; first < contacts.length; first += 1) {
+    const a = contacts[first];
+    if (a === undefined) return false;
     const ra = radii.get(a.pulley.id);
-    const rb = radii.get(b.pulley.id);
-    if (ra === undefined || rb === undefined) return false;
-    const centerDistance = magnitude(subtract(b.center, a.center));
-    if (!(centerDistance > ra + rb + PROFILE_TOLERANCE)) return false;
+    if (ra === undefined) return false;
+
+    for (let second = first + 1; second < contacts.length; second += 1) {
+      const b = contacts[second];
+      if (b === undefined) return false;
+      const rb = radii.get(b.pulley.id);
+      if (rb === undefined) return false;
+      if (!pulleyPairHasClearance(a, b, ra, rb)) return false;
+    }
   }
   return true;
 }
@@ -350,7 +394,7 @@ function getContext(model: SimulationModel): SpatialBeltContext | undefined {
   try {
     const parameters = resolveParameters(model, {});
     const radii = resolveContactRadii(contacts, parameters);
-    if (!hasLoopClearance(contacts, radii)) return undefined;
+    if (!hasPulleyClearance(contacts, radii)) return undefined;
   } catch {
     return undefined;
   }
@@ -430,17 +474,25 @@ class SpatialBeltSession implements ModelSession {
         );
       }
 
-      inputAngle = canonicalNumber(inputSource, 'angle');
-      referenceInput = canonicalNumber(
-        configuration.coordinates[inputId] ?? { value: 0, unit: 'rad' },
-        'angle',
+      inputAngle = assertFinite(canonicalNumber(inputSource, 'angle'), 'Driver angle');
+      referenceInput = assertFinite(
+        canonicalNumber(
+          configuration.coordinates[inputId] ?? { value: 0, unit: 'rad' },
+          'angle',
+        ),
+        'Driver reference angle',
       );
       const rate = request.rates?.[inputId];
       const acceleration = request.accelerations?.[inputId];
-      inputRate = rate === undefined ? undefined : canonicalNumber(rate, 'angular-velocity');
+      inputRate = rate === undefined
+        ? undefined
+        : assertFinite(canonicalNumber(rate, 'angular-velocity'), 'Driver angular velocity');
       inputAcceleration = acceleration === undefined
         ? undefined
-        : canonicalNumber(acceleration, 'angular-acceleration');
+        : assertFinite(
+            canonicalNumber(acceleration, 'angular-acceleration'),
+            'Driver angular acceleration',
+          );
       radii = resolveContactRadii(context.contacts, parameters);
     } catch (error) {
       return invalidState(
@@ -453,13 +505,13 @@ class SpatialBeltSession implements ModelSession {
       );
     }
 
-    if (!hasLoopClearance(context.contacts, radii)) {
+    if (!hasPulleyClearance(context.contacts, radii)) {
       return invalidState(
         model,
         this.configuration,
         errorDiagnostic(
           'invalid-geometry',
-          'Brown 003 fixed-axis belt profile lost required clearance between consecutive pulley contacts',
+          'Brown 003 fixed-axis belt profile lost required pairwise pulley clearance',
         ),
       );
     }
@@ -478,42 +530,56 @@ class SpatialBeltSession implements ModelSession {
         throw new TypeError(`Compiled fixed-axis belt model lost radius ${contact.pulley.id}`);
       }
 
-      let referenceAngle: number;
       try {
-        referenceAngle = canonicalNumber(
-          configuration.coordinates[contact.pulley.coordinate] ?? { value: 0, unit: 'rad' },
-          'angle',
+        const referenceAngle = assertFinite(
+          canonicalNumber(
+            configuration.coordinates[contact.pulley.coordinate] ?? { value: 0, unit: 'rad' },
+            'angle',
+          ),
+          `${contact.pulley.id} reference angle`,
         );
+        const ratio = assertFinite(
+          (context.driver.definition.sense / contact.definition.sense)
+            * (driverRadius / radius),
+          `${contact.pulley.id} angular ratio`,
+        );
+        const position = assertFinite(
+          referenceAngle + ratio * (inputAngle - referenceInput),
+          `${contact.pulley.id} angle`,
+        );
+        const state: CoordinateState = {
+          position: { value: position, unit: 'rad' },
+        };
+        if (inputRate !== undefined) {
+          state.velocity = {
+            value: assertFinite(
+              ratio * inputRate,
+              `${contact.pulley.id} angular velocity`,
+            ),
+            unit: 'rad/s',
+          };
+        }
+        if (inputAcceleration !== undefined) {
+          state.acceleration = {
+            value: assertFinite(
+              ratio * inputAcceleration,
+              `${contact.pulley.id} angular acceleration`,
+            ),
+            unit: 'rad/s^2',
+          };
+        }
+        ratios.set(contact.pulley.id, ratio);
+        coordinates[contact.pulley.coordinate] = state;
       } catch (error) {
         return invalidState(
           model,
           this.configuration,
           errorDiagnostic(
             'invalid-input',
-            error instanceof Error ? error.message : 'Invalid fixed-axis pulley reference angle',
+            error instanceof Error ? error.message : 'Non-finite fixed-axis belt kinematics',
           ),
         );
       }
-
-      const ratio = (context.driver.definition.sense / contact.definition.sense)
-        * (driverRadius / radius);
-      ratios.set(contact.pulley.id, ratio);
-      const state: CoordinateState = {
-        position: {
-          value: referenceAngle + ratio * (inputAngle - referenceInput),
-          unit: 'rad',
-        },
-      };
-      if (inputRate !== undefined) {
-        state.velocity = { value: ratio * inputRate, unit: 'rad/s' };
-      }
-      if (inputAcceleration !== undefined) {
-        state.acceleration = {
-          value: ratio * inputAcceleration,
-          unit: 'rad/s^2',
-        };
-      }
-      coordinates[contact.pulley.coordinate] = state;
     }
 
     const outputRatio = ratios.get(context.driven.pulley.id);
@@ -521,18 +587,38 @@ class SpatialBeltSession implements ModelSession {
       throw new TypeError('Compiled fixed-axis belt model lost its driven ratio');
     }
 
-    const beltTravel = context.driver.definition.sense
-      * driverRadius
-      * (inputAngle - referenceInput);
+    let beltTravel: number;
+    let beltSpeed: number | undefined;
+    try {
+      beltTravel = assertFinite(
+        context.driver.definition.sense
+          * driverRadius
+          * (inputAngle - referenceInput),
+        'Belt travel',
+      );
+      beltSpeed = inputRate === undefined
+        ? undefined
+        : assertFinite(
+            context.driver.definition.sense * driverRadius * inputRate,
+            'Belt linear speed',
+          );
+    } catch (error) {
+      return invalidState(
+        model,
+        this.configuration,
+        errorDiagnostic(
+          'invalid-input',
+          error instanceof Error ? error.message : 'Non-finite belt kinematics',
+        ),
+      );
+    }
+
     const signals: ModelState['signals'] = {
       'output-angular-ratio': scalar(outputRatio, '1'),
       'belt-travel': scalar(beltTravel, 'm'),
     };
-    if (inputRate !== undefined) {
-      signals['belt-linear-speed'] = scalar(
-        context.driver.definition.sense * driverRadius * inputRate,
-        'm/s',
-      );
+    if (beltSpeed !== undefined) {
+      signals['belt-linear-speed'] = scalar(beltSpeed, 'm/s');
     }
 
     return {
