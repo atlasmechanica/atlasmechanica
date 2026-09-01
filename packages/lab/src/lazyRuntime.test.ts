@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 afterEach(() => {
   vi.resetModules();
-  vi.unmock('./families/belt.js');
-  vi.unmock('./families/fourBar.js');
+  vi.doUnmock('./families/belt.js');
+  vi.doUnmock('./families/fourBar.js');
 });
 
 describe('lazy mechanism family runtime', () => {
