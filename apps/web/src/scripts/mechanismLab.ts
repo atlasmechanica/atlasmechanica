@@ -3,12 +3,12 @@ import {
   controlLabel,
   defaultLabValues,
   formatLabReadout,
-  resolveMechanismLab,
   type LabControlDefinition,
   type LabDisplayUnit,
   type LabInteractionDefinition,
   type LabView,
 } from '@atlasmechanica/lab';
+import { loadMechanismLab } from '@atlasmechanica/lab/lazy-runtime';
 import { hasErrors, type EvaluationRequest, type ModelState } from '@atlasmechanica/model';
 import { createSvgMechanismRenderer } from '@atlasmechanica/renderer-svg';
 import type { ThreeMechanismRenderer } from '@atlasmechanica/renderer-three';
@@ -102,11 +102,13 @@ function collectByData<T extends HTMLElement>(root: HTMLElement, attribute: stri
 for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]')) {
   const modelId = root.dataset.modelId;
   const adapterId = root.dataset.adapterId;
+  const labId = root.dataset.labId;
   if (modelId === undefined || adapterId === undefined) {
     throw new TypeError('Mechanism lab requires model and adapter ids');
   }
 
-  const resolved = resolveMechanismLab(modelId, adapterId);
+  root.setAttribute('aria-busy', 'true');
+  void loadMechanismLab(modelId, adapterId, labId).then((resolved) => {
   const { definition, model, adapter, sceneCompiler } = resolved;
   const compiled = adapter.compile(model);
   const viewport = required(root.querySelector<HTMLElement>('[data-lab-viewport]'), 'camera viewport');
@@ -287,8 +289,6 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
       }
       return bound;
     }
-    // Backward compatibility for older unbound scene compilers. New compilers
-    // should always bind direct-manipulation handles to a stable control id.
     return definition.controls.find((control) => control.interaction?.handle === handle);
   }
 
@@ -590,4 +590,11 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
   applyZoom(1);
   render();
   scheduleViewportFit();
+  root.removeAttribute('aria-busy');
+  }).catch((error: unknown) => {
+    root.removeAttribute('aria-busy');
+    const status = root.querySelector<HTMLElement>('[data-status]');
+    if (status !== null) status.textContent = 'The interactive mechanism could not be initialized.';
+    console.error(error);
+  });
 }
