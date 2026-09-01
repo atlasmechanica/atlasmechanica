@@ -4,7 +4,7 @@ import {
   type SceneBuildOptions,
 } from './buildMechanismScene.js';
 import { buildMechanismScene as buildProductionMechanismScene } from './index.js';
-import type { MechanismScene, ScenePrimitive } from './types.js';
+import type { MechanismScene } from './types.js';
 
 export interface MechanismSceneCompiler {
   readonly id: string;
@@ -18,35 +18,6 @@ function assertSubject(model: SimulationModel, expected: string, compilerId: str
   }
 }
 
-function tagLegacyBeltEntity(primitive: ScenePrimitive): ScenePrimitive {
-  if (primitive.id === 'belt-driver' && primitive.type === 'circle') {
-    return {
-      ...primitive,
-      entity: { kind: 'pulley', id: 'driver.pulley', role: 'driver' },
-    };
-  }
-  if (primitive.id === 'belt-driven' && primitive.type === 'circle') {
-    return {
-      ...primitive,
-      entity: { kind: 'pulley', id: 'driven.pulley', role: 'driven' },
-    };
-  }
-  if ((primitive.id === 'belt-path' || primitive.id === 'belt-band-underlay') && primitive.type === 'polyline') {
-    return {
-      ...primitive,
-      entity: { kind: 'belt', id: 'belt', role: 'transmission' },
-    };
-  }
-  return primitive;
-}
-
-function semanticBrownBeltScene(scene: MechanismScene): MechanismScene {
-  return {
-    ...scene,
-    primitives: scene.primitives.map(tagLegacyBeltEntity),
-  };
-}
-
 export const brownBeltSceneCompiler: MechanismSceneCompiler = {
   id: 'atlas.scene.brown-belt.v0',
   supports(model): boolean {
@@ -54,7 +25,7 @@ export const brownBeltSceneCompiler: MechanismSceneCompiler = {
   },
   build(options): MechanismScene {
     assertSubject(options.model, 'belt-drive', this.id);
-    return semanticBrownBeltScene(buildProductionMechanismScene(options));
+    return buildProductionMechanismScene(options);
   },
 };
 
