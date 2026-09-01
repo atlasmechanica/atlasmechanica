@@ -7,6 +7,7 @@ import {
   type ModelState,
   type SimulationModel,
 } from '@atlasmechanica/model';
+import { analyticBeltAdapter } from './analyticBeltAdapter.js';
 import { createBeltDriveModel } from './fixtures/beltDrive.js';
 import { canonicalQuarterTurnBeltModel } from './fixtures/quarterTurnBelt.js';
 import { spatialBeltAdapter } from './spatialBeltAdapter.js';
@@ -180,7 +181,58 @@ describe('fixed-axis spatial belt model', () => {
     expect(() => spatialBeltAdapter.compile(invalid)).toThrow('restricted to the validated Brown 003');
   });
 
-  it('returns invalid geometry when a radius edit consumes the validated contact clearance', () => {
+  it('checks clearance between nonconsecutive pulley pairs before claiming exact support', () => {
+    const system = fixedAxisSystem();
+    const guideA = system.pulleys['guide-a'];
+    const guideB = system.pulleys['guide-b'];
+    const driven = system.pulleys.driven;
+    if (guideA === undefined || guideB === undefined || driven === undefined) {
+      throw new Error('Missing Brown 003 pulleys');
+    }
+
+    const colliding: SimulationModel = {
+      ...canonicalQuarterTurnBeltModel,
+      systems: {
+        fixedAxisBelt: {
+          ...system,
+          pulleys: {
+            ...system.pulleys,
+            'guide-a': {
+              ...guideA,
+              center: {
+                x: quantity(0, 'mm'),
+                y: quantity(80, 'mm'),
+                z: quantity(-1000, 'mm'),
+              },
+            },
+            driven: {
+              ...driven,
+              center: {
+                x: quantity(20, 'mm'),
+                y: quantity(80, 'mm'),
+                z: quantity(0, 'mm'),
+              },
+            },
+            'guide-b': {
+              ...guideB,
+              center: {
+                x: quantity(0, 'mm'),
+                y: quantity(80, 'mm'),
+                z: quantity(1000, 'mm'),
+              },
+            },
+          },
+        },
+      },
+    };
+
+    expect(spatialBeltAdapter.supports(colliding)).toBe(false);
+    expect(() => spatialBeltAdapter.compile(colliding)).toThrow(
+      'restricted to the validated Brown 003',
+    );
+  });
+
+  it('returns invalid geometry when a radius edit consumes pairwise pulley clearance', () => {
     const state = spatialBeltAdapter
       .compile(canonicalQuarterTurnBeltModel)
       .createSession({ configuration: 'reference' })
@@ -190,6 +242,7 @@ describe('fixed-axis spatial belt model', () => {
       });
 
     expect(state.diagnostics[0]?.code).toBe('invalid-geometry');
+    expect(state.diagnostics[0]?.message).toContain('pairwise pulley clearance');
     expect(state.coordinates).toEqual({});
   });
 
@@ -217,6 +270,28 @@ describe('fixed-axis spatial belt model', () => {
     );
   });
 
+  it('rejects non-finite authored reference coordinates during model validation', () => {
+    const reference = referenceConfiguration();
+    const invalid: SimulationModel = {
+      ...canonicalQuarterTurnBeltModel,
+      configurations: {
+        ...canonicalQuarterTurnBeltModel.configurations,
+        reference: {
+          ...reference,
+          coordinates: {
+            ...reference.coordinates,
+            'driver-angle': quantity(Number.POSITIVE_INFINITY, 'rad'),
+          },
+        },
+      },
+    };
+
+    expect(validateSimulationModel(invalid).map((item) => item.message)).toContain(
+      'Quantity must be finite at reference.coordinates.driver-angle',
+    );
+    expect(() => spatialBeltAdapter.compile(invalid)).toThrow('Quantity must be finite');
+  });
+
   it('rejects empty fixed-axis systems during model validation', () => {
     const invalid: SimulationModel = {
       ...canonicalQuarterTurnBeltModel,
@@ -234,7 +309,7 @@ describe('fixed-axis spatial belt model', () => {
     expect(messages).toContain('Fixed-axis belt system requires at least one belt loop');
   });
 
-  it('rejects hybrid models until the adapter can compose planar body state', () => {
+  it('rejects hybrid systems globally so no adapter can return partial subsystem state', () => {
     const planar = createBeltDriveModel('open');
     const mechanical = planar.systems.mechanical;
     const centerDistance = planar.parameters['center-distance'];
@@ -254,9 +329,13 @@ describe('fixed-axis spatial belt model', () => {
       },
     };
 
-    expect(validateSimulationModel(hybrid)).toEqual([]);
+    const messages = validateSimulationModel(hybrid).map((item) => item.message);
+    expect(messages).toContain(
+      'SimulationModel cannot combine planar mechanical and fixed-axis belt systems until subsystem state composition is implemented',
+    );
     expect(spatialBeltAdapter.supports(hybrid)).toBe(false);
-    expect(() => spatialBeltAdapter.compile(hybrid)).toThrow('restricted to the validated Brown 003');
+    expect(() => spatialBeltAdapter.compile(hybrid)).toThrow('cannot combine planar mechanical');
+    expect(() => analyticBeltAdapter.compile(hybrid)).toThrow('cannot combine planar mechanical');
   });
 
   it('rejects non-finite radius overrides instead of emitting NaN state', () => {
@@ -266,6 +345,41 @@ describe('fixed-axis spatial belt model', () => {
       .evaluate({
         parameters: { 'driver-radius': quantity(Number.POSITIVE_INFINITY, 'm') },
         coordinates: { 'driver-angle': quantity(10, 'deg') },
+      });
+
+    expect(state.diagnostics[0]?.code).toBe('invalid-input');
+    expect(state.diagnostics[0]?.message).toContain('must be finite');
+    expect(state.coordinates).toEqual({});
+    expect(state.signals).toEqual({});
+  });
+
+  it('rejects non-finite request kinematics instead of returning successful state', () => {
+    const session = spatialBeltAdapter
+      .compile(canonicalQuarterTurnBeltModel)
+      .createSession({ configuration: 'reference' });
+
+    const angleState = session.evaluate({
+      coordinates: { 'driver-angle': quantity(Number.POSITIVE_INFINITY, 'rad') },
+    });
+    expect(angleState.diagnostics[0]?.code).toBe('invalid-input');
+    expect(angleState.diagnostics[0]?.message).toContain('Driver angle must be finite');
+    expect(angleState.coordinates).toEqual({});
+
+    const rateState = session.evaluate({
+      coordinates: { 'driver-angle': quantity(10, 'deg') },
+      rates: { 'driver-angle': quantity(Number.POSITIVE_INFINITY, 'rad/s') },
+    });
+    expect(rateState.diagnostics[0]?.code).toBe('invalid-input');
+    expect(rateState.diagnostics[0]?.message).toContain('Driver angular velocity must be finite');
+    expect(rateState.coordinates).toEqual({});
+  });
+
+  it('rejects overflow in derived pulley kinematics', () => {
+    const state = spatialBeltAdapter
+      .compile(canonicalQuarterTurnBeltModel)
+      .createSession({ configuration: 'reference' })
+      .evaluate({
+        coordinates: { 'driver-angle': quantity(Number.MAX_VALUE, 'rad') },
       });
 
     expect(state.diagnostics[0]?.code).toBe('invalid-input');
