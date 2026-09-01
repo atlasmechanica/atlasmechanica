@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { hasErrors } from '@atlasmechanica/model';
+import { hasErrors, quantity } from '@atlasmechanica/model';
 import {
+  assertValidInitialLabState,
   buildLabEvaluationRequest,
   defaultLabValues,
+  resolveInteractionControl,
   selectMechanismLabDefinition,
   validateMechanismLabDefinition,
 } from './index.js';
@@ -103,6 +105,30 @@ describe('mechanism lab foundation', () => {
     );
   });
 
+  it('rejects duplicate physical input bindings', () => {
+    const resolved = resolveMechanismLab(
+      canonicalFourBarLab.modelId,
+      'atlas.analytic-four-bar.v0',
+      canonicalFourBarLab.id,
+    );
+    const groundControl = canonicalFourBarLab.controls.find(
+      (control) => control.kind === 'parameter' && control.parameter === 'ground-length',
+    );
+    if (groundControl === undefined) throw new Error('Missing ground-length control');
+
+    const duplicateParameter = {
+      ...canonicalFourBarLab,
+      controls: [
+        ...canonicalFourBarLab.controls,
+        { ...groundControl, id: 'ground-length-copy' },
+      ],
+    } as unknown as typeof canonicalFourBarLab;
+
+    expect(() => validateMechanismLabDefinition(duplicateParameter, resolved.model)).toThrow(
+      'Duplicate mechanism lab parameter binding ground-length',
+    );
+  });
+
   it('rejects control units incompatible with their model quantity', () => {
     const resolved = resolveMechanismLab(
       canonicalFourBarLab.modelId,
@@ -178,5 +204,71 @@ describe('mechanism lab foundation', () => {
     expect(() => validateMechanismLabDefinition(invalid, resolved.model)).toThrow(
       'cannot format vector2 signal point-a-position',
     );
+  });
+
+  it('rejects invalid numeric readout precision', () => {
+    const resolved = resolveMechanismLab(
+      canonicalFourBarLab.modelId,
+      'atlas.analytic-four-bar.v0',
+      canonicalFourBarLab.id,
+    );
+    const readout = canonicalFourBarLab.readouts[0];
+    if (readout === undefined) throw new Error('Missing four-bar readout');
+
+    for (const digits of [-1, 1.5, 101]) {
+      const invalid = {
+        ...canonicalFourBarLab,
+        readouts: [{ ...readout, digits }],
+      } as unknown as typeof canonicalFourBarLab;
+      expect(() => validateMechanismLabDefinition(invalid, resolved.model)).toThrow(
+        `invalid digits ${digits}`,
+      );
+    }
+  });
+
+  it('resolves direct manipulation through model inputs, not presentation control ids', () => {
+    const resolved = resolveMechanismLab(
+      canonicalFourBarLab.modelId,
+      'atlas.analytic-four-bar.v0',
+      canonicalFourBarLab.id,
+    );
+    const alternate = {
+      ...canonicalFourBarLab,
+      controls: canonicalFourBarLab.controls.map((control) => (
+        control.id === 'driver-angle' ? { ...control, id: 'crank-phase' } : control
+      )),
+      animation: {
+        coordinateControlId: 'crank-phase',
+        rateControlId: 'driver-speed',
+      },
+    } as unknown as typeof canonicalFourBarLab;
+
+    validateMechanismLabDefinition(alternate, resolved.model);
+    expect(resolveInteractionControl(alternate, 'input', 'driver-angle').id).toBe('crank-phase');
+  });
+
+  it('rejects solver-error defaults before scene compilation', () => {
+    const resolved = resolveMechanismLab(
+      canonicalFourBarLab.modelId,
+      'atlas.analytic-four-bar.v0',
+      canonicalFourBarLab.id,
+    );
+    const invalid = {
+      ...canonicalFourBarLab,
+      parameterOverrides: {
+        ...(canonicalFourBarLab.parameterOverrides ?? {}),
+        'coupler-length': quantity(20, 'mm'),
+        'rocker-length': quantity(20, 'mm'),
+      },
+    } as unknown as typeof canonicalFourBarLab;
+
+    validateMechanismLabDefinition(invalid, resolved.model);
+    const request = buildLabEvaluationRequest(invalid, defaultLabValues(invalid));
+    const state = resolved.adapter
+      .compile(resolved.model)
+      .createSession({ configuration: 'open' })
+      .evaluate(request);
+    expect(hasErrors(state)).toBe(true);
+    expect(() => assertValidInitialLabState(invalid, state)).toThrow('invalid initial state');
   });
 });
