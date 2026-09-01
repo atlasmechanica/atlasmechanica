@@ -5,18 +5,19 @@ import {
   defaultLabValues,
   formatLabReadout,
   readoutLabel,
-  resolveMechanismLab,
   type LabControlDefinition,
 } from '@atlasmechanica/lab';
+import { resolveMechanismLab } from '@atlasmechanica/lab/runtime';
 
 interface Props {
   modelId: string;
   adapterId: string;
   title: string;
+  labId?: string;
 }
 
-const { modelId, adapterId, title } = Astro.props;
-const resolved = resolveMechanismLab(modelId, adapterId);
+const { modelId, adapterId, title, labId } = Astro.props;
+const resolved = resolveMechanismLab(modelId, adapterId, labId);
 const { definition, model, adapter } = resolved;
 const initialValues = defaultLabValues(definition);
 const initialRequest = buildLabEvaluationRequest(definition, initialValues);
@@ -50,6 +51,7 @@ function controlValue(control: LabControlDefinition): string {
   data-routing={legacyBeltRouting}
   data-model-id={modelId}
   data-adapter-id={adapterId}
+  data-lab-id={definition.id}
   data-view-mode="2d"
   aria-label={`Interactive ${title} experiment`}
 >
