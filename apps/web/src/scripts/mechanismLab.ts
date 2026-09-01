@@ -12,7 +12,7 @@ import {
 import { hasErrors, type EvaluationRequest, type ModelState } from '@atlasmechanica/model';
 import { createSvgMechanismRenderer } from '@atlasmechanica/renderer-svg';
 import type { ThreeMechanismRenderer } from '@atlasmechanica/renderer-three';
-import type { MechanismScene, Vec2 } from '@atlasmechanica/scene';
+import type { HandlePrimitive, MechanismScene, Vec2 } from '@atlasmechanica/scene';
 
 type ThreeLoaderModule = typeof import('./threeRendererLoaderA.js');
 
@@ -280,6 +280,25 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
     fitFrame = requestAnimationFrame(fitViewportToWindow);
   }
 
+  function interactionControl(
+    handle: Exclude<HandlePrimitive['handle'], 'invalid'>,
+    bindingId?: string,
+  ): LabControlDefinition | undefined {
+    if (bindingId !== undefined) {
+      const bound = definition.controls.find((control) => control.id === bindingId);
+      if (bound === undefined) {
+        throw new TypeError(`Scene handle references unknown lab control ${bindingId}`);
+      }
+      if (bound.interaction?.handle !== handle) {
+        throw new TypeError(`Scene handle ${bindingId} is incompatible with ${handle} interaction`);
+      }
+      return bound;
+    }
+    // Backward compatibility for older unbound scene compilers. New compilers
+    // should always bind direct-manipulation handles to a stable control id.
+    return definition.controls.find((control) => control.interaction?.handle === handle);
+  }
+
   function render(): void {
     currentScene = sceneCompiler.build({
       model,
@@ -311,13 +330,6 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
     return true;
   }
 
-  const inputInteractionControl = definition.controls.find(
-    (control) => control.interaction?.handle === 'input',
-  );
-  const parameterInteractionControl = definition.controls.find(
-    (control) => control.interaction?.handle === 'parameter',
-  );
-
   const renderer2d = createSvgMechanismRenderer(host2d, {
     instanceId: definition.id.replaceAll(/[^a-zA-Z0-9_-]/g, '-'),
     ...(definition.renderer2d?.keyboardParameterAxis === undefined
@@ -332,16 +344,16 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
         status.textContent = `Selected ${id}.`;
         render();
       },
-      onInputDrag(point) {
-        const control = inputInteractionControl;
+      onInputDrag(point, bindingId) {
+        const control = interactionControl('input', bindingId);
         const interaction = control?.interaction;
         if (control === undefined || interaction?.handle !== 'input') return;
         const value = interactionValue(control, interaction, point);
         const next = { ...values, [control.id]: value };
         acceptValues(next, `${controlLabel(control, model)} changed by direct manipulation.`);
       },
-      onParameterDrag(point) {
-        const control = parameterInteractionControl;
+      onParameterDrag(point, bindingId) {
+        const control = interactionControl('parameter', bindingId);
         const interaction = control?.interaction;
         if (control === undefined || interaction?.handle !== 'parameter') return;
         const value = interactionValue(control, interaction, point);
@@ -357,8 +369,8 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
           render();
         }
       },
-      onNudgeInput(deltaDegrees) {
-        const control = inputInteractionControl;
+      onNudgeInput(deltaDegrees, bindingId) {
+        const control = interactionControl('input', bindingId);
         if (control === undefined || control.kind !== 'coordinate') return;
         const delta = control.unit === 'rad' ? deltaDegrees * Math.PI / 180 : deltaDegrees;
         const current = values[control.id] ?? control.initial;
