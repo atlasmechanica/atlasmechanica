@@ -6,10 +6,10 @@ export const brown002 = defineCollectionOccurrence({
   collection: 'brown-507',
   ordinal: 2,
   displayNumber: '002',
+  status: 'interactive',
   canonicalSubject: 'crossed-belt-drive',
-  implementation: {
-    status: 'interactive',
-    simulationModelId: 'foundation:belt-drive:crossed',
+  simulation: {
+    modelId: 'foundation:belt-drive:crossed',
   },
   source: {
     referenceUrl: 'https://507movements.com/mm_002.html',

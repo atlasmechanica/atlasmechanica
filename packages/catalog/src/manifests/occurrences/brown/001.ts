@@ -6,10 +6,10 @@ export const brown001 = defineCollectionOccurrence({
   collection: 'brown-507',
   ordinal: 1,
   displayNumber: '001',
+  status: 'interactive',
   canonicalSubject: 'open-belt-drive',
-  implementation: {
-    status: 'interactive',
-    simulationModelId: 'foundation:belt-drive:open',
+  simulation: {
+    modelId: 'foundation:belt-drive:open',
   },
   source: {
     referenceUrl: 'https://507movements.com/mm_001.html',

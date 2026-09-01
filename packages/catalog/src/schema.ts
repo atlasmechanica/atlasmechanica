@@ -4,11 +4,18 @@ export type CanonicalSubjectId = string;
 export type CollectionId = string;
 export type CollectionOccurrenceId = string;
 
-export type CatalogImplementationStatus =
+export type CatalogOccurrenceStatus =
   | 'cataloged'
   | 'classified'
   | 'mapped'
   | 'interactive';
+
+export interface OccurrenceClassification {
+  inputMotion?: string;
+  outputMotion?: string;
+  components?: readonly string[];
+  tags?: readonly string[];
+}
 
 export interface SubjectFact {
   label: string;
@@ -56,10 +63,11 @@ export interface CollectionOccurrenceManifest {
   collection: CollectionId;
   ordinal: number;
   displayNumber: string;
-  canonicalSubject: CanonicalSubjectId;
-  implementation: {
-    status: CatalogImplementationStatus;
-    simulationModelId?: string;
+  status: CatalogOccurrenceStatus;
+  classification?: OccurrenceClassification;
+  canonicalSubject?: CanonicalSubjectId;
+  simulation?: {
+    modelId: string;
   };
   source: {
     referenceUrl?: string;
@@ -128,6 +136,29 @@ export function createCatalog(manifests: CatalogManifestSet): CatalogIndex {
       );
     }
 
+    if (occurrence.status === 'classified' && !occurrence.classification) {
+      throw new Error(`Classified occurrence ${occurrence.id} must include classification metadata`);
+    }
+
+    const requiresCanonicalSubject = occurrence.status === 'mapped' || occurrence.status === 'interactive';
+    if (!requiresCanonicalSubject) {
+      if (occurrence.canonicalSubject) {
+        throw new Error(
+          `Occurrence ${occurrence.id} with status ${occurrence.status} must not claim a canonical subject mapping`,
+        );
+      }
+      if (occurrence.simulation) {
+        throw new Error(
+          `Occurrence ${occurrence.id} with status ${occurrence.status} must not claim a simulation binding`,
+        );
+      }
+      continue;
+    }
+
+    if (!occurrence.canonicalSubject) {
+      throw new Error(`${occurrence.status} occurrence ${occurrence.id} must reference a canonical subject`);
+    }
+
     const subject = subjects.get(occurrence.canonicalSubject);
     if (!subject) {
       throw new Error(
@@ -135,13 +166,17 @@ export function createCatalog(manifests: CatalogManifestSet): CatalogIndex {
       );
     }
 
-    if (
-      occurrence.implementation.status === 'interactive' &&
-      occurrence.implementation.simulationModelId !== subject.simulation?.modelId
-    ) {
-      throw new Error(
-        `Interactive occurrence ${occurrence.id} must reference canonical simulation ${subject.simulation?.modelId ?? '(none)'}`,
-      );
+    if (occurrence.status === 'interactive') {
+      if (subject.simulation?.status !== 'interactive') {
+        throw new Error(
+          `Interactive occurrence ${occurrence.id} requires an interactive canonical simulation`,
+        );
+      }
+      if (occurrence.simulation?.modelId !== subject.simulation.modelId) {
+        throw new Error(
+          `Interactive occurrence ${occurrence.id} must reference canonical simulation ${subject.simulation.modelId}`,
+        );
+      }
     }
   }
 

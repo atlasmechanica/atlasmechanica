@@ -16,7 +16,7 @@ Occurrence implementation status is progressive:
 cataloged → classified → mapped → interactive
 ```
 
-This allows the complete Brown catalog to be ingested before every movement has an interactive simulation.
+This allows the complete Brown catalog to be ingested before every movement has been mapped to a canonical Atlas subject or given an interactive simulation. `cataloged` and `classified` occurrences do not require a canonical subject; `mapped` and `interactive` occurrences do.
 
 ## Corpus rule
 

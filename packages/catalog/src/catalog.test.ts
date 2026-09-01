@@ -21,6 +21,46 @@ describe('catalog manifests', () => {
     expect(catalog.occurrences.get('brown:002')).toBe(brown002);
   });
 
+  it('allows source occurrences to be cataloged before canonical mapping', () => {
+    const sourceOnly = {
+      schemaVersion: brown001.schemaVersion,
+      id: 'brown:003',
+      collection: 'brown-507',
+      ordinal: 3,
+      displayNumber: '003',
+      status: 'cataloged' as const,
+      source: {},
+    };
+
+    const sourceOnlyCatalog = createCatalog({
+      collections: [brown507Collection],
+      subjects: [],
+      occurrences: [sourceOnly],
+    });
+
+    expect(sourceOnlyCatalog.occurrences.get('brown:003')).toBe(sourceOnly);
+  });
+
+  it('requires mapped occurrences to name a canonical subject', () => {
+    expect(() =>
+      createCatalog({
+        collections: [brown507Collection],
+        subjects: [openBeltDrive],
+        occurrences: [
+          {
+            schemaVersion: brown001.schemaVersion,
+            id: 'brown:test',
+            collection: 'brown-507',
+            ordinal: 999,
+            displayNumber: '999',
+            status: 'mapped',
+            source: {},
+          },
+        ],
+      }),
+    ).toThrow('must reference a canonical subject');
+  });
+
   it('rejects occurrences that point at unknown canonical subjects', () => {
     expect(() =>
       createCatalog({
@@ -46,9 +86,8 @@ describe('catalog manifests', () => {
           {
             ...brown001,
             id: 'brown:test',
-            implementation: {
-              status: 'interactive',
-              simulationModelId: 'foundation:belt-drive:crossed',
+            simulation: {
+              modelId: 'foundation:belt-drive:crossed',
             },
           },
         ],
