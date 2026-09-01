@@ -21,6 +21,34 @@ describe('catalog manifests', () => {
     expect(catalog.occurrences.get('brown:002')).toBe(brown002);
   });
 
+  it('rejects unsupported schema versions across manifest kinds', () => {
+    const unsupportedVersion = '999' as unknown as typeof brown001.schemaVersion;
+
+    expect(() =>
+      createCatalog({
+        collections: [{ ...brown507Collection, schemaVersion: unsupportedVersion }],
+        subjects: [],
+        occurrences: [],
+      }),
+    ).toThrow('unsupported schema version 999');
+
+    expect(() =>
+      createCatalog({
+        collections: [],
+        subjects: [{ ...openBeltDrive, schemaVersion: unsupportedVersion }],
+        occurrences: [],
+      }),
+    ).toThrow('unsupported schema version 999');
+
+    expect(() =>
+      createCatalog({
+        collections: [brown507Collection],
+        subjects: [openBeltDrive],
+        occurrences: [{ ...brown001, schemaVersion: unsupportedVersion }],
+      }),
+    ).toThrow('unsupported schema version 999');
+  });
+
   it('uses the registered analytic belt adapter id', () => {
     expect(openBeltDrive.simulation.adapter).toBe('atlas.analytic-belt.v0');
     expect(crossedBeltDrive.simulation.adapter).toBe('atlas.analytic-belt.v0');
@@ -137,6 +165,25 @@ describe('catalog manifests', () => {
       }),
     ).toThrow('must not claim a simulation binding');
   });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 1.5])(
+    'rejects invalid collection sequence %s',
+    (sequence) => {
+      expect(() =>
+        createCatalog({
+          collections: [
+            {
+              ...brown507Collection,
+              id: 'brown-invalid-sequence',
+              sequence,
+            },
+          ],
+          subjects: [],
+          occurrences: [],
+        }),
+      ).toThrow('sequence must be a finite integer');
+    },
+  );
 
   it('rejects duplicate collection sequence numbers', () => {
     expect(() =>
