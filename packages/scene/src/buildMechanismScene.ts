@@ -169,7 +169,7 @@ function buildFourBar(options: SceneBuildOptions): MechanismScene {
     { type: 'circle', id: 'fourbar-tracer', layer: 'mechanism', styles: ['tracer'], center: tracer, radius: 0.0038, width: 2, ariaLabel: 'Coupler tracer point' },
     { type: 'dimension', id: 'fourbar-dimension', layer: 'annotation', styles: ['dimension'], a: { x: O2.x, y: -0.027 }, b: { x: O4.x, y: -0.027 }, text: `${parameterMillimeters(model, parameters, 'ground-length').toFixed(0)} mm`, ariaLabel: 'Ground link dimension' },
     { type: 'label', id: 'fourbar-branch-label', layer: 'annotation', styles: ['label'], at: { x: -0.038, y: 0.104 }, text: `${signalText(state, 'assembly-branch') ?? 'open'} assembly`, ariaLabel: 'Assembly branch' },
-    { type: 'handle', id: 'fourbar-input-handle', layer: 'interaction', styles: ['handle'], at: A, handle: 'input', shape: 'circle', ariaLabel: 'Drag crank input angle' },
+    { type: 'handle', id: 'fourbar-input-handle', layer: 'interaction', styles: ['handle'], at: A, handle: 'input', bindingId: 'driver-angle', shape: 'circle', ariaLabel: 'Drag crank input angle' },
   ];
   if (tracerVelocity !== undefined) {
     primitives.push({
@@ -239,8 +239,8 @@ function buildBelt(options: SceneBuildOptions): MechanismScene {
     { type: 'segment', id: 'belt-driven-mark', layer: 'mechanism', styles: ['body'], a: driven.center, b: drivenMark, width: 2, selectId: 'driven', ariaLabel: 'Driven phase mark' },
     { type: 'dimension', id: 'belt-distance', layer: 'annotation', styles: ['dimension'], a: { x: driver.center.x, y: -0.105 }, b: { x: driven.center.x, y: -0.105 }, text: `${parameterMillimeters(model, parameters, 'center-distance').toFixed(0)} mm`, ariaLabel: 'Pulley center distance' },
     { type: 'label', id: 'belt-ratio-label', layer: 'annotation', styles: ['label'], at: { x: -0.047, y: 0.107 }, text: `${direction} · ratio ${ratio.toFixed(3)}`, ariaLabel: 'Transmission direction and ratio' },
-    { type: 'handle', id: 'belt-input-handle', layer: 'interaction', styles: ['handle'], at: driverMark, handle: 'input', shape: 'circle', ariaLabel: 'Drag driver input angle' },
-    { type: 'handle', id: 'belt-distance-handle', layer: 'interaction', styles: ['handle'], at: driven.center, handle: 'parameter', shape: 'square', ariaLabel: 'Drag pulley center distance' },
+    { type: 'handle', id: 'belt-input-handle', layer: 'interaction', styles: ['handle'], at: driverMark, handle: 'input', bindingId: 'driver-angle', shape: 'circle', ariaLabel: 'Drag driver input angle' },
+    { type: 'handle', id: 'belt-distance-handle', layer: 'interaction', styles: ['handle'], at: driven.center, handle: 'parameter', bindingId: 'center-distance', shape: 'square', ariaLabel: 'Drag pulley center distance' },
   ];
   if (invalidParameterHandle !== undefined) {
     primitives.push({
