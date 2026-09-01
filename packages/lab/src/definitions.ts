@@ -11,8 +11,9 @@ function beltDriveLab(modelId: 'foundation:belt-drive:open' | 'foundation:belt-d
   const routing = modelId.endsWith(':open') ? 'open' : 'crossed';
   return defineMechanismLab({
     schemaVersion: MECHANISM_LAB_SCHEMA_VERSION,
-    id: `lab:${modelId}`,
+    id: `lab:${modelId}:brown-classic`,
     modelId,
+    defaultForModel: true,
     subtitle: `analytic · ideal ${routing} belt`,
     modelTransformId: 'atlas.lab.vertical-belt.v0',
     sceneCompilerId: 'atlas.scene.brown-belt.v0',
@@ -132,8 +133,9 @@ export const crossedBeltDriveLab = beltDriveLab('foundation:belt-drive:crossed')
 
 export const canonicalFourBarLab = defineMechanismLab({
   schemaVersion: MECHANISM_LAB_SCHEMA_VERSION,
-  id: 'lab:foundation:four-bar:crank-rocker',
+  id: 'lab:foundation:four-bar:crank-rocker:canonical',
   modelId: 'foundation:four-bar:crank-rocker',
+  defaultForModel: true,
   subtitle: 'analytic · canonical four-bar',
   sceneCompilerId: 'atlas.scene.four-bar.v0',
   sessionConfiguration: 'open',
