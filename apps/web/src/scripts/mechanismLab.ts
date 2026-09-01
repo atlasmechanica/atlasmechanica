@@ -493,12 +493,17 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
       const value = wrapRange(current + delta, coordinate.min, coordinate.max);
       const next = { ...values, [coordinate.id]: value };
       const candidate = evaluate(next);
-      if (!hasErrors(candidate.state)) {
-        Object.assign(values, next);
-        currentState = candidate.state;
-        currentRequest = candidate.request;
-        render();
+      if (hasErrors(candidate.state)) {
+        const diagnostic = candidate.state.diagnostics.find((item) => item.severity === 'error');
+        setPlaying(false);
+        status.textContent = `Animation stopped: ${diagnostic?.message ?? 'the next configuration is not physically valid.'}`;
+        syncUrl();
+        return;
       }
+      Object.assign(values, next);
+      currentState = candidate.state;
+      currentRequest = candidate.request;
+      render();
     }
     previousTime = time;
     animationFrame = requestAnimationFrame(tick);
