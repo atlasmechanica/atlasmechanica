@@ -89,6 +89,8 @@ export interface HandlePrimitive extends PrimitiveBase {
   type: 'handle';
   at: Vec2;
   handle: 'input' | 'parameter' | 'invalid';
+  /** Stable lab-control binding for direct manipulation. */
+  bindingId?: string | undefined;
   shape?: 'circle' | 'square' | undefined;
 }
 
