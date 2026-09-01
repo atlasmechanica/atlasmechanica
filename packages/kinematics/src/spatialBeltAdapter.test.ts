@@ -76,7 +76,7 @@ describe('fixed-axis spatial belt model', () => {
       const pulley = system.pulleys[contact.pulley];
       if (pulley === undefined) throw new Error(`Missing pulley ${contact.pulley}`);
       const radius = canonicalNumber(
-        pulley.pitchRadius && 'parameter' in pulley.pitchRadius
+        'parameter' in pulley.pitchRadius
           ? canonicalQuarterTurnBeltModel.parameters[pulley.pitchRadius.parameter]?.default
             ?? quantity(Number.NaN, 'm')
           : pulley.pitchRadius,
@@ -124,6 +124,9 @@ describe('fixed-axis spatial belt model', () => {
   it('rejects degenerate fixed axes during model validation', () => {
     const system = canonicalQuarterTurnBeltModel.systems.fixedAxisBelt;
     if (system === undefined) throw new Error('Missing fixed-axis system');
+    const driver = system.pulleys.driver;
+    if (driver === undefined) throw new Error('Missing driver pulley');
+
     const invalid = {
       ...canonicalQuarterTurnBeltModel,
       systems: {
@@ -131,7 +134,7 @@ describe('fixed-axis spatial belt model', () => {
           ...system,
           pulleys: {
             ...system.pulleys,
-            driver: { ...system.pulleys.driver, axis: [0, 0, 0] as const },
+            driver: { ...driver, axis: [0, 0, 0] as const },
           },
         },
       },
