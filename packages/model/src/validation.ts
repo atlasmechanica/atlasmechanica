@@ -112,6 +112,17 @@ function validateFixedAxisBeltSystem(
   const system = model.systems.fixedAxisBelt;
   if (system === undefined) return;
 
+  if (Object.keys(system.pulleys).length === 0) {
+    diagnostics.push(
+      invalidModel('Fixed-axis belt system requires at least one pulley'),
+    );
+  }
+  if (Object.keys(system.loops).length === 0) {
+    diagnostics.push(
+      invalidModel('Fixed-axis belt system requires at least one belt loop'),
+    );
+  }
+
   const coordinateBindings = new Set<string>();
   for (const [pulleyId, pulley] of Object.entries(system.pulleys)) {
     if (pulley.id !== pulleyId) {
@@ -487,12 +498,24 @@ export function validateSimulationModel(model: SimulationModel): Diagnostic[] {
       );
     }
 
-    for (const coordinateId of Object.keys(configuration.coordinates)) {
-      if (model.coordinates[coordinateId] === undefined) {
+    for (const [coordinateId, value] of Object.entries(configuration.coordinates)) {
+      const coordinate = model.coordinates[coordinateId];
+      if (coordinate === undefined) {
         diagnostics.push(
           invalidModel('Configuration references an unknown coordinate', {
             configuration: configurationId,
             coordinate: coordinateId,
+          }),
+        );
+        continue;
+      }
+      if (value !== undefined && quantityKind(value) !== 'angle') {
+        diagnostics.push(
+          invalidModel('Configuration coordinate has the wrong quantity kind', {
+            configuration: configurationId,
+            coordinate: coordinateId,
+            expectedKind: 'angle',
+            actualKind: value === undefined ? 'unknown' : quantityKind(value),
           }),
         );
       }
