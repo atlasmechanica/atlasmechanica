@@ -146,13 +146,14 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
   const sessionOptions = definition.sessionConfiguration === undefined
     ? undefined
     : { configuration: definition.sessionConfiguration };
+  const session = compiled.createSession(sessionOptions);
 
   function evaluate(nextValues: Readonly<Record<string, number>> = values): {
     state: ModelState;
     request: EvaluationRequest;
   } {
     const request = buildLabEvaluationRequest(definition, nextValues);
-    const state = compiled.createSession(sessionOptions).evaluate(request);
+    const state = session.evaluate(request);
     return { state, request };
   }
 
@@ -523,6 +524,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
     for (const control of definition.controls) values[control.id] = control.initial;
     selectedId = undefined;
     invalidParameterHandle = undefined;
+    session.reset(definition.sessionConfiguration);
     evaluated = evaluate();
     currentState = evaluated.state;
     currentRequest = evaluated.request;
