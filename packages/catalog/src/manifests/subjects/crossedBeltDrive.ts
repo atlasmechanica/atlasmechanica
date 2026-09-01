@@ -18,7 +18,7 @@ export const crossedBeltDrive = defineCanonicalSubject({
   simulation: {
     status: 'interactive',
     modelId: 'foundation:belt-drive:crossed',
-    adapter: 'analytic-belt',
+    adapter: 'atlas.analytic-belt.v0',
   },
   facts: [
     { label: 'Functional signature', value: 'continuous rotary → reversed continuous rotary' },

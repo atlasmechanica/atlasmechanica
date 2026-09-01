@@ -11,90 +11,90 @@ export type CatalogOccurrenceStatus =
   | 'interactive';
 
 export interface OccurrenceClassification {
-  inputMotion?: string;
-  outputMotion?: string;
-  components?: readonly string[];
-  tags?: readonly string[];
+  readonly inputMotion?: string;
+  readonly outputMotion?: string;
+  readonly components?: readonly string[];
+  readonly tags?: readonly string[];
 }
 
 export type SubjectFact =
   | {
-      label: string;
-      value: string;
-      tags?: never;
+      readonly label: string;
+      readonly value: string;
+      readonly tags?: never;
     }
   | {
-      label: string;
-      tags: readonly string[];
-      value?: never;
+      readonly label: string;
+      readonly tags: readonly string[];
+      readonly value?: never;
     };
 
 export interface CanonicalSubjectManifest {
-  schemaVersion: typeof CATALOG_SCHEMA_VERSION;
-  id: CanonicalSubjectId;
-  slug: string;
-  title: string;
-  seoDescription: string;
-  summary: string;
-  classification: {
-    inputMotion: string;
-    outputMotion: string;
-    functionalSignature: string;
-    components: readonly string[];
+  readonly schemaVersion: typeof CATALOG_SCHEMA_VERSION;
+  readonly id: CanonicalSubjectId;
+  readonly slug: string;
+  readonly title: string;
+  readonly seoDescription: string;
+  readonly summary: string;
+  readonly classification: {
+    readonly inputMotion: string;
+    readonly outputMotion: string;
+    readonly functionalSignature: string;
+    readonly components: readonly string[];
   };
-  simulation?: {
-    status: 'planned' | 'interactive';
-    modelId: string;
-    adapter: string;
+  readonly simulation?: {
+    readonly status: 'planned' | 'interactive';
+    readonly modelId: string;
+    readonly adapter: string;
   };
-  facts: readonly SubjectFact[];
+  readonly facts: readonly SubjectFact[];
 }
 
 export interface CollectionManifest {
-  schemaVersion: typeof CATALOG_SCHEMA_VERSION;
-  id: CollectionId;
-  sequence?: number;
-  shortTitle: string;
-  title: string;
-  author?: string;
-  rights: {
-    status: 'public-domain' | 'copyrighted' | 'unknown';
-    note?: string;
+  readonly schemaVersion: typeof CATALOG_SCHEMA_VERSION;
+  readonly id: CollectionId;
+  readonly sequence?: number;
+  readonly shortTitle: string;
+  readonly title: string;
+  readonly author?: string;
+  readonly rights: {
+    readonly status: 'public-domain' | 'copyrighted' | 'unknown';
+    readonly note?: string;
   };
 }
 
 export interface CollectionOccurrenceManifest {
-  schemaVersion: typeof CATALOG_SCHEMA_VERSION;
-  id: CollectionOccurrenceId;
-  collection: CollectionId;
-  ordinal: number;
-  displayNumber: string;
-  status: CatalogOccurrenceStatus;
-  classification?: OccurrenceClassification;
-  canonicalSubject?: CanonicalSubjectId;
-  simulation?: {
-    modelId: string;
+  readonly schemaVersion: typeof CATALOG_SCHEMA_VERSION;
+  readonly id: CollectionOccurrenceId;
+  readonly collection: CollectionId;
+  readonly ordinal: number;
+  readonly displayNumber: string;
+  readonly status: CatalogOccurrenceStatus;
+  readonly classification?: OccurrenceClassification;
+  readonly canonicalSubject?: CanonicalSubjectId;
+  readonly simulation?: {
+    readonly modelId: string;
   };
-  source: {
-    referenceUrl?: string;
-    referenceLabel?: string;
-    excerpt?: string;
+  readonly source: {
+    readonly referenceUrl?: string;
+    readonly referenceLabel?: string;
+    readonly excerpt?: string;
   };
-  editorial?: {
-    heading: string;
+  readonly editorial?: {
+    readonly heading: string;
   };
 }
 
 export interface CatalogManifestSet {
-  collections: readonly CollectionManifest[];
-  subjects: readonly CanonicalSubjectManifest[];
-  occurrences: readonly CollectionOccurrenceManifest[];
+  readonly collections: readonly CollectionManifest[];
+  readonly subjects: readonly CanonicalSubjectManifest[];
+  readonly occurrences: readonly CollectionOccurrenceManifest[];
 }
 
 export interface CatalogIndex {
-  collections: ReadonlyMap<CollectionId, CollectionManifest>;
-  subjects: ReadonlyMap<CanonicalSubjectId, CanonicalSubjectManifest>;
-  occurrences: ReadonlyMap<CollectionOccurrenceId, CollectionOccurrenceManifest>;
+  readonly collections: ReadonlyMap<CollectionId, CollectionManifest>;
+  readonly subjects: ReadonlyMap<CanonicalSubjectId, CanonicalSubjectManifest>;
+  readonly occurrences: ReadonlyMap<CollectionOccurrenceId, CollectionOccurrenceManifest>;
 }
 
 export function defineCanonicalSubject<const T extends CanonicalSubjectManifest>(manifest: T): T {
@@ -109,7 +109,7 @@ export function defineCollectionOccurrence<const T extends CollectionOccurrenceM
   return manifest;
 }
 
-function indexById<T extends { id: string }>(kind: string, manifests: readonly T[]): ReadonlyMap<string, T> {
+function indexById<T extends { readonly id: string }>(kind: string, manifests: readonly T[]): ReadonlyMap<string, T> {
   const index = new Map<string, T>();
 
   for (const manifest of manifests) {
@@ -122,10 +122,40 @@ function indexById<T extends { id: string }>(kind: string, manifests: readonly T
   return index;
 }
 
+function hasClassificationMetadata(classification: OccurrenceClassification | undefined): boolean {
+  if (!classification) return false;
+
+  return Boolean(
+    classification.inputMotion?.trim() ||
+      classification.outputMotion?.trim() ||
+      classification.components?.some((component) => component.trim().length > 0) ||
+      classification.tags?.some((tag) => tag.trim().length > 0),
+  );
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value === null || typeof value !== 'object' || Object.isFrozen(value)) return value;
+
+  for (const nested of Object.values(value as unknown as Record<string, unknown>)) {
+    deepFreeze(nested);
+  }
+
+  return Object.freeze(value) as T;
+}
+
 export function createCatalog(manifests: CatalogManifestSet): CatalogIndex {
   const collections = indexById('collection', manifests.collections);
   const subjects = indexById('canonical subject', manifests.subjects);
   const occurrences = indexById('collection occurrence', manifests.occurrences);
+
+  const collectionSequences = new Set<number>();
+  for (const collection of manifests.collections) {
+    if (collection.sequence === undefined) continue;
+    if (collectionSequences.has(collection.sequence)) {
+      throw new Error(`Duplicate collection sequence: ${collection.sequence}`);
+    }
+    collectionSequences.add(collection.sequence);
+  }
 
   const slugs = new Set<string>();
   for (const subject of manifests.subjects) {
@@ -151,8 +181,10 @@ export function createCatalog(manifests: CatalogManifestSet): CatalogIndex {
     }
     collectionOrdinals.add(ordinalKey);
 
-    if (occurrence.status === 'classified' && !occurrence.classification) {
-      throw new Error(`Classified occurrence ${occurrence.id} must include classification metadata`);
+    if (occurrence.status === 'classified' && !hasClassificationMetadata(occurrence.classification)) {
+      throw new Error(
+        `Classified occurrence ${occurrence.id} must include nonempty classification metadata`,
+      );
     }
 
     const requiresCanonicalSubject = occurrence.status === 'mapped' || occurrence.status === 'interactive';
@@ -181,19 +213,28 @@ export function createCatalog(manifests: CatalogManifestSet): CatalogIndex {
       );
     }
 
-    if (occurrence.status === 'interactive') {
-      if (subject.simulation?.status !== 'interactive') {
-        throw new Error(
-          `Interactive occurrence ${occurrence.id} requires an interactive canonical simulation`,
-        );
+    if (occurrence.status === 'mapped') {
+      if (occurrence.simulation) {
+        throw new Error(`Mapped occurrence ${occurrence.id} must not claim a simulation binding`);
       }
-      if (occurrence.simulation?.modelId !== subject.simulation.modelId) {
-        throw new Error(
-          `Interactive occurrence ${occurrence.id} must reference canonical simulation ${subject.simulation.modelId}`,
-        );
-      }
+      continue;
+    }
+
+    if (subject.simulation?.status !== 'interactive') {
+      throw new Error(
+        `Interactive occurrence ${occurrence.id} requires an interactive canonical simulation`,
+      );
+    }
+    if (occurrence.simulation?.modelId !== subject.simulation.modelId) {
+      throw new Error(
+        `Interactive occurrence ${occurrence.id} must reference canonical simulation ${subject.simulation.modelId}`,
+      );
     }
   }
 
-  return { collections, subjects, occurrences };
+  for (const manifest of manifests.collections) deepFreeze(manifest);
+  for (const manifest of manifests.subjects) deepFreeze(manifest);
+  for (const manifest of manifests.occurrences) deepFreeze(manifest);
+
+  return Object.freeze({ collections, subjects, occurrences });
 }

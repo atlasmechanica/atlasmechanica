@@ -21,6 +21,19 @@ describe('catalog manifests', () => {
     expect(catalog.occurrences.get('brown:002')).toBe(brown002);
   });
 
+  it('uses the registered analytic belt adapter id', () => {
+    expect(openBeltDrive.simulation.adapter).toBe('atlas.analytic-belt.v0');
+    expect(crossedBeltDrive.simulation.adapter).toBe('atlas.analytic-belt.v0');
+  });
+
+  it('freezes validated manifest values and their nested data', () => {
+    const occurrence = catalog.occurrences.get('brown:001');
+    expect(occurrence).toBeDefined();
+    expect(Object.isFrozen(occurrence)).toBe(true);
+    expect(Object.isFrozen(occurrence?.source)).toBe(true);
+    expect(Object.isFrozen(catalog.subjects.get('open-belt-drive'))).toBe(true);
+  });
+
   it('allows source occurrences to be cataloged before canonical mapping', () => {
     const sourceOnly = {
       schemaVersion: brown001.schemaVersion,
@@ -41,6 +54,27 @@ describe('catalog manifests', () => {
     expect(sourceOnlyCatalog.occurrences.get('brown:003')).toBe(sourceOnly);
   });
 
+  it('rejects empty classification metadata at the classified stage', () => {
+    expect(() =>
+      createCatalog({
+        collections: [brown507Collection],
+        subjects: [],
+        occurrences: [
+          {
+            schemaVersion: brown001.schemaVersion,
+            id: 'brown:classified-empty',
+            collection: 'brown-507',
+            ordinal: 997,
+            displayNumber: '997',
+            status: 'classified',
+            classification: {},
+            source: {},
+          },
+        ],
+      }),
+    ).toThrow('must include nonempty classification metadata');
+  });
+
   it('requires mapped occurrences to name a canonical subject', () => {
     expect(() =>
       createCatalog({
@@ -59,6 +93,43 @@ describe('catalog manifests', () => {
         ],
       }),
     ).toThrow('must reference a canonical subject');
+  });
+
+  it('rejects simulation bindings before the interactive stage', () => {
+    expect(() =>
+      createCatalog({
+        collections: [brown507Collection],
+        subjects: [openBeltDrive],
+        occurrences: [
+          {
+            ...brown001,
+            id: 'brown:mapped-with-simulation',
+            ordinal: 998,
+            status: 'mapped',
+            simulation: {
+              modelId: openBeltDrive.simulation.modelId,
+            },
+          },
+        ],
+      }),
+    ).toThrow('must not claim a simulation binding');
+  });
+
+  it('rejects duplicate collection sequence numbers', () => {
+    expect(() =>
+      createCatalog({
+        collections: [
+          brown507Collection,
+          {
+            ...brown507Collection,
+            id: 'brown-507-copy',
+            shortTitle: 'Brown copy',
+          },
+        ],
+        subjects: [],
+        occurrences: [],
+      }),
+    ).toThrow(`Duplicate collection sequence: ${brown507Collection.sequence}`);
   });
 
   it('rejects duplicate ordinals within one collection', () => {

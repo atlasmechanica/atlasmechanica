@@ -18,7 +18,7 @@ export const openBeltDrive = defineCanonicalSubject({
   simulation: {
     status: 'interactive',
     modelId: 'foundation:belt-drive:open',
-    adapter: 'analytic-belt',
+    adapter: 'atlas.analytic-belt.v0',
   },
   facts: [
     { label: 'Functional signature', value: 'continuous rotary → continuous rotary' },
