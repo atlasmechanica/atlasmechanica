@@ -42,12 +42,12 @@ async function stopProcessGroup(child) {
 
 async function productRenderer(page, route, fixture) {
   await page.goto(`${webURL}${route}`);
-  const lab = page.locator('[data-belt-drive-lab]');
+  const lab = page.locator('[data-mechanism-lab]');
   const renderer = lab.locator('[data-renderer]');
   await renderer.locator('svg').waitFor({ state: 'visible' });
-  await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-zoom') === '1.00');
+  await page.waitForFunction(() => document.querySelector('[data-mechanism-lab]')?.getAttribute('data-zoom') === '1.00');
   if ((page.viewportSize()?.width ?? 0) > 640) {
-    await page.waitForFunction(() => Boolean(document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-fit-viewport-height')));
+    await page.waitForFunction(() => Boolean(document.querySelector('[data-mechanism-lab]')?.getAttribute('data-fit-viewport-height')));
   }
   const box = await renderer.boundingBox();
   if (box === null) throw new Error(`Missing website renderer for ${fixture}`);
@@ -60,7 +60,7 @@ async function productRenderer(page, route, fixture) {
 async function assertResponsiveRopeStroke(page, fixture) {
   await page.waitForFunction(
     ({ referenceWidth }) => {
-      const host = document.querySelector('[data-belt-drive-lab] [data-renderer]');
+      const host = document.querySelector('[data-mechanism-lab] [data-renderer]');
       const rope = host?.querySelector('[data-primitive="belt-band-underlay"] .atlas-visible');
       if (!(host instanceof HTMLElement) || !(rope instanceof SVGElement)) return false;
       const nominal = Number(rope.getAttribute('data-nominal-stroke-width'));
@@ -72,7 +72,7 @@ async function assertResponsiveRopeStroke(page, fixture) {
     { referenceWidth: productStrokeReferenceWidth },
   );
 
-  const result = await page.locator('[data-belt-drive-lab] [data-renderer]').evaluate((host, referenceWidth) => {
+  const result = await page.locator('[data-mechanism-lab] [data-renderer]').evaluate((host, referenceWidth) => {
     const rope = host.querySelector('[data-primitive="belt-band-underlay"] .atlas-visible');
     if (!(rope instanceof SVGElement)) throw new Error('Missing visible rope underlay');
     const nominal = Number(rope.getAttribute('data-nominal-stroke-width'));
@@ -93,7 +93,7 @@ async function assertResponsiveRopeStroke(page, fixture) {
 }
 
 async function assertDesktopLabAboveFold(page, fixture) {
-  const result = await page.locator('[data-belt-drive-lab]').evaluate((lab) => {
+  const result = await page.locator('[data-mechanism-lab]').evaluate((lab) => {
     const viewport = lab.querySelector('.lab-viewport');
     const renderer = lab.querySelector('[data-renderer]');
     const driven = lab.querySelector('[data-primitive="belt-driven"] .atlas-visible');
@@ -145,7 +145,7 @@ async function assertDesktopLabAboveFold(page, fixture) {
 }
 
 async function assertViewZoomControls(page, fixture) {
-  const lab = page.locator('[data-belt-drive-lab]');
+  const lab = page.locator('[data-mechanism-lab]');
   const renderer = lab.locator('[data-renderer]');
   const zoomIn = lab.locator('[data-zoom-in]');
   const fit = lab.locator('[data-zoom-fit]');
@@ -153,7 +153,7 @@ async function assertViewZoomControls(page, fixture) {
   if (initial === null) throw new Error(`Missing renderer before ${fixture} zoom check.`);
 
   await zoomIn.click();
-  await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-zoom') === '1.20');
+  await page.waitForFunction(() => document.querySelector('[data-mechanism-lab]')?.getAttribute('data-zoom') === '1.20');
   const zoomed = await renderer.boundingBox();
   if (zoomed === null) throw new Error(`Missing renderer after ${fixture} zoom-in.`);
   const widthRatio = zoomed.width / initial.width;
@@ -163,7 +163,7 @@ async function assertViewZoomControls(page, fixture) {
   }
 
   await fit.click();
-  await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-zoom') === '1.00');
+  await page.waitForFunction(() => document.querySelector('[data-mechanism-lab]')?.getAttribute('data-zoom') === '1.00');
   const fitted = await renderer.boundingBox();
   if (fitted === null) throw new Error(`Missing renderer after ${fixture} fit reset.`);
   if (Math.abs(fitted.width - initial.width) > 1 || Math.abs(fitted.height - initial.height) > 1) {
@@ -194,9 +194,9 @@ function phaseDistance(a, b) {
 }
 
 async function assertThreeView(page, fixture, screenshotPath) {
-  const lab = page.locator('[data-belt-drive-lab]');
+  const lab = page.locator('[data-mechanism-lab]');
   await lab.locator('[data-view-3d]').click();
-  await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-view-mode') === '3d');
+  await page.waitForFunction(() => document.querySelector('[data-mechanism-lab]')?.getAttribute('data-view-mode') === '3d');
   const host = lab.locator('[data-renderer-three]');
   const canvas = host.locator('canvas');
   await canvas.waitFor({ state: 'visible' });
@@ -225,7 +225,7 @@ async function assertThreeView(page, fixture, screenshotPath) {
   // Angle/Play updates change only pulley pose and material phase. The physical
   // rim/belt geometry should stay resident rather than being re-tessellated,
   // while the helical texture must visibly advance along the cached rope.
-  const angle = lab.locator('[data-angle]');
+  const angle = lab.locator('[data-control-id="driver-angle"]');
   for (const value of [17, 43, 79, 121]) await setRangeValue(page, angle, value);
   await page.waitForFunction((before) => {
     const host = document.querySelector('[data-renderer-three]');
@@ -316,9 +316,9 @@ async function assertThreeView(page, fixture, screenshotPath) {
   // Toggling through the historical 2D reference is not an implicit camera
   // reset. Returning to 3D must resume the exact inspection orbit.
   await lab.locator('[data-view-2d]').click();
-  await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-view-mode') === '2d');
+  await page.waitForFunction(() => document.querySelector('[data-mechanism-lab]')?.getAttribute('data-view-mode') === '2d');
   await lab.locator('[data-view-3d]').click();
-  await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-view-mode') === '3d');
+  await page.waitForFunction(() => document.querySelector('[data-mechanism-lab]')?.getAttribute('data-view-mode') === '3d');
   const returnedCamera = await host.getAttribute('data-camera-position');
   if (returnedCamera !== rotatedCamera) {
     throw new Error(`${fixture} 3D orbit changed across a 2D round-trip: ${rotatedCamera} → ${returnedCamera}.`);
@@ -336,7 +336,7 @@ async function assertThreeView(page, fixture, screenshotPath) {
   }
 
   await lab.locator('[data-view-2d]').click();
-  await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-view-mode') === '2d');
+  await page.waitForFunction(() => document.querySelector('[data-mechanism-lab]')?.getAttribute('data-view-mode') === '2d');
   return {
     initialCamera,
     rotatedCamera,
@@ -366,7 +366,7 @@ async function assertThreeSwitchCancellation(browser) {
     await route.continue();
   });
 
-  const lab = page.locator('[data-belt-drive-lab]');
+  const lab = page.locator('[data-mechanism-lab]');
   await lab.locator('[data-view-3d]').click();
   await lab.locator('[data-view-2d]').click();
   await page.waitForTimeout(700);
@@ -407,10 +407,10 @@ async function assertThreeSwitchRetry(browser) {
     await route.continue();
   });
 
-  const lab = page.locator('[data-belt-drive-lab]');
+  const lab = page.locator('[data-mechanism-lab]');
   await lab.locator('[data-view-3d]').click();
   await page.waitForFunction(() => {
-    const root = document.querySelector('[data-belt-drive-lab]');
+    const root = document.querySelector('[data-mechanism-lab]');
     const status = root?.querySelector('[data-status]');
     return root?.getAttribute('aria-busy') === null && status?.textContent?.includes('unavailable');
   });
@@ -418,7 +418,7 @@ async function assertThreeSwitchRetry(browser) {
   if (afterFailure !== '2d') throw new Error(`Failed 3D load left view mode at ${afterFailure}.`);
 
   await lab.locator('[data-view-3d]').click();
-  await page.waitForFunction(() => document.querySelector('[data-belt-drive-lab]')?.getAttribute('data-view-mode') === '3d');
+  await page.waitForFunction(() => document.querySelector('[data-mechanism-lab]')?.getAttribute('data-view-mode') === '3d');
   const host = lab.locator('[data-renderer-three]');
   await host.locator('canvas').waitFor({ state: 'visible' });
   const result = {
@@ -436,7 +436,7 @@ async function assertThreeSwitchRetry(browser) {
 }
 
 async function assertMobileStatusBelowRenderer(page, fixture) {
-  const result = await page.locator('[data-belt-drive-lab]').evaluate((root) => {
+  const result = await page.locator('[data-mechanism-lab]').evaluate((root) => {
     const stage = root.querySelector('.lab-stage');
     const renderer = root.querySelector('[data-renderer]');
     const status = root.querySelector('.lab-status');
@@ -537,7 +537,7 @@ try {
       mobileStrokeChecks[fixture] = await assertResponsiveRopeStroke(mobilePage, `${fixture} mobile`);
       mobileLayoutChecks[fixture] = await assertMobileStatusBelowRenderer(mobilePage, `${fixture} mobile`);
       const path = `renderer-bakeoff-${fixture}-mobile-${name}.png`;
-      const stage = mobilePage.locator('[data-belt-drive-lab] .lab-stage');
+      const stage = mobilePage.locator('[data-mechanism-lab] .lab-stage');
       await stage.screenshot({ path });
       mobileGoldenScreenshots[fixture] = path;
     }
