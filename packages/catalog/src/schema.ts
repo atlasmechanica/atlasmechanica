@@ -10,6 +10,13 @@ export type CatalogOccurrenceStatus =
   | 'mapped'
   | 'interactive';
 
+const CATALOG_OCCURRENCE_STATUSES = new Set<string>([
+  'cataloged',
+  'classified',
+  'mapped',
+  'interactive',
+]);
+
 export interface OccurrenceClassification {
   readonly inputMotion?: string;
   readonly outputMotion?: string;
@@ -242,6 +249,10 @@ export function createCatalog(manifests: CatalogManifestSet): CatalogIndex {
       );
     }
     collectionOrdinals.add(ordinalKey);
+
+    if (!CATALOG_OCCURRENCE_STATUSES.has(occurrence.status as string)) {
+      throw new Error(`Collection occurrence ${occurrence.id} has unsupported status ${String(occurrence.status)}`);
+    }
 
     if (occurrence.status === 'classified' && !hasClassificationMetadata(occurrence.classification)) {
       throw new Error(
