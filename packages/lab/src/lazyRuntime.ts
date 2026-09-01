@@ -1,42 +1,42 @@
 import type { ModelId } from '@atlasmechanica/model';
 import {
-  resolveMechanismLabFromProvider,
-  type MechanismLabRuntimeProvider,
+  resolveMechanismLabFromFamily,
+  type MechanismLabFamily,
   type ResolvedMechanismLab,
-} from './provider.js';
+} from './family.js';
 
-type ProviderLoader = () => Promise<MechanismLabRuntimeProvider>;
+type FamilyLoader = () => Promise<MechanismLabFamily>;
 
-const PROVIDER_LOADERS: Readonly<Record<string, ProviderLoader>> = Object.freeze({
-  'foundation:belt-drive:open': () => import('./providers/belt.js').then((module) => module.beltLabProvider),
-  'foundation:belt-drive:crossed': () => import('./providers/belt.js').then((module) => module.beltLabProvider),
-  'foundation:four-bar:crank-rocker': () => import('./providers/fourBar.js').then((module) => module.fourBarLabProvider),
+const FAMILY_LOADERS: Readonly<Record<string, FamilyLoader>> = Object.freeze({
+  'foundation:belt-drive:open': () => import('./families/belt.js').then((module) => module.beltLabFamily),
+  'foundation:belt-drive:crossed': () => import('./families/belt.js').then((module) => module.beltLabFamily),
+  'foundation:four-bar:crank-rocker': () => import('./families/fourBar.js').then((module) => module.fourBarLabFamily),
 });
 
-const providerPromises = new Map<string, Promise<MechanismLabRuntimeProvider>>();
+const familyPromises = new Map<string, Promise<MechanismLabFamily>>();
 
-async function loadProvider(modelId: ModelId): Promise<MechanismLabRuntimeProvider> {
-  const loader = PROVIDER_LOADERS[modelId];
-  if (loader === undefined) throw new TypeError(`No mechanism lab runtime provider for model ${modelId}`);
-  let pending = providerPromises.get(modelId);
+async function loadFamily(modelId: ModelId): Promise<MechanismLabFamily> {
+  const loader = FAMILY_LOADERS[modelId];
+  if (loader === undefined) throw new TypeError(`No mechanism lab family for model ${modelId}`);
+  let pending = familyPromises.get(modelId);
   if (pending === undefined) {
     pending = loader().catch((error: unknown) => {
-      providerPromises.delete(modelId);
+      familyPromises.delete(modelId);
       throw error;
     });
-    providerPromises.set(modelId, pending);
+    familyPromises.set(modelId, pending);
   }
   return pending;
 }
 
-/** Lazy browser resolver: only the selected mechanism family's provider is loaded. */
+/** Lazy browser resolver: only the selected mechanism family is loaded. */
 export async function loadMechanismLab(
   modelId: ModelId,
   adapterId: string,
   labId?: string,
 ): Promise<ResolvedMechanismLab> {
-  const provider = await loadProvider(modelId);
-  return resolveMechanismLabFromProvider(provider, modelId, adapterId, labId);
+  const family = await loadFamily(modelId);
+  return resolveMechanismLabFromFamily(family, modelId, adapterId, labId);
 }
 
-export type { ResolvedMechanismLab } from './provider.js';
+export type { ResolvedMechanismLab } from './family.js';
