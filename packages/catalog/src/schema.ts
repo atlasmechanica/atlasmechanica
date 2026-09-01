@@ -109,7 +109,7 @@ export function defineCollectionOccurrence<const T extends CollectionOccurrenceM
   return manifest;
 }
 
-function indexById<T extends { readonly id: string }>(kind: string, manifests: readonly T[]): ReadonlyMap<string, T> {
+function indexById<T extends { readonly id: string }>(kind: string, manifests: readonly T[]): Map<string, T> {
   const index = new Map<string, T>();
 
   for (const manifest of manifests) {
@@ -120,6 +120,42 @@ function indexById<T extends { readonly id: string }>(kind: string, manifests: r
   }
 
   return index;
+}
+
+function readonlyMapView<K, V>(map: Map<K, V>): ReadonlyMap<K, V> {
+  let view: ReadonlyMap<K, V>;
+  const facade = {
+    get size(): number {
+      return map.size;
+    },
+    get(key: K): V | undefined {
+      return map.get(key);
+    },
+    has(key: K): boolean {
+      return map.has(key);
+    },
+    forEach(
+      callbackfn: (value: V, key: K, map: ReadonlyMap<K, V>) => void,
+      thisArg?: unknown,
+    ): void {
+      map.forEach((value, key) => callbackfn.call(thisArg, value, key, view));
+    },
+    entries() {
+      return map.entries();
+    },
+    keys() {
+      return map.keys();
+    },
+    values() {
+      return map.values();
+    },
+    [Symbol.iterator]() {
+      return map[Symbol.iterator]();
+    },
+  };
+
+  view = Object.freeze(facade) as ReadonlyMap<K, V>;
+  return view;
 }
 
 function assertSchemaVersions(
@@ -262,5 +298,9 @@ export function createCatalog(manifests: CatalogManifestSet): CatalogIndex {
   for (const manifest of manifests.subjects) deepFreeze(manifest);
   for (const manifest of manifests.occurrences) deepFreeze(manifest);
 
-  return Object.freeze({ collections, subjects, occurrences });
+  return Object.freeze({
+    collections: readonlyMapView(collections),
+    subjects: readonlyMapView(subjects),
+    occurrences: readonlyMapView(occurrences),
+  });
 }
