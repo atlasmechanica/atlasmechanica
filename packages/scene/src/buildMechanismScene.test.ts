@@ -52,6 +52,7 @@ describe('production mechanism scenes', () => {
       layer: 'interaction',
       type: 'handle',
       handle: 'input',
+      bindingId: 'driver-angle',
     });
   });
 
@@ -63,9 +64,15 @@ describe('production mechanism scenes', () => {
     expect(crossed.title).toBe('Crossed belt drive');
     expect(open.primitives.find((primitive) => primitive.id === 'belt-path')?.type).toBe('polyline');
     expect(crossed.primitives.find((primitive) => primitive.id === 'belt-path')?.type).toBe('polyline');
+    expect(open.primitives.find((primitive) => primitive.id === 'belt-input-handle')).toMatchObject({
+      type: 'handle',
+      handle: 'input',
+      bindingId: 'driver-angle',
+    });
     expect(open.primitives.find((primitive) => primitive.id === 'belt-distance-handle')).toMatchObject({
       type: 'handle',
       handle: 'parameter',
+      bindingId: 'center-distance',
       shape: 'square',
     });
   });

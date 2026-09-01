@@ -1,35 +1,68 @@
 ---
+import {
+  assertValidInitialLabState,
+  buildLabEvaluationRequest,
+  controlLabel,
+  defaultLabValues,
+  formatLabReadout,
+  readoutLabel,
+  type LabControlDefinition,
+} from '@atlasmechanica/lab';
+import { resolveMechanismLab } from '@atlasmechanica/lab/runtime';
+
 interface Props {
-  routing: 'open' | 'crossed';
+  modelId: string;
+  adapterId: string;
+  title: string;
+  labId?: string;
 }
 
-const { routing } = Astro.props;
-const crossed = routing === 'crossed';
-const inputId = `belt-${routing}-angle`;
-const centerId = `belt-${routing}-center`;
-const rpmId = `belt-${routing}-rpm`;
-const centerMin = 95;
-const direction = crossed ? 'Reversed' : 'Same';
+const { modelId, adapterId, title, labId } = Astro.props;
+const resolved = resolveMechanismLab(modelId, adapterId, labId);
+const { definition, model, adapter } = resolved;
+const initialValues = defaultLabValues(definition);
+const initialRequest = buildLabEvaluationRequest(definition, initialValues);
+const initialSession = adapter.compile(model).createSession(
+  definition.sessionConfiguration === undefined
+    ? undefined
+    : { configuration: definition.sessionConfiguration },
+);
+const initialState = initialSession.evaluate(initialRequest);
+assertValidInitialLabState(definition, initialState);
+const supports3d = definition.views.includes('3d');
+const componentId = definition.id.replaceAll(/[^a-zA-Z0-9_-]/g, '-');
+
+function controlValue(control: LabControlDefinition): string {
+  const value = control.initial;
+  if (control.unit === 'deg') return `${Math.round(value)}°`;
+  if (control.unit === 'mm') return `${Math.round(value)} mm`;
+  if (control.unit === 'rpm') return `${Math.round(value)} rpm`;
+  return `${value} ${control.unit}`;
+}
 ---
 
 <section
   class="mechanism-lab"
-  data-belt-drive-lab
-  data-routing={routing}
+  data-mechanism-lab
+  data-model-id={modelId}
+  data-adapter-id={adapterId}
+  data-lab-id={definition.id}
   data-view-mode="2d"
-  aria-label={`Interactive ${routing} belt drive experiment`}
+  aria-label={`Interactive ${title} experiment`}
 >
   <div class="lab-toolbar">
     <div class="lab-toolbar__identity">
       <strong>Mechanism Lab</strong>
-      <span>analytic · ideal {routing} belt</span>
+      <span>{definition.subtitle ?? model.variant ?? model.subject}</span>
     </div>
     <div class="lab-toolbar__actions">
-      <div class="lab-view-mode" role="group" aria-label="Mechanism view">
-        <button type="button" data-view-2d aria-pressed="true">2D</button>
-        <button type="button" data-view-3d aria-pressed="false">3D</button>
-      </div>
-      <button type="button" data-play aria-pressed="false">Play</button>
+      {supports3d && (
+        <div class="lab-view-mode" role="group" aria-label="Mechanism view">
+          <button type="button" data-view-2d aria-pressed="true">2D</button>
+          <button type="button" data-view-3d aria-pressed="false">3D</button>
+        </div>
+      )}
+      {definition.animation && <button type="button" data-play aria-pressed="false">Play</button>}
       <button type="button" data-reset>Reset</button>
     </div>
   </div>
@@ -40,14 +73,16 @@ const direction = crossed ? 'Reversed' : 'Same';
         <div
           class="lab-renderer lab-renderer--2d"
           data-renderer
-          aria-label={`Interactive ${routing} belt drive diagram`}
+          aria-label={`Interactive ${title} diagram`}
         ></div>
-        <div
-          class="lab-renderer lab-renderer--three"
-          data-renderer-three
-          aria-label={`Interactive 3D ${routing} belt drive diagram`}
-          hidden
-        ></div>
+        {supports3d && (
+          <div
+            class="lab-renderer lab-renderer--three"
+            data-renderer-three
+            aria-label={`Interactive 3D ${title} diagram`}
+            hidden
+          ></div>
+        )}
       </div>
       <div class="lab-view-controls" role="group" aria-label="Diagram camera controls">
         <button type="button" data-zoom-out aria-label="Zoom out">−</button>
@@ -63,36 +98,42 @@ const direction = crossed ? 'Reversed' : 'Same';
 
   <div class="lab-console">
     <div class="lab-controls" aria-label="Mechanism parameters">
-      <div class="control-row">
-        <label for={inputId}>Input angle</label>
-        <input id={inputId} data-angle type="range" min="0" max="360" step="1" value="0" />
-        <output data-angle-output for={inputId}>0°</output>
-      </div>
-      <div class="control-row">
-        <label for={centerId}>Center distance</label>
-        <input id={centerId} data-center type="range" min={centerMin} max="260" step="1" value="180" />
-        <output data-center-output for={centerId}>180 mm</output>
-      </div>
-      <div class="control-row">
-        <label for={rpmId}>Driver speed</label>
-        <input id={rpmId} data-rpm type="range" min="10" max="120" step="1" value="30" />
-        <output data-rpm-output for={rpmId}>30 rpm</output>
-      </div>
+      {definition.controls.map((control) => {
+        const inputId = `${componentId}-${control.id}`;
+        return (
+          <div class="control-row">
+            <label for={inputId}>{controlLabel(control, model)}</label>
+            <input
+              id={inputId}
+              data-control-id={control.id}
+              type="range"
+              min={control.min}
+              max={control.max}
+              step={control.step}
+              value={control.initial}
+            />
+            <output
+              data-control-output-id={control.id}
+              for={inputId}
+            >{controlValue(control)}</output>
+          </div>
+        );
+      })}
     </div>
 
     <div class="lab-readouts" aria-label="Calculated mechanism values">
-      <div class="readout"><span>Output direction</span><strong data-direction>{direction}</strong></div>
-      <div class="readout"><span>Speed ratio</span><strong data-ratio>1.000</strong></div>
-      <div class="readout"><span>Output speed</span><strong data-output-rpm>30.0 rpm</strong></div>
-      <div class="readout"><span>Belt speed</span><strong data-belt-speed>0.141 m/s</strong></div>
-      <div class="readout"><span>Driver wrap</span><strong data-driver-wrap>—</strong></div>
-      <div class="readout"><span>Ideal belt length</span><strong data-belt-length>—</strong></div>
+      {definition.readouts.map((readout) => (
+        <div class="readout">
+          <span>{readoutLabel(readout, model)}</span>
+          <strong data-readout-id={readout.id}>{formatLabReadout(readout, initialState)}</strong>
+        </div>
+      ))}
     </div>
   </div>
 </section>
 
 <script>
-  import '../scripts/beltDriveLab.ts';
+  import '../scripts/mechanismLab.ts';
 </script>
 
 <style>
@@ -123,11 +164,6 @@ const direction = crossed ? 'Reversed' : 'Same';
     box-shadow: 0 1px 3px rgba(28,29,27,.08);
   }
 
-  /* The stage is a camera viewport rather than a canvas whose height is derived
-     from the full desktop width. The product script sizes this viewport to the
-     remaining first-screen height, then fits an undistorted 8:5 renderer inside
-     it. The same camera frame hosts either the Brown SVG plate or the real 3D
-     renderer, so switching modes never changes page composition. */
   .lab-viewport {
     position: relative;
     width: 100%;

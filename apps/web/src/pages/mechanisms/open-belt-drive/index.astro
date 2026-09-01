@@ -4,9 +4,9 @@ import {
   brown507Collection,
   openBeltDrive,
 } from '@atlasmechanica/catalog';
-import BeltDriveLab from '../../../components/BeltDriveLab.astro';
 import CollectionContext from '../../../components/CollectionContext.astro';
 import MechanismFacts from '../../../components/MechanismFacts.astro';
+import MechanismLab from '../../../components/MechanismLab.astro';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 
 const subject = openBeltDrive;
@@ -39,7 +39,11 @@ const collection = brown507Collection;
         </a>
       </header>
 
-      <BeltDriveLab routing="open" />
+      <MechanismLab
+        modelId={subject.simulation.modelId}
+        adapterId={subject.simulation.adapter}
+        title={subject.title}
+      />
 
       <div class="content-grid">
         <article class="prose">
