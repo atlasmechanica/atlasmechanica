@@ -61,6 +61,23 @@ describe('catalog manifests', () => {
     ).toThrow('must reference a canonical subject');
   });
 
+  it('rejects duplicate ordinals within one collection', () => {
+    expect(() =>
+      createCatalog({
+        collections: [brown507Collection],
+        subjects: [openBeltDrive, crossedBeltDrive],
+        occurrences: [
+          brown001,
+          {
+            ...brown002,
+            id: 'brown:duplicate-ordinal',
+            ordinal: brown001.ordinal,
+          },
+        ],
+      }),
+    ).toThrow('Duplicate ordinal 1 in collection brown-507');
+  });
+
   it('rejects occurrences that point at unknown canonical subjects', () => {
     expect(() =>
       createCatalog({
@@ -75,6 +92,32 @@ describe('catalog manifests', () => {
         ],
       }),
     ).toThrow('unknown canonical subject');
+  });
+
+  it('rejects interactive occurrences backed by planned simulations', () => {
+    const plannedSubject = {
+      ...openBeltDrive,
+      id: 'planned-open-belt-drive',
+      slug: 'planned-open-belt-drive',
+      simulation: {
+        ...openBeltDrive.simulation,
+        status: 'planned' as const,
+      },
+    };
+
+    expect(() =>
+      createCatalog({
+        collections: [brown507Collection],
+        subjects: [plannedSubject],
+        occurrences: [
+          {
+            ...brown001,
+            id: 'brown:test',
+            canonicalSubject: plannedSubject.id,
+          },
+        ],
+      }),
+    ).toThrow('requires an interactive canonical simulation');
   });
 
   it('rejects interactive occurrences wired to a different simulation model', () => {

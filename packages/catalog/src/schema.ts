@@ -17,11 +17,17 @@ export interface OccurrenceClassification {
   tags?: readonly string[];
 }
 
-export interface SubjectFact {
-  label: string;
-  value?: string;
-  tags?: readonly string[];
-}
+export type SubjectFact =
+  | {
+      label: string;
+      value: string;
+      tags?: never;
+    }
+  | {
+      label: string;
+      tags: readonly string[];
+      value?: never;
+    };
 
 export interface CanonicalSubjectManifest {
   schemaVersion: typeof CATALOG_SCHEMA_VERSION;
@@ -129,12 +135,21 @@ export function createCatalog(manifests: CatalogManifestSet): CatalogIndex {
     slugs.add(subject.slug);
   }
 
+  const collectionOrdinals = new Set<string>();
   for (const occurrence of manifests.occurrences) {
     if (!collections.has(occurrence.collection)) {
       throw new Error(
         `Collection occurrence ${occurrence.id} references unknown collection ${occurrence.collection}`,
       );
     }
+
+    const ordinalKey = `${occurrence.collection}\u0000${occurrence.ordinal}`;
+    if (collectionOrdinals.has(ordinalKey)) {
+      throw new Error(
+        `Duplicate ordinal ${occurrence.ordinal} in collection ${occurrence.collection}`,
+      );
+    }
+    collectionOrdinals.add(ordinalKey);
 
     if (occurrence.status === 'classified' && !occurrence.classification) {
       throw new Error(`Classified occurrence ${occurrence.id} must include classification metadata`);

@@ -18,7 +18,7 @@ const { subject, collection, occurrence } = Astro.props;
   {subject.facts.map((fact) => (
     <div class="fact-group">
       <h3>{fact.label}</h3>
-      {fact.tags ? (
+      {'tags' in fact ? (
         <div class="fact-tags">
           {fact.tags.map((tag) => <span class="fact-tag">{tag}</span>)}
         </div>
