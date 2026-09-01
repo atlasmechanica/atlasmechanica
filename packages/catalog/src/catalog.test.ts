@@ -27,7 +27,7 @@ describe('catalog manifests', () => {
 
   it('maps Brown 003 without claiming an interactive simulation', () => {
     expect(brown003.status).toBe('mapped');
-    expect(brown003.simulation).toBeUndefined();
+    expect('simulation' in brown003).toBe(false);
     expect(quarterTurnBeltDrive.simulation.status).toBe('planned');
     expect(quarterTurnBeltDrive.simulation.modelId).toBe('foundation:belt-drive:quarter-turn-guided');
     expect(quarterTurnBeltDrive.simulation.adapter).toBe('atlas.spatial-belt.v0');
