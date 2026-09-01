@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { catalog, occurrences, subjects } from './catalog.js';
+import { catalog, collections, occurrences, subjects } from './catalog.js';
 import { createCatalog } from './schema.js';
 import { brown507Collection } from './manifests/collections/brown507.js';
 
@@ -19,6 +19,17 @@ describe('catalog manifests', () => {
     expect(catalog.collections.get('brown-507')).toBe(brown507Collection);
     expect(catalog.subjects.get('open-belt-drive')).toBe(openBeltDrive);
     expect(catalog.occurrences.get('brown:002')).toBe(brown002);
+  });
+
+  it('freezes exported manifest arrays at runtime', () => {
+    expect(Object.isFrozen(collections)).toBe(true);
+    expect(Object.isFrozen(subjects)).toBe(true);
+    expect(Object.isFrozen(occurrences)).toBe(true);
+
+    const mutableOccurrences = occurrences as unknown as typeof brown001[];
+    expect(() => mutableOccurrences.push(brown001)).toThrow(TypeError);
+    expect(() => mutableOccurrences.splice(0, 1)).toThrow(TypeError);
+    expect(occurrences).toHaveLength(2);
   });
 
   it('rejects unsupported schema versions across manifest kinds', () => {
@@ -91,6 +102,28 @@ describe('catalog manifests', () => {
     });
 
     expect(sourceOnlyCatalog.occurrences.get('brown:003')).toBe(sourceOnly);
+  });
+
+  it('rejects unsupported occurrence statuses at runtime', () => {
+    const invalidStatus = 'interative' as unknown as typeof brown001.status;
+
+    expect(() =>
+      createCatalog({
+        collections: [brown507Collection],
+        subjects: [],
+        occurrences: [
+          {
+            schemaVersion: brown001.schemaVersion,
+            id: 'brown:invalid-status',
+            collection: 'brown-507',
+            ordinal: 997,
+            displayNumber: '997',
+            status: invalidStatus,
+            source: {},
+          },
+        ],
+      }),
+    ).toThrow('unsupported status interative');
   });
 
   it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 1.5])(
