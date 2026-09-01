@@ -1,37 +1,49 @@
 ---
-import BeltDriveLab from '../../../components/BeltDriveLab.astro';
+import {
+  brown001,
+  brown507Collection,
+  openBeltDrive,
+} from '@atlasmechanica/catalog';
+import CollectionContext from '../../../components/CollectionContext.astro';
+import MechanismFacts from '../../../components/MechanismFacts.astro';
+import MechanismLab from '../../../components/MechanismLab.astro';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
+
+const subject = openBeltDrive;
+const occurrence = brown001;
+const collection = brown507Collection;
 ---
 
 <BaseLayout
-  title="Open Belt Drive"
-  description="Explore an open belt drive interactively: same-direction rotary transmission, speed ratio, belt speed, geometry, and Brown movement 001 context."
-  canonicalPath="/mechanisms/open-belt-drive/"
+  title={subject.title}
+  description={subject.seoDescription}
+  canonicalPath={`/mechanisms/${subject.slug}/`}
 >
   <main class="page">
     <div class="site-shell">
       <nav class="breadcrumbs" aria-label="Breadcrumb">
         <a href="/">Atlas</a><span class="sep">/</span>
         <span>Mechanisms</span><span class="sep">/</span>
-        <span aria-current="page">Open Belt Drive</span>
+        <span aria-current="page">{subject.title}</span>
       </nav>
 
       <header class="mechanism-heading">
         <div>
-          <p class="eyebrow">Continuous rotary → continuous rotary</p>
-          <h1>Open Belt Drive</h1>
-          <p>
-            Two pulleys connected by an uncrossed belt transmit rotation between parallel shafts.
-            In the ideal no-slip case, the shafts turn in the same direction and pulley radii set the speed ratio.
-          </p>
+          <p class="eyebrow">{subject.classification.functionalSignature}</p>
+          <h1>{subject.title}</h1>
+          <p>{subject.summary}</p>
         </div>
-        <a class="collection-chip" href="#brown-001">
+        <a class="collection-chip" href={`#${occurrence.id.replaceAll(':', '-')}`}>
           <span>Collection context</span>
-          <strong>Brown 001</strong>
+          <strong>{collection.shortTitle} {occurrence.displayNumber}</strong>
         </a>
       </header>
 
-      <BeltDriveLab routing="open" />
+      <MechanismLab
+        modelId={subject.simulation.modelId}
+        adapterId={subject.simulation.adapter}
+        title={subject.title}
+      />
 
       <div class="content-grid">
         <article class="prose">
@@ -82,22 +94,16 @@ import BaseLayout from '../../../layouts/BaseLayout.astro';
             </p>
           </section>
 
-          <section id="brown-001">
-            <p class="eyebrow">Collection 001 · Henry T. Brown</p>
-            <h2>Brown begins with the basic idea.</h2>
+          <CollectionContext collection={collection} occurrence={occurrence}>
             <p>
               In <em>507 Mechanical Movements</em>, this arrangement appears as movement 1. Brown's description focuses
               on the two facts a learner should notice first: power is transmitted by the belt, and an open routing
               preserves rotational direction.
             </p>
-            <blockquote class="quote">
-              “Illustrates the transmission of power by simple pulleys and an open belt. In this case both of the pulleys rotate in the same direction.”
-              <cite>Henry T. Brown, movement 1 · online transcription reference</cite>
-            </blockquote>
-            <p style="margin-top: 16px">
-              <a href="https://507movements.com/mm_001.html">View the current 507movements.com reference ↗</a>
+            <p slot="after-excerpt" style="margin-top: 16px">
+              <a href={occurrence.source.referenceUrl}>{occurrence.source.referenceLabel}</a>
             </p>
-          </section>
+          </CollectionContext>
 
           <section>
             <p class="eyebrow">What changes next?</p>
@@ -119,40 +125,7 @@ import BaseLayout from '../../../layouts/BaseLayout.astro';
           </section>
         </article>
 
-        <aside class="side-facts" aria-label="Mechanism facts">
-          <div class="fact-group">
-            <h3>Functional signature</h3>
-            <p>continuous rotary → continuous rotary</p>
-          </div>
-          <div class="fact-group">
-            <h3>Ideal relationship</h3>
-            <p>Constant speed ratio; same direction</p>
-          </div>
-          <div class="fact-group">
-            <h3>Degrees of freedom</h3>
-            <p>1 prescribed input coordinate</p>
-          </div>
-          <div class="fact-group">
-            <h3>Components</h3>
-            <div class="fact-tags">
-              <span class="fact-tag">belt</span>
-              <span class="fact-tag">pulley</span>
-              <span class="fact-tag">shaft</span>
-            </div>
-          </div>
-          <div class="fact-group">
-            <h3>Atlas model</h3>
-            <p>Exact analytic planar kinematics</p>
-          </div>
-          <div class="fact-group">
-            <h3>Assumptions</h3>
-            <p>Massless, inextensible belt; no slip; fixed coplanar centers; pitch-circle geometry.</p>
-          </div>
-          <div class="fact-group">
-            <h3>Collection appearances</h3>
-            <p>Brown · 507 Mechanical Movements · 001</p>
-          </div>
-        </aside>
+        <MechanismFacts subject={subject} collection={collection} occurrence={occurrence} />
       </div>
     </div>
   </main>

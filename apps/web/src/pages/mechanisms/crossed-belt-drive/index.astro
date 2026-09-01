@@ -1,37 +1,49 @@
 ---
-import BeltDriveLab from '../../../components/BeltDriveLab.astro';
+import {
+  brown002,
+  brown507Collection,
+  crossedBeltDrive,
+} from '@atlasmechanica/catalog';
+import CollectionContext from '../../../components/CollectionContext.astro';
+import MechanismFacts from '../../../components/MechanismFacts.astro';
+import MechanismLab from '../../../components/MechanismLab.astro';
 import BaseLayout from '../../../layouts/BaseLayout.astro';
+
+const subject = crossedBeltDrive;
+const occurrence = brown002;
+const collection = brown507Collection;
 ---
 
 <BaseLayout
-  title="Crossed Belt Drive"
-  description="Explore a crossed belt drive interactively: reversed rotary transmission, ideal speed ratio, belt geometry, and Brown movement 002 context."
-  canonicalPath="/mechanisms/crossed-belt-drive/"
+  title={subject.title}
+  description={subject.seoDescription}
+  canonicalPath={`/mechanisms/${subject.slug}/`}
 >
   <main class="page">
     <div class="site-shell">
       <nav class="breadcrumbs" aria-label="Breadcrumb">
         <a href="/">Atlas</a><span class="sep">/</span>
         <span>Mechanisms</span><span class="sep">/</span>
-        <span aria-current="page">Crossed Belt Drive</span>
+        <span aria-current="page">{subject.title}</span>
       </nav>
 
       <header class="mechanism-heading">
         <div>
-          <p class="eyebrow">Continuous rotary → reversed continuous rotary</p>
-          <h1>Crossed Belt Drive</h1>
-          <p>
-            Cross the belt between two parallel pulleys and the driven shaft reverses direction.
-            In the ideal no-slip model, the pulley-size ratio is unchanged; only its sign changes.
-          </p>
+          <p class="eyebrow">{subject.classification.functionalSignature}</p>
+          <h1>{subject.title}</h1>
+          <p>{subject.summary}</p>
         </div>
-        <a class="collection-chip" href="#brown-002">
+        <a class="collection-chip" href={`#${occurrence.id.replaceAll(':', '-')}`}>
           <span>Collection context</span>
-          <strong>Brown 002</strong>
+          <strong>{collection.shortTitle} {occurrence.displayNumber}</strong>
         </a>
       </header>
 
-      <BeltDriveLab routing="crossed" />
+      <MechanismLab
+        modelId={subject.simulation.modelId}
+        adapterId={subject.simulation.adapter}
+        title={subject.title}
+      />
 
       <div class="content-grid">
         <article class="prose">
@@ -93,27 +105,23 @@ import BaseLayout from '../../../layouts/BaseLayout.astro';
             </p>
           </section>
 
-          <section id="brown-002">
-            <p class="eyebrow">Collection 001 · Henry T. Brown</p>
-            <h2>Brown turns reversal into a control system.</h2>
+          <CollectionContext collection={collection} occurrence={occurrence}>
             <p>
               Brown explicitly presents movement 2 as a modification of movement 1: substitute a crossed belt and the
               pulley directions reverse. He then extends the idea to a driven shaft carrying one fast pulley and two
               loose pulleys. With both an open and a crossed belt available, shifting which belt runs on the fast pulley
               selects the shaft direction while the driver continues rotating.
             </p>
-            <blockquote class="quote">
-              “Differs from 1 in the substitution of a crossed belt for the open one.”
-              <cite>Henry T. Brown, movement 2 · online transcription reference</cite>
-            </blockquote>
-            <p style="margin-top: 16px">
-              The live model above isolates the two-pulley crossed-belt principle. Brown's larger fast/loose-pulley
-              reversing arrangement is application context, not something this simple model claims to simulate.
-            </p>
-            <p>
-              <a href="https://507movements.com/mm_002.html">View the current 507movements.com reference ↗</a>
-            </p>
-          </section>
+            <Fragment slot="after-excerpt">
+              <p style="margin-top: 16px">
+                The live model above isolates the two-pulley crossed-belt principle. Brown's larger fast/loose-pulley
+                reversing arrangement is application context, not something this simple model claims to simulate.
+              </p>
+              <p>
+                <a href={occurrence.source.referenceUrl}>{occurrence.source.referenceLabel}</a>
+              </p>
+            </Fragment>
+          </CollectionContext>
 
           <section>
             <p class="eyebrow">Learning progression</p>
@@ -134,44 +142,7 @@ import BaseLayout from '../../../layouts/BaseLayout.astro';
           </section>
         </article>
 
-        <aside class="side-facts" aria-label="Mechanism facts">
-          <div class="fact-group">
-            <h3>Functional signature</h3>
-            <p>continuous rotary → reversed continuous rotary</p>
-          </div>
-          <div class="fact-group">
-            <h3>Ideal relationship</h3>
-            <p>Constant speed-ratio magnitude; opposite direction</p>
-          </div>
-          <div class="fact-group">
-            <h3>Degrees of freedom</h3>
-            <p>1 prescribed input coordinate</p>
-          </div>
-          <div class="fact-group">
-            <h3>Components</h3>
-            <div class="fact-tags">
-              <span class="fact-tag">belt</span>
-              <span class="fact-tag">pulley</span>
-              <span class="fact-tag">shaft</span>
-            </div>
-          </div>
-          <div class="fact-group">
-            <h3>Atlas model</h3>
-            <p>Exact analytic planar kinematics</p>
-          </div>
-          <div class="fact-group">
-            <h3>Geometry condition</h3>
-            <p>Center distance must exceed the sum of the pitch radii for the ideal crossed tangent construction.</p>
-          </div>
-          <div class="fact-group">
-            <h3>Assumptions</h3>
-            <p>Massless, inextensible belt; no slip; fixed coplanar centers; no belt self-contact or lateral dynamics.</p>
-          </div>
-          <div class="fact-group">
-            <h3>Collection appearances</h3>
-            <p>Brown · 507 Mechanical Movements · 002</p>
-          </div>
-        </aside>
+        <MechanismFacts subject={subject} collection={collection} occurrence={occurrence} />
       </div>
     </div>
   </main>

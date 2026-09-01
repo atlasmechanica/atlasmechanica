@@ -1,0 +1,34 @@
+---
+import type {
+  CanonicalSubjectManifest,
+  CollectionManifest,
+  CollectionOccurrenceManifest,
+} from '@atlasmechanica/catalog';
+
+interface Props {
+  subject: CanonicalSubjectManifest;
+  collection: CollectionManifest;
+  occurrence: CollectionOccurrenceManifest;
+}
+
+const { subject, collection, occurrence } = Astro.props;
+---
+
+<aside class="side-facts" aria-label="Mechanism facts">
+  {subject.facts.map((fact) => (
+    <div class="fact-group">
+      <h3>{fact.label}</h3>
+      {'tags' in fact ? (
+        <div class="fact-tags">
+          {fact.tags.map((tag) => <span class="fact-tag">{tag}</span>)}
+        </div>
+      ) : (
+        <p>{fact.value}</p>
+      )}
+    </div>
+  ))}
+  <div class="fact-group">
+    <h3>Collection appearances</h3>
+    <p>{collection.shortTitle} · {collection.title} · {occurrence.displayNumber}</p>
+  </div>
+</aside>

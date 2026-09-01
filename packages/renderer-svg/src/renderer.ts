@@ -10,6 +10,7 @@ import {
 import {
   DEFAULT_RENDER_SIZE,
   clientPointToWorld,
+  projectLength,
   projectPoint,
   type RenderSize,
 } from './geometry.js';
@@ -23,9 +24,9 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 
 export interface SvgRendererCallbacks {
   onSelect?(id: string): void;
-  onInputDrag?(point: Vec2): void;
-  onParameterDrag?(point: Vec2): void;
-  onNudgeInput?(deltaDegrees: number): void;
+  onInputDrag?(point: Vec2, bindingId: string): void;
+  onParameterDrag?(point: Vec2, bindingId: string): void;
+  onNudgeInput?(deltaDegrees: number, bindingId: string): void;
 }
 
 export interface SvgRendererOptions {
@@ -62,6 +63,7 @@ interface RenderNode {
 interface ActiveHandle {
   id: string;
   handle: HandlePrimitive['handle'];
+  bindingId: string;
   pointerId: number;
   viewport: MechanismScene['viewport'];
 }
@@ -261,12 +263,13 @@ export function createSvgMechanismRenderer(
         callbacks.onSelect?.(id);
       }
       const handle = group.dataset.handle as HandlePrimitive['handle'] | undefined;
+      const bindingId = group.dataset.bindingId;
       const point = handlePoints.get(primitive.id);
-      if (point === undefined) return;
+      if (point === undefined || bindingId === undefined) return;
 
       if (handle === 'input' && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
         event.preventDefault();
-        callbacks.onNudgeInput?.(event.key === 'ArrowRight' ? 2 : -2);
+        callbacks.onNudgeInput?.(event.key === 'ArrowRight' ? 2 : -2, bindingId);
         return;
       }
 
@@ -282,13 +285,20 @@ export function createSvgMechanismRenderer(
           axis === 'x'
             ? { x: point.x + step, y: point.y }
             : { x: point.x, y: point.y + step },
+          bindingId,
         );
       }
     });
 
     group.addEventListener('pointerdown', (event) => {
       const handle = group.dataset.handle as HandlePrimitive['handle'] | undefined;
-      if (handle === undefined || handle === 'invalid' || currentScene === undefined) return;
+      const bindingId = group.dataset.bindingId;
+      if (
+        handle === undefined
+        || handle === 'invalid'
+        || bindingId === undefined
+        || currentScene === undefined
+      ) return;
       event.preventDefault();
       // A drag gesture must use one world transform from pointer-down through
       // pointer-up. The scene is allowed to reframe while a parameter changes,
@@ -297,6 +307,7 @@ export function createSvgMechanismRenderer(
       activeHandle = {
         id: primitive.id,
         handle,
+        bindingId,
         pointerId: event.pointerId,
         viewport: { ...currentScene.viewport },
       };
@@ -310,8 +321,14 @@ export function createSvgMechanismRenderer(
     const group = node.group;
     if (primitive.selectId === undefined) delete group.dataset.selectId;
     else group.dataset.selectId = primitive.selectId;
-    if (primitive.type === 'handle') group.dataset.handle = primitive.handle;
-    else delete group.dataset.handle;
+    if (primitive.type === 'handle') {
+      group.dataset.handle = primitive.handle;
+      if (primitive.bindingId === undefined) delete group.dataset.bindingId;
+      else group.dataset.bindingId = primitive.bindingId;
+    } else {
+      delete group.dataset.handle;
+      delete group.dataset.bindingId;
+    }
     group.dataset.layer = primitive.layer;
     group.setAttribute('aria-label', primitive.ariaLabel ?? primitive.id);
     const focusable = primitive.selectId !== undefined || (primitive.type === 'handle' && primitive.handle !== 'invalid');
@@ -339,18 +356,17 @@ export function createSvgMechanismRenderer(
       const visible = group.children[0] as SVGEllipseElement;
       const hit = group.children[1] as SVGEllipseElement;
       const center = projectPoint(primitive.center, scene.viewport, size);
-      const rx = (primitive.radius / (scene.viewport.maxX - scene.viewport.minX)) * size.width;
-      const ry = (primitive.radius / (scene.viewport.maxY - scene.viewport.minY)) * size.height;
+      const radius = projectLength(primitive.radius, scene.viewport, size);
       for (const ellipse of [visible, hit]) {
         ellipse.setAttribute('cx', String(center.x));
         ellipse.setAttribute('cy', String(center.y));
       }
-      visible.setAttribute('rx', String(rx));
-      visible.setAttribute('ry', String(ry));
+      visible.setAttribute('rx', String(radius));
+      visible.setAttribute('ry', String(radius));
       visible.setAttribute('class', styleClass(primitive, selected));
       setVisibleStrokeWidth(visible, primitive.width ?? 2);
-      hit.setAttribute('rx', String(rx + 10));
-      hit.setAttribute('ry', String(ry + 10));
+      hit.setAttribute('rx', String(radius + 10));
+      hit.setAttribute('ry', String(radius + 10));
       hit.setAttribute('class', 'atlas-hit-fill');
     } else if (primitive.type === 'polyline') {
       const visible = group.children[0] as SVGPolylineElement;
@@ -385,6 +401,8 @@ export function createSvgMechanismRenderer(
       visible.setAttribute('d', handlePath(primitive.at, primitive.shape, scene, size));
       visible.setAttribute('class', `${styleClass(primitive, selected)} atlas-handle-visible`);
       visible.dataset.handle = primitive.handle;
+      if (primitive.bindingId === undefined) delete visible.dataset.bindingId;
+      else visible.dataset.bindingId = primitive.bindingId;
       hit.setAttribute('cx', String(point.x));
       hit.setAttribute('cy', String(point.y));
       hit.setAttribute('r', '18');
@@ -434,8 +452,8 @@ export function createSvgMechanismRenderer(
       activeHandle.viewport,
       size,
     );
-    if (activeHandle.handle === 'input') callbacks.onInputDrag?.(point);
-    else if (activeHandle.handle === 'parameter') callbacks.onParameterDrag?.(point);
+    if (activeHandle.handle === 'input') callbacks.onInputDrag?.(point, activeHandle.bindingId);
+    else if (activeHandle.handle === 'parameter') callbacks.onParameterDrag?.(point, activeHandle.bindingId);
   };
 
   const releasePointer = (event: PointerEvent): void => {
@@ -445,11 +463,21 @@ export function createSvgMechanismRenderer(
   };
 
   const hostKeyDown = (event: KeyboardEvent): void => {
-    if (event.target !== host) return;
-    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-      event.preventDefault();
-      callbacks.onNudgeInput?.(event.key === 'ArrowRight' ? 2 : -2);
-    }
+    if (event.target !== host || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+    const bindings = new Set(
+      currentScene?.primitives.flatMap((primitive) => (
+        primitive.type === 'handle'
+        && primitive.handle === 'input'
+        && primitive.bindingId !== undefined
+          ? [primitive.bindingId]
+          : []
+      )) ?? [],
+    );
+    if (bindings.size !== 1) return;
+    const bindingId = bindings.values().next().value;
+    if (bindingId === undefined) return;
+    event.preventDefault();
+    callbacks.onNudgeInput?.(event.key === 'ArrowRight' ? 2 : -2, bindingId);
   };
 
   const ensureLayerOrder = (scene: MechanismScene, layer: SceneLayer): void => {

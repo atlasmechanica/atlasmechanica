@@ -10,7 +10,9 @@
     "preview": "astro preview"
   },
   "dependencies": {
+    "@atlasmechanica/catalog": "file:../../packages/catalog",
     "@atlasmechanica/kinematics": "file:../../packages/kinematics",
+    "@atlasmechanica/lab": "file:../../packages/lab",
     "@atlasmechanica/model": "file:../../packages/model",
     "@atlasmechanica/renderer-svg": "file:../../packages/renderer-svg",
     "@atlasmechanica/renderer-three": "file:../../packages/renderer-three",

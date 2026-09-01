@@ -1,0 +1,34 @@
+---
+import type { CollectionManifest, CollectionOccurrenceManifest } from '@atlasmechanica/catalog';
+
+interface Props {
+  collection: CollectionManifest;
+  occurrence: CollectionOccurrenceManifest;
+}
+
+const { collection, occurrence } = Astro.props;
+const anchorId = occurrence.id.replaceAll(':', '-');
+const collectionNumber = collection.sequence === undefined
+  ? null
+  : String(collection.sequence).padStart(3, '0');
+const collectionIdentity = collection.author ?? collection.title;
+const eyebrow = collectionNumber
+  ? `Collection ${collectionNumber} · ${collectionIdentity}`
+  : collectionIdentity;
+const citation = collection.author
+  ? `${collection.author}, movement ${occurrence.ordinal} · online transcription reference`
+  : `${collection.title}, movement ${occurrence.ordinal}`;
+---
+
+<section id={anchorId}>
+  <p class="eyebrow">{eyebrow}</p>
+  {occurrence.editorial?.heading && <h2>{occurrence.editorial.heading}</h2>}
+  <slot />
+  {occurrence.source.excerpt && (
+    <blockquote class="quote">
+      “{occurrence.source.excerpt}”
+      <cite>{citation}</cite>
+    </blockquote>
+  )}
+  <slot name="after-excerpt" />
+</section>
