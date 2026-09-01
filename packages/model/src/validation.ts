@@ -7,7 +7,11 @@ import {
   type SimulationModel,
 } from './model.js';
 import type { Diagnostic } from './runtime.js';
-import { quantityKind, type QuantityKind } from './units.js';
+import {
+  quantityKind,
+  type QuantityKind,
+  type QuantityValue,
+} from './units.js';
 
 function invalidModel(message: string, context?: Diagnostic['context']): Diagnostic {
   const diagnostic: Diagnostic = {
@@ -18,6 +22,21 @@ function invalidModel(message: string, context?: Diagnostic['context']): Diagnos
 
   if (context !== undefined) diagnostic.context = context;
   return diagnostic;
+}
+
+function validateFiniteQuantity(
+  value: QuantityValue,
+  location: string,
+  diagnostics: Diagnostic[],
+): void {
+  if (!Number.isFinite(value.value)) {
+    diagnostics.push(
+      invalidModel(`Quantity must be finite at ${location}`, {
+        value: value.value,
+        unit: value.unit,
+      }),
+    );
+  }
 }
 
 function validateScalarSource(
@@ -50,6 +69,7 @@ function validateScalarSource(
     return;
   }
 
+  validateFiniteQuantity(source, location, diagnostics);
   const actualKind = quantityKind(source);
   if (actualKind !== expectedKind) {
     diagnostics.push(
@@ -94,6 +114,9 @@ function validatePoseValue(
   location: string,
   diagnostics: Diagnostic[],
 ): void {
+  validateFiniteQuantity(pose.x, `${location}.x`, diagnostics);
+  validateFiniteQuantity(pose.y, `${location}.y`, diagnostics);
+  validateFiniteQuantity(pose.angle, `${location}.angle`, diagnostics);
   if (quantityKind(pose.x) !== 'length') {
     diagnostics.push(invalidModel(`Pose x must be a length at ${location}.x`));
   }
@@ -290,6 +313,7 @@ export function validateSimulationModel(model: SimulationModel): Diagnostic[] {
       );
     }
 
+    validateFiniteQuantity(parameter.default, `${parameterId}.default`, diagnostics);
     if (quantityKind(parameter.default) !== parameter.kind) {
       diagnostics.push(
         invalidModel('Parameter default has the wrong quantity kind', {
@@ -304,6 +328,9 @@ export function validateSimulationModel(model: SimulationModel): Diagnostic[] {
       ['min', parameter.domain?.min],
       ['max', parameter.domain?.max],
     ] as const) {
+      if (bound !== undefined) {
+        validateFiniteQuantity(bound, `${parameterId}.${boundName}`, diagnostics);
+      }
       if (bound !== undefined && quantityKind(bound) !== parameter.kind) {
         diagnostics.push(
           invalidModel('Parameter domain has the wrong quantity kind', {
@@ -321,6 +348,13 @@ export function validateSimulationModel(model: SimulationModel): Diagnostic[] {
   const fixedAxisBelt = model.systems.fixedAxisBelt;
   if (mechanical === undefined && fixedAxisBelt === undefined) {
     diagnostics.push(invalidModel('SimulationModel requires at least one supported system'));
+  }
+  if (mechanical !== undefined && fixedAxisBelt !== undefined) {
+    diagnostics.push(
+      invalidModel(
+        'SimulationModel cannot combine planar mechanical and fixed-axis belt systems until subsystem state composition is implemented',
+      ),
+    );
   }
 
   if (mechanical !== undefined) {
@@ -509,13 +543,20 @@ export function validateSimulationModel(model: SimulationModel): Diagnostic[] {
         );
         continue;
       }
+      if (value !== undefined) {
+        validateFiniteQuantity(
+          value,
+          `${configurationId}.coordinates.${coordinateId}`,
+          diagnostics,
+        );
+      }
       if (value !== undefined && quantityKind(value) !== 'angle') {
         diagnostics.push(
           invalidModel('Configuration coordinate has the wrong quantity kind', {
             configuration: configurationId,
             coordinate: coordinateId,
             expectedKind: 'angle',
-            actualKind: value === undefined ? 'unknown' : quantityKind(value),
+            actualKind: quantityKind(value),
           }),
         );
       }
