@@ -5,6 +5,7 @@ import {
   quantity,
   validateSimulationModel,
   type ModelState,
+  type SimulationModel,
 } from '@atlasmechanica/model';
 import { createBeltDriveModel } from './fixtures/beltDrive.js';
 import { canonicalQuarterTurnBeltModel } from './fixtures/quarterTurnBelt.js';
@@ -20,6 +21,18 @@ function scalarSignal(state: ModelState, id: string): number {
   const value = state.signals[id];
   if (value?.type !== 'scalar') throw new Error(`Missing scalar signal ${id}`);
   return value.value.value;
+}
+
+function fixedAxisSystem() {
+  const system = canonicalQuarterTurnBeltModel.systems.fixedAxisBelt;
+  if (system === undefined) throw new Error('Missing fixed-axis system');
+  return system;
+}
+
+function referenceConfiguration() {
+  const configuration = canonicalQuarterTurnBeltModel.configurations.reference;
+  if (configuration === undefined) throw new Error('Missing reference configuration');
+  return configuration;
 }
 
 describe('fixed-axis spatial belt model', () => {
@@ -68,9 +81,9 @@ describe('fixed-axis spatial belt model', () => {
     expect(scalarSignal(state, 'belt-linear-speed')).toBeCloseTo(0.045 * Math.PI, 12);
     expect(scalarSignal(state, 'belt-travel')).toBeCloseTo(0.045 * Math.PI / 2, 12);
 
-    const system = canonicalQuarterTurnBeltModel.systems.fixedAxisBelt;
-    const loop = system?.loops['main-belt'];
-    if (system === undefined || loop === undefined) throw new Error('Missing Brown 003 loop');
+    const system = fixedAxisSystem();
+    const loop = system.loops['main-belt'];
+    if (loop === undefined) throw new Error('Missing Brown 003 loop');
     const expectedBeltSpeed = scalarSignal(state, 'belt-linear-speed');
     for (const contact of loop.contacts) {
       const pulley = system.pulleys[contact.pulley];
@@ -122,12 +135,11 @@ describe('fixed-axis spatial belt model', () => {
   });
 
   it('rejects degenerate fixed axes during model validation', () => {
-    const system = canonicalQuarterTurnBeltModel.systems.fixedAxisBelt;
-    if (system === undefined) throw new Error('Missing fixed-axis system');
+    const system = fixedAxisSystem();
     const driver = system.pulleys.driver;
     if (driver === undefined) throw new Error('Missing driver pulley');
 
-    const invalid = {
+    const invalid: SimulationModel = {
       ...canonicalQuarterTurnBeltModel,
       systems: {
         fixedAxisBelt: {
@@ -143,5 +155,134 @@ describe('fixed-axis spatial belt model', () => {
     expect(validateSimulationModel(invalid).map((item) => item.message)).toContain(
       'Fixed-axis pulley axis must be finite and non-zero',
     );
+  });
+
+  it('rejects arbitrary one-loop layouts before routed tangent geometry exists', () => {
+    const system = fixedAxisSystem();
+    const driver = system.pulleys.driver;
+    const driven = system.pulleys.driven;
+    if (driver === undefined || driven === undefined) throw new Error('Missing power pulley');
+
+    const invalid: SimulationModel = {
+      ...canonicalQuarterTurnBeltModel,
+      systems: {
+        fixedAxisBelt: {
+          ...system,
+          pulleys: {
+            ...system.pulleys,
+            driven: { ...driven, center: driver.center },
+          },
+        },
+      },
+    };
+
+    expect(spatialBeltAdapter.supports(invalid)).toBe(false);
+    expect(() => spatialBeltAdapter.compile(invalid)).toThrow('restricted to the validated Brown 003');
+  });
+
+  it('returns invalid geometry when a radius edit consumes the validated contact clearance', () => {
+    const state = spatialBeltAdapter
+      .compile(canonicalQuarterTurnBeltModel)
+      .createSession({ configuration: 'reference' })
+      .evaluate({
+        parameters: { 'driver-radius': quantity(500, 'mm') },
+        coordinates: { 'driver-angle': quantity(20, 'deg') },
+      });
+
+    expect(state.diagnostics[0]?.code).toBe('invalid-geometry');
+    expect(state.coordinates).toEqual({});
+  });
+
+  it('validates configuration coordinate units before compilation', () => {
+    const reference = referenceConfiguration();
+    const invalid: SimulationModel = {
+      ...canonicalQuarterTurnBeltModel,
+      configurations: {
+        ...canonicalQuarterTurnBeltModel.configurations,
+        reference: {
+          ...reference,
+          coordinates: {
+            ...reference.coordinates,
+            'driver-angle': quantity(10, 'mm'),
+          },
+        },
+      },
+    };
+
+    expect(validateSimulationModel(invalid).map((item) => item.message)).toContain(
+      'Configuration coordinate has the wrong quantity kind',
+    );
+    expect(() => spatialBeltAdapter.compile(invalid)).toThrow(
+      'Configuration coordinate has the wrong quantity kind',
+    );
+  });
+
+  it('rejects empty fixed-axis systems during model validation', () => {
+    const invalid: SimulationModel = {
+      ...canonicalQuarterTurnBeltModel,
+      systems: {
+        fixedAxisBelt: {
+          dimensionality: 'spatial-fixed-axis',
+          pulleys: {},
+          loops: {},
+        },
+      },
+    };
+
+    const messages = validateSimulationModel(invalid).map((item) => item.message);
+    expect(messages).toContain('Fixed-axis belt system requires at least one pulley');
+    expect(messages).toContain('Fixed-axis belt system requires at least one belt loop');
+  });
+
+  it('rejects hybrid models until the adapter can compose planar body state', () => {
+    const planar = createBeltDriveModel('open');
+    const mechanical = planar.systems.mechanical;
+    const centerDistance = planar.parameters['center-distance'];
+    if (mechanical === undefined || centerDistance === undefined) {
+      throw new Error('Missing planar belt fixture data');
+    }
+
+    const hybrid: SimulationModel = {
+      ...canonicalQuarterTurnBeltModel,
+      parameters: {
+        ...canonicalQuarterTurnBeltModel.parameters,
+        'center-distance': centerDistance,
+      },
+      systems: {
+        ...canonicalQuarterTurnBeltModel.systems,
+        mechanical,
+      },
+    };
+
+    expect(validateSimulationModel(hybrid)).toEqual([]);
+    expect(spatialBeltAdapter.supports(hybrid)).toBe(false);
+    expect(() => spatialBeltAdapter.compile(hybrid)).toThrow('restricted to the validated Brown 003');
+  });
+
+  it('rejects non-finite radius overrides instead of emitting NaN state', () => {
+    const state = spatialBeltAdapter
+      .compile(canonicalQuarterTurnBeltModel)
+      .createSession({ configuration: 'reference' })
+      .evaluate({
+        parameters: { 'driver-radius': quantity(Number.POSITIVE_INFINITY, 'm') },
+        coordinates: { 'driver-angle': quantity(10, 'deg') },
+      });
+
+    expect(state.diagnostics[0]?.code).toBe('invalid-input');
+    expect(state.diagnostics[0]?.message).toContain('must be finite');
+    expect(state.coordinates).toEqual({});
+    expect(state.signals).toEqual({});
+  });
+
+  it('requires the signal definitions emitted by the v0 adapter', () => {
+    const signals = { ...canonicalQuarterTurnBeltModel.signals };
+    delete signals['output-angular-ratio'];
+    const invalid: SimulationModel = {
+      ...canonicalQuarterTurnBeltModel,
+      signals,
+    };
+
+    expect(spatialBeltAdapter.supports(invalid)).toBe(false);
+    expect(() => spatialBeltAdapter.compile(invalid)).toThrow('restricted to the validated Brown 003');
   });
 });
