@@ -1,8 +1,10 @@
 import {
+  assertValidInitialLabState,
   buildLabEvaluationRequest,
   controlLabel,
   defaultLabValues,
   formatLabReadout,
+  resolveInteractionControl,
   type LabControlDefinition,
   type LabDisplayUnit,
   type LabInteractionDefinition,
@@ -12,7 +14,7 @@ import { loadMechanismLab } from '@atlasmechanica/lab/lazy-runtime';
 import { hasErrors, type EvaluationRequest, type ModelState } from '@atlasmechanica/model';
 import { createSvgMechanismRenderer } from '@atlasmechanica/renderer-svg';
 import type { ThreeMechanismRenderer } from '@atlasmechanica/renderer-three';
-import type { HandlePrimitive, MechanismScene, Vec2 } from '@atlasmechanica/scene';
+import type { MechanismScene, Vec2 } from '@atlasmechanica/scene';
 import {
   loadRegisteredThreeRenderer,
   type LoadedThreeRendererModule,
@@ -30,6 +32,13 @@ const zoomStep = 0.2;
 function required<T extends Element>(element: T | null, name: string): T {
   if (element === null) throw new TypeError(`Mechanism lab is missing ${name}`);
   return element;
+}
+
+function requiredBinding(bindingId: string | undefined): string {
+  if (bindingId === undefined) {
+    throw new TypeError('Interactive scene handle is missing a model binding');
+  }
+  return bindingId;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -160,6 +169,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
   }
 
   let evaluated = evaluate();
+  assertValidInitialLabState(definition, evaluated.state);
   let currentState = evaluated.state;
   let currentRequest = evaluated.request;
   let currentScene: MechanismScene = sceneCompiler.build({
@@ -275,23 +285,6 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
     fitFrame = requestAnimationFrame(fitViewportToWindow);
   }
 
-  function interactionControl(
-    handle: Exclude<HandlePrimitive['handle'], 'invalid'>,
-    bindingId?: string,
-  ): LabControlDefinition | undefined {
-    if (bindingId !== undefined) {
-      const bound = definition.controls.find((control) => control.id === bindingId);
-      if (bound === undefined) {
-        throw new TypeError(`Scene handle references unknown lab control ${bindingId}`);
-      }
-      if (bound.interaction?.handle !== handle) {
-        throw new TypeError(`Scene handle ${bindingId} is incompatible with ${handle} interaction`);
-      }
-      return bound;
-    }
-    return definition.controls.find((control) => control.interaction?.handle === handle);
-  }
-
   function render(): void {
     currentScene = sceneCompiler.build({
       model,
@@ -338,17 +331,25 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
         render();
       },
       onInputDrag(point, bindingId) {
-        const control = interactionControl('input', bindingId);
-        const interaction = control?.interaction;
-        if (control === undefined || interaction?.handle !== 'input') return;
+        const control = resolveInteractionControl(
+          definition,
+          'input',
+          requiredBinding(bindingId),
+        );
+        const interaction = control.interaction;
+        if (interaction?.handle !== 'input') return;
         const value = interactionValue(control, interaction, point);
         const next = { ...values, [control.id]: value };
         acceptValues(next, `${controlLabel(control, model)} changed by direct manipulation.`);
       },
       onParameterDrag(point, bindingId) {
-        const control = interactionControl('parameter', bindingId);
-        const interaction = control?.interaction;
-        if (control === undefined || interaction?.handle !== 'parameter') return;
+        const control = resolveInteractionControl(
+          definition,
+          'parameter',
+          requiredBinding(bindingId),
+        );
+        const interaction = control.interaction;
+        if (interaction?.handle !== 'parameter') return;
         const value = interactionValue(control, interaction, point);
         if (value < control.min || value > control.max) {
           invalidParameterHandle = point;
@@ -363,8 +364,12 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
         }
       },
       onNudgeInput(deltaDegrees, bindingId) {
-        const control = interactionControl('input', bindingId);
-        if (control === undefined || control.kind !== 'coordinate') return;
+        const control = resolveInteractionControl(
+          definition,
+          'input',
+          requiredBinding(bindingId),
+        );
+        if (control.kind !== 'coordinate') return;
         const delta = control.unit === 'rad' ? deltaDegrees * Math.PI / 180 : deltaDegrees;
         const current = values[control.id] ?? control.initial;
         const value = wrapRange(current + delta, control.min, control.max);
@@ -531,6 +536,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
     invalidParameterHandle = undefined;
     session.reset(definition.sessionConfiguration);
     evaluated = evaluate();
+    assertValidInitialLabState(definition, evaluated.state);
     currentState = evaluated.state;
     currentRequest = evaluated.request;
     applyZoom(1);
@@ -599,7 +605,11 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
   }).catch((error: unknown) => {
     root.removeAttribute('aria-busy');
     const status = root.querySelector<HTMLElement>('[data-status]');
-    if (status !== null) status.textContent = 'The interactive mechanism could not be initialized.';
+    if (status !== null) {
+      status.textContent = error instanceof Error
+        ? `The interactive mechanism could not be initialized: ${error.message}`
+        : 'The interactive mechanism could not be initialized.';
+    }
     console.error(error);
   });
 }
