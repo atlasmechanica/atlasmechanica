@@ -1,5 +1,6 @@
 ---
 import {
+  assertValidInitialLabState,
   buildLabEvaluationRequest,
   controlLabel,
   defaultLabValues,
@@ -27,6 +28,7 @@ const initialSession = adapter.compile(model).createSession(
     : { configuration: definition.sessionConfiguration },
 );
 const initialState = initialSession.evaluate(initialRequest);
+assertValidInitialLabState(definition, initialState);
 const supports3d = definition.views.includes('3d');
 const componentId = definition.id.replaceAll(/[^a-zA-Z0-9_-]/g, '-');
 
