@@ -122,6 +122,19 @@ function indexById<T extends { readonly id: string }>(kind: string, manifests: r
   return index;
 }
 
+function assertSchemaVersions(
+  kind: string,
+  manifests: readonly { readonly id: string; readonly schemaVersion: string }[],
+): void {
+  for (const manifest of manifests) {
+    if (manifest.schemaVersion !== CATALOG_SCHEMA_VERSION) {
+      throw new Error(
+        `${kind} ${manifest.id} has unsupported schema version ${manifest.schemaVersion}; expected ${CATALOG_SCHEMA_VERSION}`,
+      );
+    }
+  }
+}
+
 function hasClassificationMetadata(classification: OccurrenceClassification | undefined): boolean {
   if (!classification) return false;
 
@@ -144,6 +157,10 @@ function deepFreeze<T>(value: T): T {
 }
 
 export function createCatalog(manifests: CatalogManifestSet): CatalogIndex {
+  assertSchemaVersions('Collection', manifests.collections);
+  assertSchemaVersions('Canonical subject', manifests.subjects);
+  assertSchemaVersions('Collection occurrence', manifests.occurrences);
+
   const collections = indexById('collection', manifests.collections);
   const subjects = indexById('canonical subject', manifests.subjects);
   const occurrences = indexById('collection occurrence', manifests.occurrences);
@@ -151,6 +168,9 @@ export function createCatalog(manifests: CatalogManifestSet): CatalogIndex {
   const collectionSequences = new Set<number>();
   for (const collection of manifests.collections) {
     if (collection.sequence === undefined) continue;
+    if (!Number.isFinite(collection.sequence) || !Number.isInteger(collection.sequence)) {
+      throw new Error(`Collection ${collection.id} sequence must be a finite integer`);
+    }
     if (collectionSequences.has(collection.sequence)) {
       throw new Error(`Duplicate collection sequence: ${collection.sequence}`);
     }
