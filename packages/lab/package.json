@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./definitions": "./src/definitions.ts",
+    "./runtime": "./src/runtime.ts",
+    "./lazy-runtime": "./src/lazyRuntime.ts"
   },
   "dependencies": {
     "@atlasmechanica/kinematics": "file:../kinematics",
