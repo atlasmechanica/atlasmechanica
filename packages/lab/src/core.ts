@@ -151,11 +151,22 @@ export function validateMechanismLabDefinition(
         }
       }
     }
-    if (control.interaction?.handle === 'input' && control.kind !== 'coordinate') {
+    const interaction = control.interaction;
+    if (interaction?.handle === 'input' && control.kind !== 'coordinate') {
       throw new TypeError(`Input interaction ${control.id} must bind a coordinate control`);
     }
-    if (control.interaction?.handle === 'parameter' && control.kind !== 'parameter') {
+    if (interaction?.handle === 'parameter' && control.kind !== 'parameter') {
       throw new TypeError(`Parameter interaction ${control.id} must bind a parameter control`);
+    }
+    if (interaction?.mapping.type === 'polar-angle') {
+      if (!interaction.mapping.origin.every(Number.isFinite)) {
+        throw new TypeError(`Mechanism lab interaction ${control.id} has an invalid polar origin`);
+      }
+    } else if (
+      interaction?.mapping.type === 'axis-value'
+      && (!Number.isFinite(interaction.mapping.scale) || interaction.mapping.scale === 0)
+    ) {
+      throw new TypeError(`Mechanism lab interaction ${control.id} has an invalid axis scale`);
     }
   }
 
