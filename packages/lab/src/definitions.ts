@@ -8,10 +8,12 @@ import {
 const RPM_TO_RAD_PER_SECOND = Math.PI * 2 / 60;
 
 function beltDriveLab(modelId: 'foundation:belt-drive:open' | 'foundation:belt-drive:crossed') {
+  const routing = modelId.endsWith(':open') ? 'open' : 'crossed';
   return defineMechanismLab({
     schemaVersion: MECHANISM_LAB_SCHEMA_VERSION,
     id: `lab:${modelId}`,
     modelId,
+    subtitle: `analytic · ideal ${routing} belt`,
     modelTransformId: 'atlas.lab.vertical-belt.v0',
     sceneCompilerId: 'atlas.scene.brown-belt.v0',
     threeRendererId: 'atlas.renderer-three.belt.v0',
@@ -132,6 +134,7 @@ export const canonicalFourBarLab = defineMechanismLab({
   schemaVersion: MECHANISM_LAB_SCHEMA_VERSION,
   id: 'lab:foundation:four-bar:crank-rocker',
   modelId: 'foundation:four-bar:crank-rocker',
+  subtitle: 'analytic · canonical four-bar',
   sceneCompilerId: 'atlas.scene.four-bar.v0',
   sessionConfiguration: 'open',
   views: ['2d'],
