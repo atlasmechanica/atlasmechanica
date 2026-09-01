@@ -44,7 +44,7 @@ describe('mechanism lab foundation', () => {
     expect(scene.primitives.length).toBeGreaterThan(0);
   });
 
-  it.each(cases)('lazy-loads only the mechanism family needed by %s', async (definition, adapterId) => {
+  it.each(cases)('resolves %s through the lazy runtime', async (definition, adapterId) => {
     const resolved = await loadMechanismLab(definition.modelId, adapterId, definition.id);
     expect(resolved.definition.id).toBe(definition.id);
     expect(resolved.model.id).toBe(definition.modelId);
@@ -164,6 +164,50 @@ describe('mechanism lab foundation', () => {
     } as unknown as typeof canonicalFourBarLab;
     expect(() => validateMechanismLabDefinition(badRate, resolved.model)).toThrow(
       'requires rpm, rad/s, or deg/s units',
+    );
+  });
+
+  it('rejects malformed direct-manipulation mappings', () => {
+    const resolved = resolveMechanismLab(
+      canonicalFourBarLab.modelId,
+      'atlas.analytic-four-bar.v0',
+      canonicalFourBarLab.id,
+    );
+
+    const badOrigin = {
+      ...canonicalFourBarLab,
+      controls: canonicalFourBarLab.controls.map((control) => (
+        control.id === 'driver-angle'
+          ? {
+              ...control,
+              interaction: {
+                handle: 'input',
+                mapping: { type: 'polar-angle', origin: [Number.NaN, 0] },
+              },
+            }
+          : control
+      )),
+    } as unknown as typeof canonicalFourBarLab;
+    expect(() => validateMechanismLabDefinition(badOrigin, resolved.model)).toThrow(
+      'invalid polar origin',
+    );
+
+    const badScale = {
+      ...canonicalFourBarLab,
+      controls: canonicalFourBarLab.controls.map((control) => (
+        control.id === 'ground-length'
+          ? {
+              ...control,
+              interaction: {
+                handle: 'parameter',
+                mapping: { type: 'axis-value', axis: 'x', scale: 0 },
+              },
+            }
+          : control
+      )),
+    } as unknown as typeof canonicalFourBarLab;
+    expect(() => validateMechanismLabDefinition(badScale, resolved.model)).toThrow(
+      'invalid axis scale',
     );
   });
 
