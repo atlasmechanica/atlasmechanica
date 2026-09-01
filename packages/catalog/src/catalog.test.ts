@@ -62,6 +62,17 @@ describe('catalog manifests', () => {
     expect(Object.isFrozen(catalog.subjects.get('open-belt-drive'))).toBe(true);
   });
 
+  it('prevents runtime mutation of catalog index maps', () => {
+    const mutableOccurrences = catalog.occurrences as unknown as Map<string, typeof brown001>;
+
+    expect(Object.isFrozen(catalog.occurrences)).toBe(true);
+    expect(() => mutableOccurrences.set('brown:mutated', brown001)).toThrow(TypeError);
+    expect(() => mutableOccurrences.delete('brown:001')).toThrow(TypeError);
+    expect(() => mutableOccurrences.clear()).toThrow(TypeError);
+    expect(catalog.occurrences.has('brown:001')).toBe(true);
+    expect(catalog.occurrences.has('brown:mutated')).toBe(false);
+  });
+
   it('allows source occurrences to be cataloged before canonical mapping', () => {
     const sourceOnly = {
       schemaVersion: brown001.schemaVersion,
