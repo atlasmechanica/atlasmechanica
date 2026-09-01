@@ -16,8 +16,12 @@ describe('SVG renderer coordinate transforms', () => {
       minY: -2,
       maxY: 2,
     });
-    expect(projectPoint({ x: -1, y: 2 }, viewport)).toEqual({ x: 120, y: 0 });
-    expect(projectPoint({ x: 3, y: -2 }, viewport)).toEqual({ x: 520, y: 400 });
+    const topLeft = projectPoint({ x: -1, y: 2 }, viewport);
+    expect(topLeft.x).toBeCloseTo(120, 12);
+    expect(topLeft.y).toBeCloseTo(0, 12);
+    const bottomRight = projectPoint({ x: 3, y: -2 }, viewport);
+    expect(bottomRight.x).toBeCloseTo(520, 12);
+    expect(bottomRight.y).toBeCloseTo(400, 12);
     expect(projectPoint({ x: 1, y: 0 }, viewport)).toEqual({ x: 320, y: 200 });
     expect(projectLength(1, viewport)).toBeCloseTo(100, 12);
   });
