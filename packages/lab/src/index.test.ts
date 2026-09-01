@@ -8,10 +8,10 @@ import {
   validateMechanismLabDefinition,
 } from './index.js';
 import {
-  canonicalFourBarLab,
   crossedBeltDriveLab,
   openBeltDriveLab,
-} from './definitions.js';
+} from './families/belt.js';
+import { canonicalFourBarLab } from './families/fourBar.js';
 import { loadMechanismLab } from './lazyRuntime.js';
 import { resolveMechanismLab } from './runtime.js';
 
@@ -42,7 +42,7 @@ describe('mechanism lab foundation', () => {
     expect(scene.primitives.length).toBeGreaterThan(0);
   });
 
-  it.each(cases)('lazy-loads only the runtime provider needed by %s', async (definition, adapterId) => {
+  it.each(cases)('lazy-loads only the mechanism family needed by %s', async (definition, adapterId) => {
     const resolved = await loadMechanismLab(definition.modelId, adapterId, definition.id);
     expect(resolved.definition.id).toBe(definition.id);
     expect(resolved.model.id).toBe(definition.modelId);
