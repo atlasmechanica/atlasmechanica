@@ -102,4 +102,81 @@ describe('mechanism lab foundation', () => {
       'unknown coordinate missing-coordinate',
     );
   });
+
+  it('rejects control units incompatible with their model quantity', () => {
+    const resolved = resolveMechanismLab(
+      canonicalFourBarLab.modelId,
+      'atlas.analytic-four-bar.v0',
+      canonicalFourBarLab.id,
+    );
+
+    const badParameter = {
+      ...canonicalFourBarLab,
+      controls: canonicalFourBarLab.controls.map((control) => (
+        control.id === 'ground-length' ? { ...control, unit: 'deg' } : control
+      )),
+    } as unknown as typeof canonicalFourBarLab;
+    expect(() => validateMechanismLabDefinition(badParameter, resolved.model)).toThrow(
+      'unit deg is incompatible with length',
+    );
+
+    const badCoordinate = {
+      ...canonicalFourBarLab,
+      controls: canonicalFourBarLab.controls.map((control) => (
+        control.id === 'driver-angle' ? { ...control, unit: 'mm' } : control
+      )),
+    } as unknown as typeof canonicalFourBarLab;
+    expect(() => validateMechanismLabDefinition(badCoordinate, resolved.model)).toThrow(
+      'requires rad or deg units',
+    );
+
+    const badRate = {
+      ...canonicalFourBarLab,
+      controls: canonicalFourBarLab.controls.map((control) => (
+        control.id === 'driver-speed' ? { ...control, unit: 'mm/s' } : control
+      )),
+    } as unknown as typeof canonicalFourBarLab;
+    expect(() => validateMechanismLabDefinition(badRate, resolved.model)).toThrow(
+      'requires rpm, rad/s, or deg/s units',
+    );
+  });
+
+  it('requires a renderer binding whenever a lab advertises 3D', () => {
+    const resolved = resolveMechanismLab(
+      canonicalFourBarLab.modelId,
+      'atlas.analytic-four-bar.v0',
+      canonicalFourBarLab.id,
+    );
+    const invalid = {
+      ...canonicalFourBarLab,
+      views: ['2d', '3d'],
+      threeRendererId: undefined,
+    } as unknown as typeof canonicalFourBarLab;
+
+    expect(() => validateMechanismLabDefinition(invalid, resolved.model)).toThrow(
+      'advertises 3D without a renderer binding',
+    );
+  });
+
+  it('rejects signal readouts that the generic formatter cannot display', () => {
+    const resolved = resolveMechanismLab(
+      canonicalFourBarLab.modelId,
+      'atlas.analytic-four-bar.v0',
+      canonicalFourBarLab.id,
+    );
+    const invalid = {
+      ...canonicalFourBarLab,
+      readouts: [
+        {
+          id: 'point-a',
+          label: 'Joint A',
+          source: { kind: 'signal', signal: 'point-a-position' },
+        },
+      ],
+    } as unknown as typeof canonicalFourBarLab;
+
+    expect(() => validateMechanismLabDefinition(invalid, resolved.model)).toThrow(
+      'cannot format vector2 signal point-a-position',
+    );
+  });
 });
