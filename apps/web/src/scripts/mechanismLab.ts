@@ -13,18 +13,10 @@ import { hasErrors, type EvaluationRequest, type ModelState } from '@atlasmechan
 import { createSvgMechanismRenderer } from '@atlasmechanica/renderer-svg';
 import type { ThreeMechanismRenderer } from '@atlasmechanica/renderer-three';
 import type { HandlePrimitive, MechanismScene, Vec2 } from '@atlasmechanica/scene';
-
-type ThreeLoaderModule = typeof import('./threeRendererLoaderA.js');
-
-const THREE_RENDERER_LOADERS: Readonly<Record<string, readonly [
-  () => Promise<ThreeLoaderModule>,
-  () => Promise<ThreeLoaderModule>,
-]>> = Object.freeze({
-  'atlas.renderer-three.belt.v0': [
-    () => import('./threeRendererLoaderA.js'),
-    () => import('./threeRendererLoaderB.js'),
-  ],
-});
+import {
+  loadRegisteredThreeRenderer,
+  type LoadedThreeRendererModule,
+} from './threeRendererRegistry.js';
 
 const desktopBreakpoint = '(min-width: 641px)';
 const desktopViewportMaxHeightPx = 520;
@@ -380,18 +372,14 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
     },
   });
 
-  function loadThreeRendererModule(): Promise<ThreeLoaderModule> {
+  function loadThreeRendererModule(): Promise<LoadedThreeRendererModule> {
     const rendererId = definition.threeRendererId;
     if (rendererId === undefined) {
       return Promise.reject(new TypeError(`Mechanism lab ${definition.id} has no 3D renderer binding`));
     }
-    const loaders = THREE_RENDERER_LOADERS[rendererId];
-    if (loaders === undefined) {
-      return Promise.reject(new TypeError(`No registered 3D renderer ${rendererId}`));
-    }
-    const loader = loaders[threeRendererLoadAttempt % loaders.length] ?? loaders[0];
+    const attempt = threeRendererLoadAttempt;
     threeRendererLoadAttempt += 1;
-    return loader();
+    return loadRegisteredThreeRenderer(rendererId, attempt);
   }
 
   async function ensureThreeRenderer(): Promise<ThreeMechanismRenderer> {
