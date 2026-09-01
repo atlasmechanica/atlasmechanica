@@ -29,11 +29,6 @@ const initialSession = adapter.compile(model).createSession(
 const initialState = initialSession.evaluate(initialRequest);
 const supports3d = definition.views.includes('3d');
 const componentId = definition.id.replaceAll(/[^a-zA-Z0-9_-]/g, '-');
-const legacyBeltRouting = modelId === 'foundation:belt-drive:open'
-  ? 'open'
-  : modelId === 'foundation:belt-drive:crossed'
-    ? 'crossed'
-    : undefined;
 
 function controlValue(control: LabControlDefinition): string {
   const value = control.initial;
@@ -47,8 +42,6 @@ function controlValue(control: LabControlDefinition): string {
 <section
   class="mechanism-lab"
   data-mechanism-lab
-  data-belt-drive-lab={legacyBeltRouting === undefined ? undefined : ''}
-  data-routing={legacyBeltRouting}
   data-model-id={modelId}
   data-adapter-id={adapterId}
   data-lab-id={definition.id}
@@ -105,18 +98,12 @@ function controlValue(control: LabControlDefinition): string {
     <div class="lab-controls" aria-label="Mechanism parameters">
       {definition.controls.map((control) => {
         const inputId = `${componentId}-${control.id}`;
-        const legacyAngle = legacyBeltRouting !== undefined && control.id === 'driver-angle';
-        const legacyCenter = legacyBeltRouting !== undefined && control.id === 'center-distance';
-        const legacyRpm = legacyBeltRouting !== undefined && control.id === 'driver-speed';
         return (
           <div class="control-row">
             <label for={inputId}>{controlLabel(control, model)}</label>
             <input
               id={inputId}
               data-control-id={control.id}
-              data-angle={legacyAngle ? '' : undefined}
-              data-center={legacyCenter ? '' : undefined}
-              data-rpm={legacyRpm ? '' : undefined}
               type="range"
               min={control.min}
               max={control.max}
@@ -125,9 +112,6 @@ function controlValue(control: LabControlDefinition): string {
             />
             <output
               data-control-output-id={control.id}
-              data-angle-output={legacyAngle ? '' : undefined}
-              data-center-output={legacyCenter ? '' : undefined}
-              data-rpm-output={legacyRpm ? '' : undefined}
               for={inputId}
             >{controlValue(control)}</output>
           </div>
@@ -139,15 +123,7 @@ function controlValue(control: LabControlDefinition): string {
       {definition.readouts.map((readout) => (
         <div class="readout">
           <span>{readoutLabel(readout, model)}</span>
-          <strong
-            data-readout-id={readout.id}
-            data-direction={legacyBeltRouting !== undefined && readout.id === 'output-direction' ? '' : undefined}
-            data-ratio={legacyBeltRouting !== undefined && readout.id === 'speed-ratio' ? '' : undefined}
-            data-output-rpm={legacyBeltRouting !== undefined && readout.id === 'output-speed' ? '' : undefined}
-            data-belt-speed={legacyBeltRouting !== undefined && readout.id === 'belt-speed' ? '' : undefined}
-            data-driver-wrap={legacyBeltRouting !== undefined && readout.id === 'driver-wrap' ? '' : undefined}
-            data-belt-length={legacyBeltRouting !== undefined && readout.id === 'belt-length' ? '' : undefined}
-          >{formatLabReadout(readout, initialState)}</strong>
+          <strong data-readout-id={readout.id}>{formatLabReadout(readout, initialState)}</strong>
         </div>
       ))}
     </div>
