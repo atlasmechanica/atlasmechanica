@@ -96,6 +96,9 @@ export function validateMechanismLabDefinition(
 
   const controlIds = new Set<string>();
   const queryKeys = new Set<string>();
+  const parameterBindings = new Set<string>();
+  const coordinateBindings = new Set<string>();
+  const rateBindings = new Set<string>();
   for (const control of definition.controls) {
     if (controlIds.has(control.id)) throw new TypeError(`Duplicate mechanism lab control ${control.id}`);
     controlIds.add(control.id);
@@ -109,6 +112,10 @@ export function validateMechanismLabDefinition(
       if (parameter === undefined) {
         throw new TypeError(`Mechanism lab control ${control.id} references unknown parameter ${control.parameter}`);
       }
+      if (parameterBindings.has(control.parameter)) {
+        throw new TypeError(`Duplicate mechanism lab parameter binding ${control.parameter}`);
+      }
+      parameterBindings.add(control.parameter);
       if (control.unit === 'rpm' || quantityKind(quantity(1, control.unit)) !== parameter.kind) {
         throw new TypeError(
           `Mechanism lab parameter control ${control.id} unit ${control.unit} is incompatible with ${parameter.kind}`,
@@ -119,19 +126,29 @@ export function validateMechanismLabDefinition(
         throw new TypeError(`Mechanism lab control ${control.id} references unknown coordinate ${control.coordinate}`);
       }
       if (control.kind === 'coordinate') {
+        if (coordinateBindings.has(control.coordinate)) {
+          throw new TypeError(`Duplicate mechanism lab coordinate binding ${control.coordinate}`);
+        }
+        coordinateBindings.add(control.coordinate);
         if (control.unit !== 'rad' && control.unit !== 'deg') {
           throw new TypeError(
             `Mechanism lab coordinate control ${control.id} requires rad or deg units`,
           );
         }
-      } else if (
-        control.unit !== 'rpm'
-        && control.unit !== 'rad/s'
-        && control.unit !== 'deg/s'
-      ) {
-        throw new TypeError(
-          `Mechanism lab rate control ${control.id} requires rpm, rad/s, or deg/s units`,
-        );
+      } else {
+        if (rateBindings.has(control.coordinate)) {
+          throw new TypeError(`Duplicate mechanism lab rate binding ${control.coordinate}`);
+        }
+        rateBindings.add(control.coordinate);
+        if (
+          control.unit !== 'rpm'
+          && control.unit !== 'rad/s'
+          && control.unit !== 'deg/s'
+        ) {
+          throw new TypeError(
+            `Mechanism lab rate control ${control.id} requires rpm, rad/s, or deg/s units`,
+          );
+        }
       }
     }
     if (control.interaction?.handle === 'input' && control.kind !== 'coordinate') {
@@ -146,6 +163,12 @@ export function validateMechanismLabDefinition(
   for (const readout of definition.readouts) {
     if (readoutIds.has(readout.id)) throw new TypeError(`Duplicate mechanism lab readout ${readout.id}`);
     readoutIds.add(readout.id);
+    if (
+      readout.digits !== undefined
+      && (!Number.isInteger(readout.digits) || readout.digits < 0 || readout.digits > 100)
+    ) {
+      throw new TypeError(`Mechanism lab readout ${readout.id} has invalid digits ${readout.digits}`);
+    }
     if (readout.source.kind === 'signal') {
       const signal = model.signals[readout.source.signal];
       if (signal === undefined) {
@@ -172,6 +195,36 @@ export function validateMechanismLabDefinition(
     if (rate?.kind !== 'rate' || rate.coordinate !== coordinate.coordinate) {
       throw new TypeError(`Mechanism lab ${definition.id} animation rate control is invalid`);
     }
+  }
+}
+
+export function resolveInteractionControl(
+  definition: MechanismLabDefinition,
+  handle: 'input' | 'parameter',
+  bindingId: string,
+): LabControlDefinition {
+  const control = definition.controls.find((candidate) => {
+    if (candidate.interaction?.handle !== handle) return false;
+    if (handle === 'input') {
+      return candidate.kind === 'coordinate' && candidate.coordinate === bindingId;
+    }
+    return candidate.kind === 'parameter' && candidate.parameter === bindingId;
+  });
+  if (control === undefined) {
+    throw new TypeError(`No ${handle} control binds model input ${bindingId}`);
+  }
+  return control;
+}
+
+export function assertValidInitialLabState(
+  definition: MechanismLabDefinition,
+  state: ModelState,
+): void {
+  const diagnostic = state.diagnostics.find((item) => item.severity === 'error');
+  if (diagnostic !== undefined) {
+    throw new TypeError(
+      `Mechanism lab ${definition.id} has invalid initial state: ${diagnostic.message}`,
+    );
   }
 }
 
