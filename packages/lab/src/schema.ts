@@ -85,6 +85,7 @@ export interface MechanismLabDefinition {
   readonly schemaVersion: typeof MECHANISM_LAB_SCHEMA_VERSION;
   readonly id: string;
   readonly modelId: ModelId;
+  readonly subtitle?: string;
   readonly sceneCompilerId: string;
   readonly modelTransformId?: string;
   readonly threeRendererId?: string;
