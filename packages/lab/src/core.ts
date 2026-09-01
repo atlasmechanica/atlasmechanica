@@ -201,19 +201,29 @@ export function validateMechanismLabDefinition(
 export function resolveInteractionControl(
   definition: MechanismLabDefinition,
   handle: 'input' | 'parameter',
-  bindingId: string,
+  bindingId?: string,
 ): LabControlDefinition {
-  const control = definition.controls.find((candidate) => {
+  const candidates = definition.controls.filter((candidate) => {
     if (candidate.interaction?.handle !== handle) return false;
+    if (bindingId === undefined) return true;
     if (handle === 'input') {
       return candidate.kind === 'coordinate' && candidate.coordinate === bindingId;
     }
     return candidate.kind === 'parameter' && candidate.parameter === bindingId;
   });
-  if (control === undefined) {
-    throw new TypeError(`No ${handle} control binds model input ${bindingId}`);
+  if (candidates.length === 1) return candidates[0] as LabControlDefinition;
+  if (candidates.length === 0) {
+    throw new TypeError(
+      bindingId === undefined
+        ? `No ${handle} interaction control is defined`
+        : `No ${handle} control binds model input ${bindingId}`,
+    );
   }
-  return control;
+  throw new TypeError(
+    bindingId === undefined
+      ? `Multiple ${handle} interaction controls require an explicit model binding`
+      : `Multiple ${handle} controls bind model input ${bindingId}`,
+  );
 }
 
 export function assertValidInitialLabState(
