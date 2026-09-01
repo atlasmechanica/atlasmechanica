@@ -1,0 +1,14 @@
+{
+  "name": "@atlasmechanica/lab",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@atlasmechanica/kinematics": "file:../kinematics",
+    "@atlasmechanica/model": "file:../model",
+    "@atlasmechanica/scene": "file:../scene"
+  }
+}
