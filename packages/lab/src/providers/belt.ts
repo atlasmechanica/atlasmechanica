@@ -5,7 +5,10 @@ import {
 } from '@atlasmechanica/kinematics';
 import { quantity, type SimulationModel } from '@atlasmechanica/model';
 import { brownBeltSceneCompiler } from '@atlasmechanica/scene/compilers';
-import { crossedBeltDriveLab, openBeltDriveLab } from '../definitions.js';
+import {
+  crossedBeltDriveLab,
+  openBeltDriveLab,
+} from '../definitions/belt.js';
 import type { MechanismLabRuntimeProvider } from '../provider.js';
 
 function verticalBeltReference(model: SimulationModel): SimulationModel {
