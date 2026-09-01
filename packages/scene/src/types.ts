@@ -31,6 +31,14 @@ export const SCENE_STYLE_TOKENS = [
 
 export type SceneStyleToken = (typeof SCENE_STYLE_TOKENS)[number];
 
+export interface SceneEntityRef {
+  /** Renderer-neutral mechanical identity represented by this primitive. */
+  kind: 'pulley' | 'belt' | 'body' | 'joint' | 'feature';
+  id: string;
+  /** Optional functional role such as driver, driven, or idler. */
+  role?: string | undefined;
+}
+
 export interface Viewport {
   minX: number;
   maxX: number;
@@ -42,6 +50,7 @@ export interface PrimitiveBase {
   id: string;
   layer: SceneLayer;
   styles: SceneStyleToken[];
+  entity?: SceneEntityRef | undefined;
   selectId?: string | undefined;
   ariaLabel?: string | undefined;
 }
