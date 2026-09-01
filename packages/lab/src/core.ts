@@ -1,5 +1,6 @@
 import {
   quantity,
+  quantityKind,
   type EvaluationRequest,
   type ModelId,
   type ModelState,
@@ -72,15 +73,24 @@ export function validateMechanismLabDefinition(
   if (!definition.views.includes('2d')) {
     throw new TypeError(`Mechanism lab ${definition.id} must provide a 2D view`);
   }
+  if (definition.views.includes('3d') && definition.threeRendererId === undefined) {
+    throw new TypeError(`Mechanism lab ${definition.id} advertises 3D without a renderer binding`);
+  }
   if (definition.sessionConfiguration !== undefined && model.configurations[definition.sessionConfiguration] === undefined) {
     throw new TypeError(
       `Mechanism lab ${definition.id} references unknown configuration ${definition.sessionConfiguration}`,
     );
   }
 
-  for (const parameter of Object.keys(definition.parameterOverrides ?? {})) {
-    if (model.parameters[parameter] === undefined) {
+  for (const [parameter, override] of Object.entries(definition.parameterOverrides ?? {})) {
+    const modelParameter = model.parameters[parameter];
+    if (modelParameter === undefined) {
       throw new TypeError(`Mechanism lab ${definition.id} overrides unknown parameter ${parameter}`);
+    }
+    if (quantityKind(override) !== modelParameter.kind) {
+      throw new TypeError(
+        `Mechanism lab ${definition.id} override ${parameter} has incompatible unit ${override.unit}`,
+      );
     }
   }
 
@@ -95,16 +105,33 @@ export function validateMechanismLabDefinition(
       queryKeys.add(control.queryKey);
     }
     if (control.kind === 'parameter') {
-      if (model.parameters[control.parameter] === undefined) {
+      const parameter = model.parameters[control.parameter];
+      if (parameter === undefined) {
         throw new TypeError(`Mechanism lab control ${control.id} references unknown parameter ${control.parameter}`);
       }
-      if (control.unit === 'rpm') throw new TypeError(`Parameter control ${control.id} cannot use rpm`);
+      if (control.unit === 'rpm' || quantityKind(quantity(1, control.unit)) !== parameter.kind) {
+        throw new TypeError(
+          `Mechanism lab parameter control ${control.id} unit ${control.unit} is incompatible with ${parameter.kind}`,
+        );
+      }
     } else {
       if (model.coordinates[control.coordinate] === undefined) {
         throw new TypeError(`Mechanism lab control ${control.id} references unknown coordinate ${control.coordinate}`);
       }
-      if (control.kind === 'coordinate' && control.unit === 'rpm') {
-        throw new TypeError(`Coordinate control ${control.id} cannot use rpm`);
+      if (control.kind === 'coordinate') {
+        if (control.unit !== 'rad' && control.unit !== 'deg') {
+          throw new TypeError(
+            `Mechanism lab coordinate control ${control.id} requires rad or deg units`,
+          );
+        }
+      } else if (
+        control.unit !== 'rpm'
+        && control.unit !== 'rad/s'
+        && control.unit !== 'deg/s'
+      ) {
+        throw new TypeError(
+          `Mechanism lab rate control ${control.id} requires rpm, rad/s, or deg/s units`,
+        );
       }
     }
     if (control.interaction?.handle === 'input' && control.kind !== 'coordinate') {
@@ -120,8 +147,14 @@ export function validateMechanismLabDefinition(
     if (readoutIds.has(readout.id)) throw new TypeError(`Duplicate mechanism lab readout ${readout.id}`);
     readoutIds.add(readout.id);
     if (readout.source.kind === 'signal') {
-      if (model.signals[readout.source.signal] === undefined) {
+      const signal = model.signals[readout.source.signal];
+      if (signal === undefined) {
         throw new TypeError(`Mechanism lab readout ${readout.id} references unknown signal ${readout.source.signal}`);
+      }
+      if (signal.valueType !== 'scalar' && signal.valueType !== 'text') {
+        throw new TypeError(
+          `Mechanism lab readout ${readout.id} cannot format ${signal.valueType} signal ${readout.source.signal}`,
+        );
       }
     } else if (model.coordinates[readout.source.coordinate] === undefined) {
       throw new TypeError(
