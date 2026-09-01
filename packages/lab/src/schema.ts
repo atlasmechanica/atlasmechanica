@@ -83,8 +83,11 @@ export interface LabReadoutDefinition {
 
 export interface MechanismLabDefinition {
   readonly schemaVersion: typeof MECHANISM_LAB_SCHEMA_VERSION;
+  /** Stable presentation identity; multiple labs may target the same physical model. */
   readonly id: string;
   readonly modelId: ModelId;
+  /** Exactly one definition per model should normally be marked as the default. */
+  readonly defaultForModel?: boolean;
   readonly subtitle?: string;
   readonly sceneCompilerId: string;
   readonly modelTransformId?: string;
