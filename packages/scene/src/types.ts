@@ -89,7 +89,7 @@ export interface HandlePrimitive extends PrimitiveBase {
   type: 'handle';
   at: Vec2;
   handle: 'input' | 'parameter' | 'invalid';
-  /** Stable lab-control binding for direct manipulation. */
+  /** Model coordinate or parameter id used to resolve the presentation control. */
   bindingId?: string | undefined;
   shape?: 'circle' | 'square' | undefined;
 }
@@ -122,6 +122,13 @@ export function assertMechanismScene(scene: MechanismScene): void {
     ids.add(primitive.id);
     if (primitive.type === 'circle' && !(primitive.radius >= 0)) {
       throw new TypeError(`Scene circle ${primitive.id} has invalid radius`);
+    }
+    if (
+      primitive.type === 'handle'
+      && primitive.handle !== 'invalid'
+      && primitive.bindingId === undefined
+    ) {
+      throw new TypeError(`Scene handle ${primitive.id} is missing a model binding`);
     }
   }
 }
