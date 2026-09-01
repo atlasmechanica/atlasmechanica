@@ -256,7 +256,6 @@ describe('mechanism lab foundation', () => {
     const invalid = {
       ...canonicalFourBarLab,
       parameterOverrides: {
-        ...(canonicalFourBarLab.parameterOverrides ?? {}),
         'coupler-length': quantity(20, 'mm'),
         'rocker-length': quantity(20, 'mm'),
       },
