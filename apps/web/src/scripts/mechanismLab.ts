@@ -34,13 +34,6 @@ function required<T extends Element>(element: T | null, name: string): T {
   return element;
 }
 
-function requiredBinding(bindingId: string | undefined): string {
-  if (bindingId === undefined) {
-    throw new TypeError('Interactive scene handle is missing a model binding');
-  }
-  return bindingId;
-}
-
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -331,11 +324,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
         render();
       },
       onInputDrag(point, bindingId) {
-        const control = resolveInteractionControl(
-          definition,
-          'input',
-          requiredBinding(bindingId),
-        );
+        const control = resolveInteractionControl(definition, 'input', bindingId);
         const interaction = control.interaction;
         if (interaction?.handle !== 'input') return;
         const value = interactionValue(control, interaction, point);
@@ -343,11 +332,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
         acceptValues(next, `${controlLabel(control, model)} changed by direct manipulation.`);
       },
       onParameterDrag(point, bindingId) {
-        const control = resolveInteractionControl(
-          definition,
-          'parameter',
-          requiredBinding(bindingId),
-        );
+        const control = resolveInteractionControl(definition, 'parameter', bindingId);
         const interaction = control.interaction;
         if (interaction?.handle !== 'parameter') return;
         const value = interactionValue(control, interaction, point);
@@ -364,11 +349,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
         }
       },
       onNudgeInput(deltaDegrees, bindingId) {
-        const control = resolveInteractionControl(
-          definition,
-          'input',
-          requiredBinding(bindingId),
-        );
+        const control = resolveInteractionControl(definition, 'input', bindingId);
         if (control.kind !== 'coordinate') return;
         const delta = control.unit === 'rad' ? deltaDegrees * Math.PI / 180 : deltaDegrees;
         const current = values[control.id] ?? control.initial;
