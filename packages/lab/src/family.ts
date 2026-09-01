@@ -8,6 +8,7 @@ import {
   selectMechanismLabDefinition,
   validateMechanismLabDefinition,
 } from './core.js';
+import { assertSceneInteractionBindings } from './interactionScene.js';
 import type { MechanismLabDefinition } from './schema.js';
 
 export type ModelTransform = (model: SimulationModel) => SimulationModel;
@@ -57,15 +58,27 @@ export function resolveMechanismLabFromFamily(
     throw new TypeError(`Simulation adapter ${adapterId} does not support ${modelId}`);
   }
 
-  const sceneCompiler = family.sceneCompilers.find(
+  const registeredSceneCompiler = family.sceneCompilers.find(
     (candidate) => candidate.id === definition.sceneCompilerId,
   );
-  if (sceneCompiler === undefined) {
+  if (registeredSceneCompiler === undefined) {
     throw new TypeError(`No registered scene compiler ${definition.sceneCompilerId}`);
   }
-  if (!sceneCompiler.supports(model)) {
-    throw new TypeError(`Scene compiler ${sceneCompiler.id} does not support ${modelId}`);
+  if (!registeredSceneCompiler.supports(model)) {
+    throw new TypeError(`Scene compiler ${registeredSceneCompiler.id} does not support ${modelId}`);
   }
+
+  const sceneCompiler: MechanismSceneCompiler = Object.freeze({
+    id: registeredSceneCompiler.id,
+    supports(candidate): boolean {
+      return registeredSceneCompiler.supports(candidate);
+    },
+    build(options) {
+      const scene = registeredSceneCompiler.build(options);
+      assertSceneInteractionBindings(definition, scene);
+      return scene;
+    },
+  });
 
   return Object.freeze({ definition, model, adapter, sceneCompiler });
 }

@@ -53,7 +53,7 @@ export const canonicalFourBarLab = defineMechanismLab({
       parameter: 'ground-length',
       unit: 'mm',
       min: 70,
-      max: 130,
+      max: 119,
       step: 1,
       initial: 100,
     },

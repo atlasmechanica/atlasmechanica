@@ -7,6 +7,7 @@ on:
       - 'experiments/renderers/svg-bakeoff/**'
       - 'packages/model/**'
       - 'packages/kinematics/**'
+      - 'packages/catalog/**'
       - 'packages/lab/**'
       - 'packages/scene/**'
       - 'packages/renderer-svg/**'
