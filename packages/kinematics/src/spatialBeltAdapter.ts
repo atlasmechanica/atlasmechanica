@@ -58,22 +58,18 @@ function copyOwnOverride(
     throw new TypeError(`Missing parameter override descriptor ${String(key)}`);
   }
 
-  if ('value' in descriptor) {
-    Object.defineProperty(target, key, {
-      value: descriptor.value,
-      enumerable: descriptor.enumerable,
-      configurable: true,
-      writable: true,
-    });
-    return;
-  }
-
-  Object.defineProperty(target, key, {
-    get: descriptor.get,
-    set: descriptor.set,
-    enumerable: descriptor.enumerable,
+  const normalized: PropertyDescriptor = {
+    enumerable: descriptor.enumerable === true,
     configurable: true,
-  });
+  };
+  if ('value' in descriptor) {
+    normalized.value = descriptor.value;
+    normalized.writable = true;
+  } else {
+    if (descriptor.get !== undefined) normalized.get = descriptor.get;
+    if (descriptor.set !== undefined) normalized.set = descriptor.set;
+  }
+  Object.defineProperty(target, key, normalized);
 }
 
 function cloneOwnOverrides(
