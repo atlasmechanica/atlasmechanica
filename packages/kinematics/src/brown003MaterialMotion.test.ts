@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { canonicalNumber, quantity, type SimulationModel } from '@atlasmechanica/model';
+import {
+  canonicalNumber,
+  quantity,
+  validateSimulationModel,
+  type SimulationModel,
+} from '@atlasmechanica/model';
 import {
   buildBrown003MaterialPath,
   resolveBrown003MaterialPhase,
@@ -256,10 +261,10 @@ describe('Brown 003 prescribed material motion', () => {
     expect(continuity.angularRatios).toEqual(baseline.angularRatios);
     expect(continuity.resolvedPitchRadii).toEqual(baseline.resolvedPitchRadii);
     expect(continuity.contactProfile).toEqual([
-      { pulley: 'driver', sense: -1 },
-      { pulley: 'guide-a', sense: -1 },
-      { pulley: 'driven', sense: -1 },
-      { pulley: 'guide-b', sense: -1 },
+      { pulley: 'driver', sense: -1, coordinate: 'driver-angle' },
+      { pulley: 'guide-a', sense: -1, coordinate: 'guide-a-angle' },
+      { pulley: 'driven', sense: -1, coordinate: 'driven-angle' },
+      { pulley: 'guide-b', sense: -1, coordinate: 'guide-b-angle' },
     ]);
     expect(continuity.beltTravel).toBeCloseTo(-(baseline.beltTravel ?? Number.NaN), 12);
     expect(continuity.beltLinearSpeed).toBeCloseTo(-(baseline.beltLinearSpeed ?? Number.NaN), 12);
@@ -274,6 +279,85 @@ describe('Brown 003 prescribed material motion', () => {
       0,
     )).toThrow(
       'Brown 003 material path and continuity result use incompatible loop contact semantics',
+    );
+  });
+
+  it('does not consult a same-id replay model for pulley coordinate bindings', () => {
+    const path = canonicalPath();
+    const continuity = evaluateFixedAxisBeltContinuity(canonicalQuarterTurnBeltModel, {
+      rates: { 'driver-angle': quantity(2, 'rad/s') },
+    });
+    expect(continuity.diagnostics).toEqual([]);
+
+    const system = canonicalQuarterTurnBeltModel.systems.fixedAxisBelt;
+    const loop = system?.loops['main-belt'];
+    const driven = system?.pulleys.driven;
+    const guideA = system?.pulleys['guide-a'];
+    if (
+      system === undefined
+      || loop === undefined
+      || driven === undefined
+      || guideA === undefined
+    ) {
+      throw new Error('Missing Brown 003 replay topology');
+    }
+
+    const foreignReplayModel: SimulationModel = {
+      ...canonicalQuarterTurnBeltModel,
+      systems: {
+        fixedAxisBelt: {
+          ...system,
+          pulleys: {
+            ...system.pulleys,
+            driven: { ...driven, coordinate: guideA.coordinate },
+            'guide-a': { ...guideA, coordinate: driven.coordinate },
+          },
+          loops: {
+            ...system.loops,
+            'main-belt': {
+              ...loop,
+              contacts: loop.contacts.map((contact) => ({ ...contact, sense: -1 as const })),
+            },
+          },
+        },
+      },
+    };
+    expect(validateSimulationModel(foreignReplayModel)).toEqual([]);
+
+    const drivenSegment = path.segments.find(
+      (segment) => segment.kind === 'pulley-track' && segment.track.pulley === 'driven',
+    );
+    if (drivenSegment === undefined || drivenSegment.kind !== 'pulley-track') {
+      throw new Error('Missing driven material segment');
+    }
+    const arclength = drivenSegment.startArclength + drivenSegment.length / 2;
+    const baseline = sampleBrown003MaterialMotion(
+      canonicalQuarterTurnBeltModel,
+      path,
+      continuity,
+      arclength,
+    );
+    const foreignReplay = sampleBrown003MaterialMotion(
+      foreignReplayModel,
+      path,
+      continuity,
+      arclength,
+    );
+
+    expectVectorClose(foreignReplay.materialVelocity, baseline.materialVelocity);
+    if (
+      foreignReplay.pulleySurfaceVelocity === undefined
+      || foreignReplay.relativeSlipVelocity === undefined
+      || baseline.pulleySurfaceVelocity === undefined
+      || baseline.relativeSlipVelocity === undefined
+    ) {
+      throw new Error('Missing replay surface/slip field');
+    }
+    expectVectorClose(foreignReplay.pulleySurfaceVelocity, baseline.pulleySurfaceVelocity);
+    expectVectorClose(foreignReplay.relativeSlipVelocity, baseline.relativeSlipVelocity);
+    expect(foreignReplay.relativeSlipSpeed).toBeCloseTo(
+      baseline.relativeSlipSpeed ?? Number.NaN,
+      12,
     );
   });
 
