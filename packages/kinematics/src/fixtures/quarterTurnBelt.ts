@@ -21,8 +21,13 @@ const zeroAngle = quantity(0, 'rad');
  * radius to either side of the driver's center plane, and their radial center
  * is displaced by one guide radius in +X. That construction admits the two
  * vertical guide spans visible in Brown's plate. Finite pulley-face widths let
- * the remaining belt portions track axially between the guide planes and the
+ * the remaining belt portions track laterally between the guide planes and the
  * upper power pulley's middle plane.
+ *
+ * Historical flat-belt descriptions of this one-direction arrangement also
+ * describe the belt moving across the pulley face. Atlas therefore models the
+ * ideal transmission law as circumferential traction continuity only; lateral
+ * face tracking is explicit slip and is not part of the ωr ratio constraint.
  *
  * These are Atlas reference dimensions, not measurements inferred from Brown.
  */
@@ -200,8 +205,12 @@ export const canonicalQuarterTurnBeltModel: SimulationModel = {
   },
   assumptions: [
     {
-      id: 'ideal-belt',
-      text: 'The belt is inextensible and does not slip at any pulley pitch surface.',
+      id: 'ideal-circumferential-traction',
+      text: 'The belt is inextensible and has no circumferential slip at each pulley pitch surface, so the ideal tangential belt speed equals radius times angular speed.',
+    },
+    {
+      id: 'lateral-tracking-slip',
+      text: 'Where the Brown 003 route changes axial position across a pulley face, that motion is lateral tracking slip and is not constrained by the ideal circumferential speed-ratio law.',
     },
     {
       id: 'fixed-axes',
@@ -209,11 +218,7 @@ export const canonicalQuarterTurnBeltModel: SimulationModel = {
     },
     {
       id: 'passive-guides',
-      text: 'The guide pulleys are passive and their angular motion is imposed only by belt speed continuity.',
-    },
-    {
-      id: 'face-tracking',
-      text: 'The flat-belt centerline may track axially across a pulley face between its incoming and outgoing tangent points; lateral contact forces are not modeled.',
+      text: 'The guide pulleys are passive and their angular motion is imposed by ideal circumferential belt-speed continuity.',
     },
   ],
 };
