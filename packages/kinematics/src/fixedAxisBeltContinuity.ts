@@ -57,6 +57,14 @@ export interface FixedAxisBeltContinuityResult {
   loop?: BeltLoopId;
   coordinates: Partial<Record<CoordinateId, CoordinateState>>;
   angularRatios: Partial<Record<FixedAxisPulleyId, number>>;
+  /** Resolved pitch radii used by this oracle, in canonical meters. */
+  resolvedPitchRadii: Partial<Record<FixedAxisPulleyId, number>>;
+  /** Ordered pulley/contact-sense/coordinate profile used by this oracle. */
+  contactProfile: readonly Readonly<{
+    pulley: FixedAxisPulleyId;
+    sense: 1 | -1;
+    coordinate: CoordinateId;
+  }>[];
   /** Signed ideal pitch-surface travel in meters, relative to the reference configuration. */
   beltTravel?: number;
   /** Signed ideal pitch-surface speed in meters per second when a driver rate is supplied. */
@@ -84,6 +92,8 @@ function emptyResult(
     model: model.id,
     coordinates: {},
     angularRatios: {},
+    resolvedPitchRadii: {},
+    contactProfile: [],
     diagnostics,
   };
   if (configuration !== undefined) result.configuration = configuration;
@@ -310,6 +320,7 @@ export function evaluateFixedAxisBeltContinuity(
   let inputAcceleration: number | undefined;
   let driverRadius: number;
   const radii = new Map<FixedAxisPulleyId, number>();
+  const resolvedPitchRadii: FixedAxisBeltContinuityResult['resolvedPitchRadii'] = {};
 
   try {
     parameters = resolveParameters(model, request.parameters ?? {});
@@ -350,6 +361,7 @@ export function evaluateFixedAxisBeltContinuity(
         throw new RangeError(`${contact.pulley.id} pitch radius must be positive`);
       }
       radii.set(contact.pulley.id, radius);
+      resolvedPitchRadii[contact.pulley.id] = radius;
     }
 
     const resolvedDriverRadius = radii.get(driver.pulley.id);
@@ -425,6 +437,13 @@ export function evaluateFixedAxisBeltContinuity(
     const beltLinearSpeed = inputRate === undefined
       ? undefined
       : assertFinite(driver.definition.sense * driverRadius * inputRate, 'Belt linear speed');
+    const contactProfile: FixedAxisBeltContinuityResult['contactProfile'] = contacts.map(
+      (contact) => ({
+        pulley: contact.pulley.id,
+        sense: contact.definition.sense,
+        coordinate: contact.pulley.coordinate,
+      }),
+    );
 
     const result: FixedAxisBeltContinuityResult = {
       model: model.id,
@@ -432,6 +451,8 @@ export function evaluateFixedAxisBeltContinuity(
       loop: loop.id,
       coordinates,
       angularRatios,
+      resolvedPitchRadii,
+      contactProfile,
       beltTravel,
       diagnostics: [],
     };
