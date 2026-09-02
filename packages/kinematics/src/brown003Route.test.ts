@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   canonicalNumber,
   quantity,
+  validateSimulationModel,
   type FixedAxisPulleyDefinition,
   type SimulationModel,
 } from '@atlasmechanica/model';
@@ -217,16 +218,39 @@ describe('Brown 003 routed geometry', () => {
     expect(route.diagnostics[0]?.message).toContain('straddle the driver center plane');
   });
 
-  it('returns diagnostics for invalid width units instead of throwing', () => {
+  it('rejects invalid pulley face widths at shared model validation', () => {
     const driver = pulley('driver');
     const invalid = withPulley('driver', {
       ...driver,
       faceWidth: quantity(1, 'rad'),
     });
+    const messages = validateSimulationModel(invalid).map((item) => item.message);
+    expect(messages).toContain('Fixed-axis pulley face width must be a positive length');
     expect(() => solveBrown003Route(invalid)).not.toThrow();
     const route = solveBrown003Route(invalid);
-    expect(route.diagnostics[0]?.code).toBe('invalid-input');
+    expect(route.diagnostics[0]?.code).toBe('invalid-model');
     expect(route.spans).toEqual([]);
+  });
+
+  it('rejects nonpositive belt width at shared model validation', () => {
+    const fixedAxisBelt = system();
+    const loop = fixedAxisBelt.loops['main-belt'];
+    if (loop === undefined) throw new Error('Missing main belt loop');
+    const invalid: SimulationModel = {
+      ...canonicalQuarterTurnBeltModel,
+      systems: {
+        fixedAxisBelt: {
+          ...fixedAxisBelt,
+          loops: {
+            ...fixedAxisBelt.loops,
+            'main-belt': { ...loop, beltWidth: quantity(0, 'mm') },
+          },
+        },
+      },
+    };
+    const messages = validateSimulationModel(invalid).map((item) => item.message);
+    expect(messages).toContain('Fixed-axis belt width must be a positive length');
+    expect(solveBrown003Route(invalid).diagnostics[0]?.code).toBe('invalid-model');
   });
 
   it('normalizes every nonzero axis magnitude accepted by model validation', () => {
