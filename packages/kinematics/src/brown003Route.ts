@@ -78,6 +78,14 @@ export interface Brown003PulleyTrack {
   signedWrapAngle: number;
   /** Remaining usable half-face margin after accounting for belt width, in meters. */
   faceMargin: number;
+  /**
+   * Brown's one-direction flat-belt route requires the belt centerline to walk
+   * laterally across several pulley faces. The ideal ωr law constrains only the
+   * circumferential traction component; this axial motion is explicit slip.
+   */
+  contactKinematics: 'circumferential-traction-with-lateral-tracking-slip';
+  /** Absolute axial centerline change across this pulley contact, in meters. */
+  lateralSlipDistance: number;
 }
 
 export interface Brown003RouteResult {
@@ -170,6 +178,12 @@ function resolveParameters(
   model: SimulationModel,
   overrides: Partial<Record<ParameterId, QuantityValue>>,
 ): ParameterValues {
+  for (const id of Object.keys(overrides)) {
+    if (model.parameters[id] === undefined) {
+      throw new RangeError(`Unknown parameter override ${id}`);
+    }
+  }
+
   const values: ParameterValues = {};
   for (const [id, definition] of Object.entries(model.parameters)) {
     const authored = overrides[id] ?? definition.default;
@@ -228,6 +242,9 @@ function resolvePulley(
   const axis = normalize(pulley.axis);
   if (axis === undefined) throw new TypeError(`${pulley.id} axis must be finite and non-zero`);
   const radius = resolveScalar(pulley.pitchRadius, parameters, 'length', `${pulley.id} radius`);
+  if (pulley.faceWidth === undefined) {
+    throw new TypeError(`${pulley.id} face width is required for Brown 003 route geometry`);
+  }
   const faceWidth = resolveScalar(pulley.faceWidth, parameters, 'length', `${pulley.id} face width`);
   if (!(radius > 0)) throw new RangeError(`${pulley.id} radius must be positive`);
   if (!(faceWidth > 0)) throw new RangeError(`${pulley.id} face width must be positive`);
@@ -359,6 +376,8 @@ function makeTrack(
     departureAxialOffset,
     signedWrapAngle,
     faceMargin,
+    contactKinematics: 'circumferential-traction-with-lateral-tracking-slip',
+    lateralSlipDistance: Math.abs(departureAxialOffset - arrivalAxialOffset),
   };
 }
 
@@ -387,11 +406,15 @@ function directSpan(start: Vec3, end: Vec3): TangentSpan | undefined {
  * delivery rule: each straight belt portion approaches its destination in the
  * destination pulley's middle plane. The two guides are coaxial and occupy
  * separate axial faces, one for each belt leaf. Pulley-face widths bound the
- * axial tracking required between incoming and outgoing tangent points.
+ * lateral tracking required between incoming and outgoing tangent points.
  *
- * Unlike the continuity oracle, a successful result certifies this reference
- * centerline geometry. It is still not a SimulationAdapter; dynamics, contact
- * forces, and historical dimensions are outside this function.
+ * A successful result certifies geometric routing and face containment only.
+ * It does not assert zero relative velocity over the full pulley face. Where
+ * the centerline changes axial offset, the route explicitly represents lateral
+ * tracking slip while the separate continuity oracle supplies only the ideal
+ * circumferential ωr relation. This is still not a SimulationAdapter; dynamics,
+ * contact forces, slip magnitude laws, and historical dimensions are outside
+ * this function.
  */
 export function solveBrown003Route(
   model: SimulationModel,
@@ -466,6 +489,9 @@ export function solveBrown003Route(
     guideA = resolvePulley(guideADefinition, parameters);
     driven = resolvePulley(drivenDefinition, parameters);
     guideB = resolvePulley(guideBDefinition, parameters);
+    if (loop.beltWidth === undefined) {
+      throw new TypeError('Brown 003 belt width is required for route geometry');
+    }
     beltWidth = resolveScalar(loop.beltWidth, parameters, 'length', 'Brown 003 belt width');
     if (!(beltWidth > 0)) throw new RangeError('Brown 003 belt width must be positive');
   } catch (error) {
@@ -695,7 +721,11 @@ function rotateAroundAxis(vector: Vec3, axis: Vec3, angle: number): Vec3 {
   );
 }
 
-/** Sample the certified pulley-centerline track; `t` is clamped to [0, 1]. */
+/**
+ * Sample the Brown 003 belt-centerline tracking path on a pulley face; `t` is
+ * clamped to [0, 1]. Axial movement in this sampled path is explicit lateral
+ * tracking slip, not no-slip rolling contact.
+ */
 export function sampleBrown003PulleyTrack(track: Brown003PulleyTrack, t: number): Vec3 {
   const clamped = Math.max(0, Math.min(1, t));
   const arrivalRelative = subtract(track.arrival, track.center);
