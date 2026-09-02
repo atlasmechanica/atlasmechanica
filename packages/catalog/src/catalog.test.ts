@@ -4,8 +4,8 @@ import { catalog, collections, occurrences, subjects } from './catalog.js';
 import { createCatalog } from './schema.js';
 import { brown507Collection } from './manifests/collections/brown507.js';
 
-const [openBeltDrive, crossedBeltDrive] = subjects;
-const [brown001, brown002] = occurrences;
+const [openBeltDrive, crossedBeltDrive, quarterTurnBeltDrive] = subjects;
+const [brown001, brown002, brown003] = occurrences;
 
 describe('catalog manifests', () => {
   it('keeps Brown occurrences separate from canonical subjects', () => {
@@ -13,12 +13,24 @@ describe('catalog manifests', () => {
     expect(brown001.canonicalSubject).toBe(openBeltDrive.id);
     expect(brown002.id).toBe('brown:002');
     expect(brown002.canonicalSubject).toBe(crossedBeltDrive.id);
+    expect(brown003.id).toBe('brown:003');
+    expect(brown003.canonicalSubject).toBe(quarterTurnBeltDrive.id);
   });
 
   it('indexes the current catalog with valid cross references', () => {
     expect(catalog.collections.get('brown-507')).toBe(brown507Collection);
     expect(catalog.subjects.get('open-belt-drive')).toBe(openBeltDrive);
+    expect(catalog.subjects.get('quarter-turn-belt-drive')).toBe(quarterTurnBeltDrive);
     expect(catalog.occurrences.get('brown:002')).toBe(brown002);
+    expect(catalog.occurrences.get('brown:003')).toBe(brown003);
+  });
+
+  it('maps Brown 003 without claiming an interactive simulation', () => {
+    expect(brown003.status).toBe('mapped');
+    expect('simulation' in brown003).toBe(false);
+    expect(quarterTurnBeltDrive.simulation.status).toBe('planned');
+    expect(quarterTurnBeltDrive.simulation.modelId).toBe('foundation:belt-drive:quarter-turn-guided');
+    expect(quarterTurnBeltDrive.simulation.adapter).toBe('atlas.spatial-belt.v0');
   });
 
   it('freezes exported manifest arrays at runtime', () => {
@@ -29,7 +41,7 @@ describe('catalog manifests', () => {
     const mutableOccurrences = occurrences as unknown as typeof brown001[];
     expect(() => mutableOccurrences.push(brown001)).toThrow(TypeError);
     expect(() => mutableOccurrences.splice(0, 1)).toThrow(TypeError);
-    expect(occurrences).toHaveLength(2);
+    expect(occurrences).toHaveLength(3);
   });
 
   it('rejects unsupported schema versions across manifest kinds', () => {
@@ -87,10 +99,10 @@ describe('catalog manifests', () => {
   it('allows source occurrences to be cataloged before canonical mapping', () => {
     const sourceOnly = {
       schemaVersion: brown001.schemaVersion,
-      id: 'brown:003',
+      id: 'brown:source-only',
       collection: 'brown-507',
-      ordinal: 3,
-      displayNumber: '003',
+      ordinal: 997,
+      displayNumber: '997',
       status: 'cataloged' as const,
       source: {},
     };
@@ -101,7 +113,7 @@ describe('catalog manifests', () => {
       occurrences: [sourceOnly],
     });
 
-    expect(sourceOnlyCatalog.occurrences.get('brown:003')).toBe(sourceOnly);
+    expect(sourceOnlyCatalog.occurrences.get('brown:source-only')).toBe(sourceOnly);
   });
 
   it('rejects unsupported occurrence statuses at runtime', () => {

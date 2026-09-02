@@ -14,6 +14,8 @@ export type CoordinateId = string;
 export type SignalId = string;
 export type ConfigurationId = string;
 export type AssumptionId = string;
+export type FixedAxisPulleyId = string;
+export type BeltLoopId = string;
 
 export interface ParameterReference {
   parameter: ParameterId;
@@ -30,6 +32,10 @@ export function isParameterReference(
 export interface LocalPoint2DDefinition {
   x: ScalarSource;
   y: ScalarSource;
+}
+
+export interface LocalPoint3DDefinition extends LocalPoint2DDefinition {
+  z: ScalarSource;
 }
 
 export interface PlanarPoseDefinition extends LocalPoint2DDefinition {
@@ -126,6 +132,62 @@ export interface MechanicalSystemDefinition {
   couplings: Record<CouplingId, CouplingDefinition>;
 }
 
+/**
+ * A pulley whose center and axis are fixed in 3D space. Rotation is represented
+ * by its model angle coordinate; this is intentionally narrower than a general
+ * spatial rigid body.
+ */
+export interface FixedAxisPulleyDefinition {
+  id: FixedAxisPulleyId;
+  label: string;
+  role: 'driver' | 'driven' | 'guide';
+  center: LocalPoint3DDefinition;
+  /** Fixed shaft-axis direction. It must be finite and non-zero. */
+  axis: readonly [number, number, number];
+  pitchRadius: ScalarSource;
+  /**
+   * Optional physical pulley-face width measured along the shaft axis.
+   * Route-capable models may require it, but it remains optional in schema 0.1
+   * so earlier fixed-axis model JSON continues to validate safely.
+   */
+  faceWidth?: QuantityValue;
+  coordinate: CoordinateId;
+}
+
+/**
+ * One contact in loop-travel order. `sense` declares whether positive pulley
+ * rotation moves the pitch surface's circumferential velocity with (+1) or
+ * against (-1) loop travel. It does not prohibit lateral tracking slip across
+ * a pulley face and does not by itself prove that a realizable contact path
+ * exists for the authored centers, axes, radii, and pulley widths.
+ */
+export interface FixedAxisBeltContactDefinition {
+  pulley: FixedAxisPulleyId;
+  sense: 1 | -1;
+}
+
+export interface FixedAxisBeltLoopDefinition {
+  id: BeltLoopId;
+  label?: string;
+  /**
+   * Optional physical belt width used by route-capable models to validate
+   * pulley-face containment. Optional for schema-0.1 compatibility.
+   */
+  beltWidth?: QuantityValue;
+  contacts: readonly FixedAxisBeltContactDefinition[];
+}
+
+/**
+ * Fixed-axis spatial belt transmission semantics. Geometry-capable simulation
+ * adapters must independently establish a realizable route before advertising
+ * kinematic capabilities for one of these systems.
+ */
+export interface FixedAxisBeltSystemDefinition {
+  dimensionality: 'spatial-fixed-axis';
+  pulleys: Record<FixedAxisPulleyId, FixedAxisPulleyDefinition>;
+  loops: Record<BeltLoopId, FixedAxisBeltLoopDefinition>;
+}
+
 export interface CoordinateDefinition {
   id: CoordinateId;
   label: string;
@@ -169,6 +231,7 @@ export interface SimulationModel {
   parameters: Record<ParameterId, ParameterDefinition>;
   systems: {
     mechanical?: MechanicalSystemDefinition;
+    fixedAxisBelt?: FixedAxisBeltSystemDefinition;
   };
   coordinates: Record<CoordinateId, CoordinateDefinition>;
   signals: Record<SignalId, SignalDefinition>;
