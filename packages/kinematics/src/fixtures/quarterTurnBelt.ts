@@ -25,9 +25,11 @@ const zeroAngle = quantity(0, 'rad');
  * upper power pulley's middle plane.
  *
  * Historical flat-belt descriptions of this one-direction arrangement also
- * describe the belt moving across the pulley face. Atlas therefore models the
- * ideal transmission law as circumferential traction continuity only; lateral
- * face tracking is explicit slip and is not part of the ωr ratio constraint.
+ * describe the belt moving across the pulley face. Atlas therefore keeps the
+ * familiar `v = rω` relation as a lumped ideal transmission-ratio reference,
+ * not a pointwise contact-velocity claim. Lateral face tracking is explicit
+ * slip, and a later physical adapter must decide how local creep/slip is modeled
+ * before claiming locally no-slip material motion.
  *
  * These are Atlas reference dimensions, not measurements inferred from Brown.
  */
@@ -205,12 +207,12 @@ export const canonicalQuarterTurnBeltModel: SimulationModel = {
   },
   assumptions: [
     {
-      id: 'ideal-circumferential-traction',
-      text: 'The belt is inextensible and has no circumferential slip at each pulley pitch surface, so the ideal tangential belt speed equals radius times angular speed.',
+      id: 'ideal-pitch-speed-ratio',
+      text: 'Angular ratios use the lumped ideal pitch-speed relation v = rω; this is a transmission reference law, not a pointwise no-slip contact solution over a finite-width pulley face.',
     },
     {
       id: 'lateral-tracking-slip',
-      text: 'Where the Brown 003 route changes axial position across a pulley face, that motion is lateral tracking slip and is not constrained by the ideal circumferential speed-ratio law.',
+      text: 'Where the Brown 003 route changes axial position across a pulley face, that motion is lateral tracking slip; local creep/slip is not solved by the ideal pitch-speed ratio oracle.',
     },
     {
       id: 'fixed-axes',
@@ -218,7 +220,7 @@ export const canonicalQuarterTurnBeltModel: SimulationModel = {
     },
     {
       id: 'passive-guides',
-      text: 'The guide pulleys are passive and their angular motion is imposed by ideal circumferential belt-speed continuity.',
+      text: 'The guide-pulley angular ratios are supplied by the lumped ideal pitch-speed transmission law rather than a local contact-slip solver.',
     },
   ],
 };
