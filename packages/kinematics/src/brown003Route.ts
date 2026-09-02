@@ -141,9 +141,16 @@ function magnitude(v: Vec3): number {
 
 function normalize(v: Vec3): Vec3 | undefined {
   if (!v.every(Number.isFinite)) return undefined;
-  const length = magnitude(v);
-  if (!(length > 1e-12)) return undefined;
-  return scale(v, 1 / length);
+  const componentScale = Math.max(Math.abs(v[0]), Math.abs(v[1]), Math.abs(v[2]));
+  if (!(componentScale > 0)) return undefined;
+  const scaled: Vec3 = [
+    v[0] / componentScale,
+    v[1] / componentScale,
+    v[2] / componentScale,
+  ];
+  const length = magnitude(scaled);
+  if (!(length > 0) || !Number.isFinite(length)) return undefined;
+  return [scaled[0] / length, scaled[1] / length, scaled[2] / length];
 }
 
 function reject(v: Vec3, axis: Vec3): Vec3 {
