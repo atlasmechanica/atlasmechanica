@@ -79,11 +79,12 @@ export interface Brown003PulleyTrack {
   /** Remaining usable half-face margin after accounting for belt width, in meters. */
   faceMargin: number;
   /**
-   * Brown's one-direction flat-belt route requires the belt centerline to walk
-   * laterally across several pulley faces. The ideal ωr law constrains only the
-   * circumferential traction component; this axial motion is explicit slip.
+   * Kinematic claim boundary for this routed track. The separate `v = rω`
+   * relation is only a lumped system-level transmission-ratio law. Any axial
+   * centerline movement here is explicit lateral tracking slip; this route does
+   * not certify pointwise circumferential traction or no-slip contact.
    */
-  contactKinematics: 'circumferential-traction-with-lateral-tracking-slip';
+  kinematicBoundary: 'lumped-pitch-speed-ratio-with-lateral-tracking-slip';
   /** Absolute axial centerline change across this pulley contact, in meters. */
   lateralSlipDistance: number;
 }
@@ -178,9 +179,12 @@ function resolveParameters(
   model: SimulationModel,
   overrides: Partial<Record<ParameterId, QuantityValue>>,
 ): ParameterValues {
-  for (const id of Object.keys(overrides)) {
-    if (!Object.prototype.hasOwnProperty.call(model.parameters, id)) {
-      throw new RangeError(`Unknown parameter override ${id}`);
+  for (const key of Reflect.ownKeys(overrides)) {
+    if (
+      typeof key !== 'string'
+      || !Object.prototype.hasOwnProperty.call(model.parameters, key)
+    ) {
+      throw new RangeError(`Unknown parameter override ${String(key)}`);
     }
   }
 
@@ -379,7 +383,7 @@ function makeTrack(
     departureAxialOffset,
     signedWrapAngle,
     faceMargin,
-    contactKinematics: 'circumferential-traction-with-lateral-tracking-slip',
+    kinematicBoundary: 'lumped-pitch-speed-ratio-with-lateral-tracking-slip',
     lateralSlipDistance: Math.abs(departureAxialOffset - arrivalAxialOffset),
   };
 }
@@ -414,10 +418,10 @@ function directSpan(start: Vec3, end: Vec3): TangentSpan | undefined {
  * A successful result certifies geometric routing and face containment only.
  * It does not assert zero relative velocity over the full pulley face. Where
  * the centerline changes axial offset, the route explicitly represents lateral
- * tracking slip while the separate continuity oracle supplies only the ideal
- * circumferential ωr relation. This is still not a SimulationAdapter; dynamics,
- * contact forces, slip magnitude laws, and historical dimensions are outside
- * this function.
+ * tracking slip while the separate continuity oracle supplies only the lumped
+ * ideal pitch-speed ratio relation. This is still not a SimulationAdapter;
+ * dynamics, contact forces, slip magnitude laws, and historical dimensions are
+ * outside this function.
  */
 export function solveBrown003Route(
   model: SimulationModel,
@@ -725,11 +729,15 @@ function rotateAroundAxis(vector: Vec3, axis: Vec3, angle: number): Vec3 {
 }
 
 /**
- * Sample the Brown 003 belt-centerline tracking path on a pulley face; `t` is
- * clamped to [0, 1]. Axial movement in this sampled path is explicit lateral
- * tracking slip, not no-slip rolling contact.
+ * Sample the Brown 003 belt-centerline tracking path on a pulley face. Finite
+ * `t` is clamped to [0, 1]; non-finite input is rejected before interpolation.
+ * Axial movement in this sampled path is explicit lateral tracking slip, not
+ * no-slip rolling contact.
  */
 export function sampleBrown003PulleyTrack(track: Brown003PulleyTrack, t: number): Vec3 {
+  if (!Number.isFinite(t)) {
+    throw new RangeError('Brown 003 pulley track sample parameter must be finite');
+  }
   const clamped = Math.max(0, Math.min(1, t));
   const arrivalRelative = subtract(track.arrival, track.center);
   const arrivalRadial = normalize(reject(arrivalRelative, track.axis));
