@@ -6,6 +6,7 @@ import {
   validateSimulationModel,
   type SimulationModel,
 } from '@atlasmechanica/model';
+import * as kinematics from './index.js';
 import { canonicalQuarterTurnBeltModel } from './fixtures/quarterTurnBelt.js';
 import {
   evaluateFixedAxisBeltContinuity,
@@ -25,6 +26,11 @@ function fixedAxisSystem() {
 }
 
 describe('fixed-axis belt continuity oracle', () => {
+  it('does not export a spatial SimulationAdapter before route geometry exists', () => {
+    expect('spatialBeltAdapter' in kinematics).toBe(false);
+    expect('evaluateFixedAxisBeltContinuity' in kinematics).toBe(true);
+  });
+
   it('preserves one signed no-slip belt speed across all four Brown 003 contacts', () => {
     const result = evaluateFixedAxisBeltContinuity(canonicalQuarterTurnBeltModel, {
       configuration: 'reference',
