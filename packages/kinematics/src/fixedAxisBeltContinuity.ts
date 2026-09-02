@@ -191,47 +191,76 @@ export function evaluateFixedAxisBeltContinuity(
   const system = model.systems.fixedAxisBelt;
   if (system === undefined) {
     return emptyResult(model, [
-      diagnostic('unsupported-model', 'Fixed-axis belt continuity requires a fixedAxisBelt system'),
+      diagnostic(
+        'unsupported-model',
+        'Fixed-axis belt continuity requires a fixedAxisBelt system',
+      ),
     ]);
   }
 
   const configurationId = request.configuration ?? Object.keys(model.configurations)[0];
   if (configurationId === undefined) {
     return emptyResult(model, [
-      diagnostic('invalid-model', 'SimulationModel requires at least one reference configuration'),
+      diagnostic(
+        'invalid-model',
+        'SimulationModel requires at least one reference configuration',
+      ),
     ]);
   }
   const configuration = model.configurations[configurationId];
   if (configuration === undefined) {
-    return emptyResult(model, [
-      diagnostic('invalid-input', `Unknown configuration ${configurationId}`),
-    ], configurationId);
+    return emptyResult(
+      model,
+      [diagnostic('invalid-input', `Unknown configuration ${configurationId}`)],
+      configurationId,
+    );
   }
 
   const loop = selectLoop(model, request.loop);
   if (loop === undefined) {
-    return emptyResult(model, [
-      diagnostic(
-        'unsupported-model',
-        request.loop === undefined
-          ? 'Fixed-axis belt continuity requires exactly one loop when no loop id is supplied'
-          : `Unknown fixed-axis belt loop ${request.loop}`,
-      ),
-    ], configurationId, request.loop);
+    return emptyResult(
+      model,
+      [
+        diagnostic(
+          'unsupported-model',
+          request.loop === undefined
+            ? 'Fixed-axis belt continuity requires exactly one loop when no loop id is supplied'
+            : `Unknown fixed-axis belt loop ${request.loop}`,
+        ),
+      ],
+      configurationId,
+      request.loop,
+    );
   }
 
   const contacts = resolveContacts(model, loop);
   if (contacts === undefined) {
-    return emptyResult(model, [
-      diagnostic('invalid-model', `Fixed-axis belt loop ${loop.id} has unresolved pulley contacts`),
-    ], configurationId, loop.id);
+    return emptyResult(
+      model,
+      [
+        diagnostic(
+          'invalid-model',
+          `Fixed-axis belt loop ${loop.id} has unresolved pulley contacts`,
+        ),
+      ],
+      configurationId,
+      loop.id,
+    );
   }
 
   const drivers = contacts.filter((contact) => contact.pulley.role === 'driver');
   if (drivers.length !== 1 || drivers[0] === undefined) {
-    return emptyResult(model, [
-      diagnostic('invalid-model', `Fixed-axis belt loop ${loop.id} requires exactly one driver`),
-    ], configurationId, loop.id);
+    return emptyResult(
+      model,
+      [
+        diagnostic(
+          'invalid-model',
+          `Fixed-axis belt loop ${loop.id} requires exactly one driver`,
+        ),
+      ],
+      configurationId,
+      loop.id,
+    );
   }
   const driver = drivers[0];
   const inputId = driver.pulley.coordinate;
@@ -241,12 +270,17 @@ export function evaluateFixedAxisBeltContinuity(
     || !onlyPrescribes(request.rates, inputId)
     || !onlyPrescribes(request.accelerations, inputId)
   ) {
-    return emptyResult(model, [
-      diagnostic(
-        'invalid-input',
-        `Fixed-axis belt continuity may prescribe only driver coordinate ${inputId}`,
-      ),
-    ], configurationId, loop.id);
+    return emptyResult(
+      model,
+      [
+        diagnostic(
+          'invalid-input',
+          `Fixed-axis belt continuity may prescribe only driver coordinate ${inputId}`,
+        ),
+      ],
+      configurationId,
+      loop.id,
+    );
   }
 
   let parameters: ParameterValues;
@@ -261,9 +295,12 @@ export function evaluateFixedAxisBeltContinuity(
     parameters = resolveParameters(model, request.parameters ?? {});
     const inputSource = request.coordinates?.[inputId] ?? configuration.coordinates[inputId];
     if (inputSource === undefined) {
-      return emptyResult(model, [
-        diagnostic('missing-input', `Missing coordinate ${inputId}`),
-      ], configurationId, loop.id);
+      return emptyResult(
+        model,
+        [diagnostic('missing-input', `Missing coordinate ${inputId}`)],
+        configurationId,
+        loop.id,
+      );
     }
 
     inputAngle = assertFinite(canonicalNumber(inputSource, 'angle'), 'Driver angle');
@@ -301,12 +338,17 @@ export function evaluateFixedAxisBeltContinuity(
     }
     driverRadius = resolvedDriverRadius;
   } catch (error) {
-    return emptyResult(model, [
-      diagnostic(
-        'invalid-input',
-        error instanceof Error ? error.message : 'Invalid fixed-axis belt continuity input',
-      ),
-    ], configurationId, loop.id);
+    return emptyResult(
+      model,
+      [
+        diagnostic(
+          'invalid-input',
+          error instanceof Error ? error.message : 'Invalid fixed-axis belt continuity input',
+        ),
+      ],
+      configurationId,
+      loop.id,
+    );
   }
 
   const coordinates: FixedAxisBeltContinuityResult['coordinates'] = {};
@@ -376,11 +418,16 @@ export function evaluateFixedAxisBeltContinuity(
     if (beltLinearSpeed !== undefined) result.beltLinearSpeed = beltLinearSpeed;
     return result;
   } catch (error) {
-    return emptyResult(model, [
-      diagnostic(
-        'invalid-input',
-        error instanceof Error ? error.message : 'Non-finite fixed-axis belt continuity result',
-      ),
-    ], configurationId, loop.id);
+    return emptyResult(
+      model,
+      [
+        diagnostic(
+          'invalid-input',
+          error instanceof Error ? error.message : 'Non-finite fixed-axis belt continuity result',
+        ),
+      ],
+      configurationId,
+      loop.id,
+    );
   }
 }
