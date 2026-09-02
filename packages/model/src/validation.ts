@@ -203,11 +203,21 @@ function validateFixedAxisBeltSystem(
       diagnostics,
     );
 
-    if (!pulley.axis.every(Number.isFinite) || Math.hypot(...pulley.axis) <= 1e-12) {
+    const runtimeAxis = pulley.axis as unknown;
+    const validAxis =
+      Array.isArray(runtimeAxis)
+      && runtimeAxis.length === 3
+      && [0, 1, 2].every(
+        (index) => Object.prototype.hasOwnProperty.call(runtimeAxis, index)
+          && Number.isFinite(runtimeAxis[index]),
+      )
+      && Math.hypot(runtimeAxis[0], runtimeAxis[1], runtimeAxis[2]) > 1e-12;
+    if (!validAxis) {
       diagnostics.push(
-        invalidModel('Fixed-axis pulley axis must be finite and non-zero', {
-          pulley: pulleyId,
-        }),
+        invalidModel(
+          'Fixed-axis pulley axis must contain exactly three finite components and be non-zero',
+          { pulley: pulleyId },
+        ),
       );
     }
 
