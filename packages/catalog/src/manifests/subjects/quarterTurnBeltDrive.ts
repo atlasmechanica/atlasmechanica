@@ -36,7 +36,7 @@ export const quarterTurnBeltDrive = defineCanonicalSubject({
     },
     {
       label: 'Planned idealization',
-      value: 'Inextensible belt; no slip; fixed shaft axes; passive guide pulleys; no belt thickness, tension, frictional loss, or lateral tracking dynamics.',
+      value: 'Fixed shaft axes and passive guide pulleys; system-level angular ratios use the lumped ideal pitch-speed relation v = rω. Brown 003 requires lateral tracking slip across pulley faces; local slip/creep kinematics, tension, contact forces, belt deformation, and frictional loss are not yet modeled.',
     },
   ],
 });
