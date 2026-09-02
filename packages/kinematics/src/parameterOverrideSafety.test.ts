@@ -16,6 +16,17 @@ function inheritedNameOverride(): Record<string, QuantityValue> {
   return overrides;
 }
 
+function nonEnumerableNameOverride(): Record<string, QuantityValue> {
+  const overrides = Object.create(null) as Record<string, QuantityValue>;
+  Object.defineProperty(overrides, 'toString', {
+    value: quantity(30, 'mm'),
+    enumerable: false,
+    configurable: true,
+    writable: true,
+  });
+  return overrides;
+}
+
 function inheritedValidOverride(): Record<string, QuantityValue> {
   return Object.create({ 'driver-radius': quantity(30, 'mm') }) as Record<string, QuantityValue>;
 }
@@ -31,6 +42,22 @@ describe('fixed-axis parameter override safety', () => {
 
     const continuity = evaluateFixedAxisBeltContinuity(canonicalQuarterTurnBeltModel, {
       parameters: inheritedNameOverride(),
+    });
+    expect(continuity.diagnostics[0]?.code).toBe('invalid-input');
+    expect(continuity.diagnostics[0]?.message).toContain('Unknown parameter override toString');
+    expect(continuity.coordinates).toEqual({});
+  });
+
+  it('rejects non-enumerable own override keys', () => {
+    const route = solveBrown003Route(canonicalQuarterTurnBeltModel, {
+      parameters: nonEnumerableNameOverride(),
+    });
+    expect(route.diagnostics[0]?.code).toBe('invalid-input');
+    expect(route.diagnostics[0]?.message).toContain('Unknown parameter override toString');
+    expect(route.spans).toEqual([]);
+
+    const continuity = evaluateFixedAxisBeltContinuity(canonicalQuarterTurnBeltModel, {
+      parameters: nonEnumerableNameOverride(),
     });
     expect(continuity.diagnostics[0]?.code).toBe('invalid-input');
     expect(continuity.diagnostics[0]?.message).toContain('Unknown parameter override toString');
