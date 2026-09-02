@@ -145,6 +145,8 @@ export interface FixedAxisPulleyDefinition {
   /** Fixed shaft-axis direction. It must be finite and non-zero. */
   axis: readonly [number, number, number];
   pitchRadius: ScalarSource;
+  /** Physical pulley-face width measured along the shaft axis. */
+  faceWidth: ScalarSource;
   coordinate: CoordinateId;
 }
 
@@ -163,6 +165,8 @@ export interface FixedAxisBeltContactDefinition {
 export interface FixedAxisBeltLoopDefinition {
   id: BeltLoopId;
   label?: string;
+  /** Physical belt width used to validate axial tracking across pulley faces. */
+  beltWidth: ScalarSource;
   contacts: readonly FixedAxisBeltContactDefinition[];
 }
 
