@@ -131,6 +131,45 @@ describe('Brown 003 spatial belt SimulationAdapter', () => {
     expect(state.diagnostics[0]?.message).toContain('Unknown parameter override toString');
   });
 
+  it('does not invoke unknown accessor overrides before fail-closed key validation', () => {
+    const session = spatialBeltAdapter.compile(canonicalQuarterTurnBeltModel).createSession();
+    const accessorOverrides: Record<string, QuantityValue> = {};
+    let getterCalls = 0;
+    Object.defineProperty(accessorOverrides, 'toString', {
+      get() {
+        getterCalls += 1;
+        throw new Error('unknown accessor must not be read');
+      },
+      enumerable: true,
+    });
+
+    let state: ModelState | undefined;
+    expect(() => {
+      state = session.evaluate({ parameters: accessorOverrides });
+    }).not.toThrow();
+    expect(getterCalls).toBe(0);
+    expect(state?.diagnostics[0]?.code).toBe('invalid-input');
+    expect(state?.diagnostics[0]?.message).toContain('Unknown parameter override toString');
+  });
+
+  it('defers declared accessor evaluation to the continuity solver diagnostic boundary', () => {
+    const session = spatialBeltAdapter.compile(canonicalQuarterTurnBeltModel).createSession();
+    const accessorOverrides: Record<string, QuantityValue> = {};
+    Object.defineProperty(accessorOverrides, 'driven-radius', {
+      get() {
+        throw new Error('declared accessor failed');
+      },
+      enumerable: true,
+    });
+
+    let state: ModelState | undefined;
+    expect(() => {
+      state = session.evaluate({ parameters: accessorOverrides });
+    }).not.toThrow();
+    expect(state?.diagnostics[0]?.code).toBe('invalid-input');
+    expect(state?.diagnostics[0]?.message).toContain('declared accessor failed');
+  });
+
   it('keeps dependent and non-finite inputs fail-closed through the adapter', () => {
     const session = spatialBeltAdapter.compile(canonicalQuarterTurnBeltModel).createSession();
 
