@@ -108,7 +108,10 @@ function resolveParameters(
 
   const values: ParameterValues = {};
   for (const [id, definition] of Object.entries(model.parameters)) {
-    const authored = overrides[id] ?? definition.default;
+    const override = Object.prototype.hasOwnProperty.call(overrides, id)
+      ? overrides[id]
+      : undefined;
+    const authored = override ?? definition.default;
     const value = assertFinite(canonicalNumber(authored, definition.kind), id);
 
     if (definition.domain?.min !== undefined) {
