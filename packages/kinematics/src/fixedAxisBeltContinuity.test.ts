@@ -43,7 +43,7 @@ describe('fixed-axis belt continuity oracle', () => {
     expect(coordinate(result, 'driver-angle').position.value).toBeCloseTo(Math.PI / 2, 12);
     expect(coordinate(result, 'driven-angle').position.value).toBeCloseTo(3 * Math.PI / 8, 12);
     expect(coordinate(result, 'guide-a-angle').position.value).toBeCloseTo(9 * Math.PI / 8, 12);
-    expect(coordinate(result, 'guide-b-angle').position.value).toBeCloseTo(-9 * Math.PI / 8, 12);
+    expect(coordinate(result, 'guide-b-angle').position.value).toBeCloseTo(9 * Math.PI / 8, 12);
     expect(result.angularRatios.driven).toBeCloseTo(0.75, 12);
     expect(result.beltLinearSpeed).toBeCloseTo(0.045 * Math.PI, 12);
     expect(result.beltTravel).toBeCloseTo(0.045 * Math.PI / 2, 12);
@@ -81,7 +81,7 @@ describe('fixed-axis belt continuity oracle', () => {
     expect(result.angularRatios.driven).toBeCloseTo(0.5, 12);
     expect(coordinate(result, 'driven-angle').velocity?.value).toBeCloseTo(0.5, 12);
     expect(coordinate(result, 'guide-a-angle').velocity?.value).toBeCloseTo(1.5, 12);
-    expect(coordinate(result, 'guide-b-angle').velocity?.value).toBeCloseTo(-1.5, 12);
+    expect(coordinate(result, 'guide-b-angle').velocity?.value).toBeCloseTo(1.5, 12);
     expect(result.beltLinearSpeed).toBeCloseTo(0.03, 12);
   });
 

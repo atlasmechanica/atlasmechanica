@@ -37,16 +37,19 @@ export interface FixedAxisBeltContinuityRequest extends EvaluationRequest {
 }
 
 /**
- * Algebraic no-slip continuity result for a fixed-axis belt loop.
+ * Lumped ideal transmission-ratio result for a fixed-axis belt loop.
  *
  * This is intentionally not a SimulationAdapter and exposes no solver
- * capabilities. It answers only: if the authored loop exists and does not
- * slip, what angular continuity follows from its radii and contact senses?
+ * capabilities. It applies the familiar ideal pitch-speed relation `v = rω`
+ * to derive angular continuity from radii and contact senses. That relation is
+ * a reduced transmission law, not a pointwise solution of belt/pulley contact
+ * velocity over a finite-width face.
  *
- * Centers and axes are still validated as model data, but this function does
- * not inspect them and does not certify tangent/contact feasibility. A route
- * solver must establish that geometry before Atlas may expose an adapter for
- * the mechanism.
+ * Route-capable flat-belt models may require lateral tracking slip and other
+ * local creep that this oracle does not solve. A future adapter must therefore
+ * not treat this result plus a routed centerline as proof of locally no-slip
+ * material motion. Centers and axes are validated as model data, but this
+ * function does not inspect them or certify tangent/contact feasibility.
  */
 export interface FixedAxisBeltContinuityResult {
   model: string;
@@ -54,9 +57,9 @@ export interface FixedAxisBeltContinuityResult {
   loop?: BeltLoopId;
   coordinates: Partial<Record<CoordinateId, CoordinateState>>;
   angularRatios: Partial<Record<FixedAxisPulleyId, number>>;
-  /** Signed belt travel in meters, relative to the reference configuration. */
+  /** Signed ideal pitch-surface travel in meters, relative to the reference configuration. */
   beltTravel?: number;
-  /** Signed belt speed in meters per second when a driver rate is supplied. */
+  /** Signed ideal pitch-surface speed in meters per second when a driver rate is supplied. */
   beltLinearSpeed?: number;
   diagnostics: Diagnostic[];
 }
@@ -97,9 +100,21 @@ function resolveParameters(
   model: SimulationModel,
   overrides: Partial<Record<ParameterId, QuantityValue>>,
 ): ParameterValues {
+  for (const key of Reflect.ownKeys(overrides)) {
+    if (
+      typeof key !== 'string'
+      || !Object.prototype.hasOwnProperty.call(model.parameters, key)
+    ) {
+      throw new RangeError(`Unknown parameter override ${String(key)}`);
+    }
+  }
+
   const values: ParameterValues = {};
   for (const [id, definition] of Object.entries(model.parameters)) {
-    const authored = overrides[id] ?? definition.default;
+    const override = Object.prototype.hasOwnProperty.call(overrides, id)
+      ? overrides[id]
+      : undefined;
+    const authored = override ?? definition.default;
     const value = assertFinite(canonicalNumber(authored, definition.kind), id);
 
     if (definition.domain?.min !== undefined) {

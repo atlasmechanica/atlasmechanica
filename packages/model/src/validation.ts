@@ -39,6 +39,29 @@ function validateFiniteQuantity(
   }
 }
 
+function validatePositiveLengthQuantity(
+  value: QuantityValue | undefined,
+  location: string,
+  message: string,
+  diagnostics: Diagnostic[],
+): void {
+  // faceWidth/beltWidth were introduced additively while schemaVersion remains
+  // 0.1. Their absence is therefore valid legacy data; route-capable solvers
+  // are responsible for requiring them when needed.
+  if (value === undefined) return;
+
+  validateFiniteQuantity(value, location, diagnostics);
+  if (quantityKind(value) !== 'length' || !(value.value > 0)) {
+    diagnostics.push(
+      invalidModel(message, {
+        location,
+        value: value.value,
+        unit: value.unit,
+      }),
+    );
+  }
+}
+
 function validateScalarSource(
   model: SimulationModel,
   source: ScalarSource,
@@ -173,6 +196,12 @@ function validateFixedAxisBeltSystem(
       `fixedAxisBelt.${pulleyId}.pitchRadius`,
       diagnostics,
     );
+    validatePositiveLengthQuantity(
+      pulley.faceWidth,
+      `fixedAxisBelt.${pulleyId}.faceWidth`,
+      'Fixed-axis pulley face width must be a positive length',
+      diagnostics,
+    );
 
     if (!pulley.axis.every(Number.isFinite) || Math.hypot(...pulley.axis) <= 1e-12) {
       diagnostics.push(
@@ -228,6 +257,12 @@ function validateFixedAxisBeltSystem(
         }),
       );
     }
+    validatePositiveLengthQuantity(
+      loop.beltWidth,
+      `fixedAxisBelt.${loopId}.beltWidth`,
+      'Fixed-axis belt width must be a positive length',
+      diagnostics,
+    );
     if (loop.contacts.length < 2) {
       diagnostics.push(
         invalidModel('Fixed-axis belt loop requires at least two pulley contacts', {
