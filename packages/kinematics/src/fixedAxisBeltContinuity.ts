@@ -57,6 +57,8 @@ export interface FixedAxisBeltContinuityResult {
   loop?: BeltLoopId;
   coordinates: Partial<Record<CoordinateId, CoordinateState>>;
   angularRatios: Partial<Record<FixedAxisPulleyId, number>>;
+  /** Resolved pitch radii used by this oracle, in canonical meters. */
+  resolvedPitchRadii: Partial<Record<FixedAxisPulleyId, number>>;
   /** Signed ideal pitch-surface travel in meters, relative to the reference configuration. */
   beltTravel?: number;
   /** Signed ideal pitch-surface speed in meters per second when a driver rate is supplied. */
@@ -84,6 +86,7 @@ function emptyResult(
     model: model.id,
     coordinates: {},
     angularRatios: {},
+    resolvedPitchRadii: {},
     diagnostics,
   };
   if (configuration !== undefined) result.configuration = configuration;
@@ -310,6 +313,7 @@ export function evaluateFixedAxisBeltContinuity(
   let inputAcceleration: number | undefined;
   let driverRadius: number;
   const radii = new Map<FixedAxisPulleyId, number>();
+  const resolvedPitchRadii: FixedAxisBeltContinuityResult['resolvedPitchRadii'] = {};
 
   try {
     parameters = resolveParameters(model, request.parameters ?? {});
@@ -350,6 +354,7 @@ export function evaluateFixedAxisBeltContinuity(
         throw new RangeError(`${contact.pulley.id} pitch radius must be positive`);
       }
       radii.set(contact.pulley.id, radius);
+      resolvedPitchRadii[contact.pulley.id] = radius;
     }
 
     const resolvedDriverRadius = radii.get(driver.pulley.id);
@@ -432,6 +437,7 @@ export function evaluateFixedAxisBeltContinuity(
       loop: loop.id,
       coordinates,
       angularRatios,
+      resolvedPitchRadii,
       beltTravel,
       diagnostics: [],
     };
