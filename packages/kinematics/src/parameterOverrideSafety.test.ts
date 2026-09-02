@@ -7,7 +7,12 @@ import { canonicalQuarterTurnBeltModel } from './fixtures/quarterTurnBelt.js';
 
 function inheritedNameOverride(): Record<string, QuantityValue> {
   const overrides = Object.create(null) as Record<string, QuantityValue>;
-  overrides.toString = quantity(30, 'mm');
+  Object.defineProperty(overrides, 'toString', {
+    value: quantity(30, 'mm'),
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
   return overrides;
 }
 
