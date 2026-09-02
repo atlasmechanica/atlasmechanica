@@ -356,6 +356,11 @@ export function validateSimulationModel(model: SimulationModel): Diagnostic[] {
       ),
     );
   }
+  if (Object.keys(model.configurations).length === 0) {
+    diagnostics.push(
+      invalidModel('SimulationModel requires at least one reference configuration'),
+    );
+  }
 
   if (mechanical !== undefined) {
     if (mechanical.bodies[mechanical.referenceBody] === undefined) {
