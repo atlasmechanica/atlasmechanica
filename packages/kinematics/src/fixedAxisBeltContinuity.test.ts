@@ -165,7 +165,12 @@ describe('fixed-axis belt continuity oracle', () => {
     const guideA = system.pulleys['guide-a'];
     const driven = system.pulleys.driven;
     const guideB = system.pulleys['guide-b'];
-    if (driver === undefined || guideA === undefined || driven === undefined || guideB === undefined) {
+    if (
+      driver === undefined
+      || guideA === undefined
+      || driven === undefined
+      || guideB === undefined
+    ) {
       throw new Error('Missing Brown 003 pulley');
     }
 
