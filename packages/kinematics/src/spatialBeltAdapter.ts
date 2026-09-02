@@ -39,6 +39,7 @@ const BROWN_003_SUBJECT = 'belt-drive';
 const BROWN_003_VARIANT = 'quarter-turn-guided';
 const BROWN_003_LOOP_ID = 'main-belt';
 const PROFILE_TOLERANCE = 1e-9;
+const COLLINEAR_TOLERANCE = Number.EPSILON * 32;
 
 const BROWN_003_CONTACT_PROFILE = [
   { pulley: 'driver', role: 'driver', coordinate: 'driver-angle', sense: 1 },
@@ -190,6 +191,14 @@ function dot(a: Vec3, b: Vec3): number {
   return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 
+function cross(a: Vec3, b: Vec3): Vec3 {
+  return [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0],
+  ];
+}
+
 function magnitude(vector: Vec3): number {
   return Math.hypot(vector[0], vector[1], vector[2]);
 }
@@ -209,12 +218,12 @@ function sameDirection(a: Vec3, b: Vec3): boolean {
     && dot(an, bn) >= 1 - PROFILE_TOLERANCE;
 }
 
-function parallel(a: Vec3, b: Vec3): boolean {
+function collinearNormals(a: Vec3, b: Vec3): boolean {
   const an = normalize(a);
   const bn = normalize(b);
   return an !== undefined
     && bn !== undefined
-    && Math.abs(dot(an, bn)) >= 1 - PROFILE_TOLERANCE;
+    && magnitude(cross(an, bn)) <= COLLINEAR_TOLERANCE;
 }
 
 function perpendicular(a: Vec3, b: Vec3): boolean {
@@ -329,12 +338,13 @@ function pulleyPairHasClearance(
   const centerDistance = magnitude(delta);
   if (!Number.isFinite(centerDistance)) return false;
 
-  if (parallel(a.pulley.axis, b.pulley.axis)) {
+  if (collinearNormals(a.pulley.axis, b.pulley.axis)) {
     const axis = normalize(a.pulley.axis);
     if (axis === undefined) return false;
     const axialSeparation = Math.abs(dot(delta, axis));
-    // Pitch circles on distinct parallel planes do not intersect in the
-    // zero-thickness v0 model. Pulley thickness is intentionally not modeled yet.
+    // Pitch circles on distinct planes with genuinely collinear normals do not
+    // intersect in the zero-thickness v0 model. Any angular skew falls back to
+    // the enclosing-radius clearance test below until tangent geometry exists.
     if (axialSeparation > PROFILE_TOLERANCE) return true;
   }
 
@@ -364,7 +374,13 @@ function hasPulleyClearance(
 
 function getContext(model: SimulationModel): SpatialBeltContext | undefined {
   const system = model.systems.fixedAxisBelt;
-  if (system === undefined || model.systems.mechanical !== undefined) return undefined;
+  if (
+    system === undefined
+    || model.systems.mechanical !== undefined
+    || Object.keys(model.configurations).length === 0
+  ) {
+    return undefined;
+  }
 
   const loops = Object.values(system.loops);
   if (loops.length !== 1) return undefined;
