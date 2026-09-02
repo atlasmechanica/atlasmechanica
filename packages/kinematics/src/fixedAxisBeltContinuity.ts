@@ -59,6 +59,11 @@ export interface FixedAxisBeltContinuityResult {
   angularRatios: Partial<Record<FixedAxisPulleyId, number>>;
   /** Resolved pitch radii used by this oracle, in canonical meters. */
   resolvedPitchRadii: Partial<Record<FixedAxisPulleyId, number>>;
+  /** Ordered pulley/contact-sense profile used by this oracle. */
+  contactProfile: readonly Readonly<{
+    pulley: FixedAxisPulleyId;
+    sense: 1 | -1;
+  }>[];
   /** Signed ideal pitch-surface travel in meters, relative to the reference configuration. */
   beltTravel?: number;
   /** Signed ideal pitch-surface speed in meters per second when a driver rate is supplied. */
@@ -87,6 +92,7 @@ function emptyResult(
     coordinates: {},
     angularRatios: {},
     resolvedPitchRadii: {},
+    contactProfile: [],
     diagnostics,
   };
   if (configuration !== undefined) result.configuration = configuration;
@@ -430,6 +436,12 @@ export function evaluateFixedAxisBeltContinuity(
     const beltLinearSpeed = inputRate === undefined
       ? undefined
       : assertFinite(driver.definition.sense * driverRadius * inputRate, 'Belt linear speed');
+    const contactProfile: FixedAxisBeltContinuityResult['contactProfile'] = contacts.map(
+      (contact) => ({
+        pulley: contact.pulley.id,
+        sense: contact.definition.sense,
+      }),
+    );
 
     const result: FixedAxisBeltContinuityResult = {
       model: model.id,
@@ -438,6 +450,7 @@ export function evaluateFixedAxisBeltContinuity(
       coordinates,
       angularRatios,
       resolvedPitchRadii,
+      contactProfile,
       beltTravel,
       diagnostics: [],
     };
