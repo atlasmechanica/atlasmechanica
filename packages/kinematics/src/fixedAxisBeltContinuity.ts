@@ -37,16 +37,18 @@ export interface FixedAxisBeltContinuityRequest extends EvaluationRequest {
 }
 
 /**
- * Algebraic no-slip continuity result for a fixed-axis belt loop.
+ * Algebraic circumferential-traction continuity result for a fixed-axis belt loop.
  *
  * This is intentionally not a SimulationAdapter and exposes no solver
- * capabilities. It answers only: if the authored loop exists and does not
- * slip, what angular continuity follows from its radii and contact senses?
+ * capabilities. It answers only: if the authored loop exists and the belt has
+ * no circumferential slip at the pitch surfaces, what angular continuity follows
+ * from its radii and contact senses?
  *
- * Centers and axes are still validated as model data, but this function does
- * not inspect them and does not certify tangent/contact feasibility. A route
- * solver must establish that geometry before Atlas may expose an adapter for
- * the mechanism.
+ * This does not assert zero relative velocity in every surface direction.
+ * Route-capable flat-belt models may include lateral tracking/creep across a
+ * pulley face while still using this ideal circumferential ωr relationship.
+ * Centers and axes are validated as model data, but this function does not
+ * inspect them and does not certify tangent/contact feasibility.
  */
 export interface FixedAxisBeltContinuityResult {
   model: string;
@@ -54,9 +56,9 @@ export interface FixedAxisBeltContinuityResult {
   loop?: BeltLoopId;
   coordinates: Partial<Record<CoordinateId, CoordinateState>>;
   angularRatios: Partial<Record<FixedAxisPulleyId, number>>;
-  /** Signed belt travel in meters, relative to the reference configuration. */
+  /** Signed circumferential belt travel in meters, relative to the reference configuration. */
   beltTravel?: number;
-  /** Signed belt speed in meters per second when a driver rate is supplied. */
+  /** Signed circumferential belt speed in meters per second when a driver rate is supplied. */
   beltLinearSpeed?: number;
   diagnostics: Diagnostic[];
 }
@@ -97,6 +99,12 @@ function resolveParameters(
   model: SimulationModel,
   overrides: Partial<Record<ParameterId, QuantityValue>>,
 ): ParameterValues {
+  for (const id of Object.keys(overrides)) {
+    if (model.parameters[id] === undefined) {
+      throw new RangeError(`Unknown parameter override ${id}`);
+    }
+  }
+
   const values: ParameterValues = {};
   for (const [id, definition] of Object.entries(model.parameters)) {
     const authored = overrides[id] ?? definition.default;
