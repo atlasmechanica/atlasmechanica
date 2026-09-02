@@ -8,18 +8,23 @@ const zero = quantity(0, 'mm');
 const zeroAngle = quantity(0, 'rad');
 
 /**
- * Canonical fixed-axis layout for the Brown 003 family.
+ * Atlas reference geometry for the Brown 003 family.
+ *
+ * Brown specifies the topology (perpendicular power shafts and two guide
+ * pulleys side by side, one for each belt leaf) but does not dimension the
+ * hidden depth or pulley faces. These dimensions are therefore editorial
+ * reference values, constructed to satisfy the historical middle-plane
+ * delivery rule used for non-parallel flat-belt transmissions.
  *
  * The lower power pulley axis lies along +X. The upper power pulley and the
- * two side-by-side guide pulleys lie on +Z axes. The guide centers are offset
- * slightly along Z to retain Brown's one-guide-per-belt-leaf arrangement.
+ * coaxial guide pair lie on +Z axes. The guide middle planes sit one driver
+ * radius to either side of the driver's center plane, and their radial center
+ * is displaced by one guide radius in +X. That construction admits the two
+ * vertical guide spans visible in Brown's plate. Finite pulley-face widths let
+ * the remaining belt portions track axially between the guide planes and the
+ * upper power pulley's middle plane.
  *
- * IMPORTANT: these centers/axes capture the intended spatial arrangement, not
- * a certified tangent/contact route. Brown's two side-by-side guides imply
- * belt-leaf depth/tracking that a zero-thickness pitch-circle model alone does
- * not establish. The fixed-axis continuity oracle uses only loop senses,
- * radii, coordinates, and reference angles; a later route solver must validate
- * contact geometry before Atlas exposes a SimulationAdapter for Brown 003.
+ * These are Atlas reference dimensions, not measurements inferred from Brown.
  */
 export const canonicalQuarterTurnBeltModel: SimulationModel = {
   schemaVersion: SIMULATION_MODEL_SCHEMA_VERSION,
@@ -60,6 +65,7 @@ export const canonicalQuarterTurnBeltModel: SimulationModel = {
           center: { x: zero, y: zero, z: zero },
           axis: [1, 0, 0],
           pitchRadius: { parameter: 'driver-radius' },
+          faceWidth: quantity(100, 'mm'),
           coordinate: 'driver-angle',
         },
         'guide-a': {
@@ -67,12 +73,13 @@ export const canonicalQuarterTurnBeltModel: SimulationModel = {
           label: 'Guide pulley A',
           role: 'guide',
           center: {
-            x: quantity(0, 'mm'),
+            x: quantity(20, 'mm'),
             y: quantity(160, 'mm'),
-            z: quantity(-12, 'mm'),
+            z: quantity(-45, 'mm'),
           },
           axis: [0, 0, 1],
           pitchRadius: { parameter: 'guide-radius' },
+          faceWidth: quantity(110, 'mm'),
           coordinate: 'guide-a-angle',
         },
         driven: {
@@ -86,6 +93,7 @@ export const canonicalQuarterTurnBeltModel: SimulationModel = {
           },
           axis: [0, 0, 1],
           pitchRadius: { parameter: 'driven-radius' },
+          faceWidth: quantity(110, 'mm'),
           coordinate: 'driven-angle',
         },
         'guide-b': {
@@ -93,12 +101,13 @@ export const canonicalQuarterTurnBeltModel: SimulationModel = {
           label: 'Guide pulley B',
           role: 'guide',
           center: {
-            x: quantity(0, 'mm'),
+            x: quantity(20, 'mm'),
             y: quantity(160, 'mm'),
-            z: quantity(12, 'mm'),
+            z: quantity(45, 'mm'),
           },
           axis: [0, 0, 1],
           pitchRadius: { parameter: 'guide-radius' },
+          faceWidth: quantity(30, 'mm'),
           coordinate: 'guide-b-angle',
         },
       },
@@ -106,11 +115,12 @@ export const canonicalQuarterTurnBeltModel: SimulationModel = {
         'main-belt': {
           id: 'main-belt',
           label: 'Brown 003 belt loop',
+          beltWidth: quantity(10, 'mm'),
           contacts: [
             { pulley: 'driver', sense: 1 },
             { pulley: 'guide-a', sense: 1 },
             { pulley: 'driven', sense: 1 },
-            { pulley: 'guide-b', sense: -1 },
+            { pulley: 'guide-b', sense: 1 },
           ],
         },
       },
@@ -191,7 +201,7 @@ export const canonicalQuarterTurnBeltModel: SimulationModel = {
   assumptions: [
     {
       id: 'ideal-belt',
-      text: 'The belt is inextensible and does not slip at any pulley pitch circle.',
+      text: 'The belt is inextensible and does not slip at any pulley pitch surface.',
     },
     {
       id: 'fixed-axes',
@@ -200,6 +210,10 @@ export const canonicalQuarterTurnBeltModel: SimulationModel = {
     {
       id: 'passive-guides',
       text: 'The guide pulleys are passive and their angular motion is imposed only by belt speed continuity.',
+    },
+    {
+      id: 'face-tracking',
+      text: 'The flat-belt centerline may track axially across a pulley face between its incoming and outgoing tangent points; lateral contact forces are not modeled.',
     },
   ],
 };
