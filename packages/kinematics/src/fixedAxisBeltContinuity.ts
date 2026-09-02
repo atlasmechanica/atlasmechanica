@@ -39,10 +39,14 @@ export interface FixedAxisBeltContinuityRequest extends EvaluationRequest {
 /**
  * Algebraic no-slip continuity result for a fixed-axis belt loop.
  *
- * This deliberately does not certify route geometry. Centers and axes belong to
- * the physical model and are validated structurally, but tangent/contact
- * feasibility must be established by a route solver before a SimulationAdapter
- * may advertise position/derivative capabilities for the mechanism.
+ * This is intentionally not a SimulationAdapter and exposes no solver
+ * capabilities. It answers only: if the authored loop exists and does not
+ * slip, what angular continuity follows from its radii and contact senses?
+ *
+ * Centers and axes are still validated as model data, but this function does
+ * not inspect them and does not certify tangent/contact feasibility. A route
+ * solver must establish that geometry before Atlas may expose an adapter for
+ * the mechanism.
  */
 export interface FixedAxisBeltContinuityResult {
   model: string;
