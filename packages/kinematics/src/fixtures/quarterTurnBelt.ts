@@ -13,7 +13,13 @@ const zeroAngle = quantity(0, 'rad');
  * The lower power pulley axis lies along +X. The upper power pulley and the
  * two side-by-side guide pulleys lie on +Z axes. The guide centers are offset
  * slightly along Z to retain Brown's one-guide-per-belt-leaf arrangement.
- * Exact belt contact/tangent geometry is derived separately from this layout.
+ *
+ * IMPORTANT: these centers/axes capture the intended spatial arrangement, not
+ * a certified tangent/contact route. Brown's two side-by-side guides imply
+ * belt-leaf depth/tracking that a zero-thickness pitch-circle model alone does
+ * not establish. The fixed-axis continuity oracle uses only loop senses,
+ * radii, coordinates, and reference angles; a later route solver must validate
+ * contact geometry before Atlas exposes a SimulationAdapter for Brown 003.
  */
 export const canonicalQuarterTurnBeltModel: SimulationModel = {
   schemaVersion: SIMULATION_MODEL_SCHEMA_VERSION,
