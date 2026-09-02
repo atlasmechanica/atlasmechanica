@@ -59,10 +59,11 @@ export interface FixedAxisBeltContinuityResult {
   angularRatios: Partial<Record<FixedAxisPulleyId, number>>;
   /** Resolved pitch radii used by this oracle, in canonical meters. */
   resolvedPitchRadii: Partial<Record<FixedAxisPulleyId, number>>;
-  /** Ordered pulley/contact-sense profile used by this oracle. */
+  /** Ordered pulley/contact-sense/coordinate profile used by this oracle. */
   contactProfile: readonly Readonly<{
     pulley: FixedAxisPulleyId;
     sense: 1 | -1;
+    coordinate: CoordinateId;
   }>[];
   /** Signed ideal pitch-surface travel in meters, relative to the reference configuration. */
   beltTravel?: number;
@@ -440,6 +441,7 @@ export function evaluateFixedAxisBeltContinuity(
       (contact) => ({
         pulley: contact.pulley.id,
         sense: contact.definition.sense,
+        coordinate: contact.pulley.coordinate,
       }),
     );
 
