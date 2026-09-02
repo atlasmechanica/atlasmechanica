@@ -40,6 +40,11 @@ export interface Brown003MaterialPath {
   model: string;
   /** Brown fixed-axis belt loop this routed path represents. */
   loop: string;
+  /** Ordered pulley/contact-sense profile encoded by the solved routed tracks. */
+  contactProfile: readonly Readonly<{
+    pulley: FixedAxisPulleyId;
+    sense: 1 | -1;
+  }>[];
   /** Closed routed-centerline length in meters. */
   totalLength: number;
   /** Ordered in authored positive loop-travel direction. */
@@ -213,9 +218,11 @@ function closeEnough(a: number, b: number): boolean {
 
 /**
  * Verify that the continuity oracle and routed path came from the same Brown
- * loop and the same absolute resolved pitch radii. Angular ratios alone are not
- * sufficient provenance because uniformly scaling every radius preserves those
- * ratios while changing belt travel and linear speed.
+ * loop, ordered contact-sense profile, and absolute resolved pitch radii.
+ * Angular ratios alone are not sufficient provenance because flipping every
+ * contact sense preserves those ratios while reversing signed belt travel, and
+ * uniformly scaling every radius preserves the ratios while changing travel
+ * and linear speed.
  */
 function assertPathContinuityCompatibility(
   path: Brown003MaterialPath,
@@ -223,6 +230,20 @@ function assertPathContinuityCompatibility(
 ): void {
   if (continuity.loop !== path.loop) {
     throw new TypeError('Brown 003 material path and continuity result use different loops');
+  }
+
+  if (
+    continuity.contactProfile.length !== path.contactProfile.length
+    || path.contactProfile.some((expected, index) => {
+      const actual = continuity.contactProfile[index];
+      return actual === undefined
+        || actual.pulley !== expected.pulley
+        || actual.sense !== expected.sense;
+    })
+  ) {
+    throw new TypeError(
+      'Brown 003 material path and continuity result use incompatible loop contact semantics',
+    );
   }
 
   for (const segment of path.segments) {
@@ -272,6 +293,7 @@ export function buildBrown003MaterialPath(
   ];
 
   const segments: Brown003MaterialPathSegment[] = [];
+  const contactProfile: Array<{ pulley: FixedAxisPulleyId; sense: 1 | -1 }> = [];
   let cursor = 0;
   try {
     for (const spec of specs) {
@@ -294,6 +316,9 @@ export function buildBrown003MaterialPath(
 
       const track = tracks.get(spec.pulley);
       if (track === undefined) throw new TypeError(`Missing Brown 003 pulley track ${spec.pulley}`);
+      if (!Number.isFinite(track.signedWrapAngle) || track.signedWrapAngle === 0) {
+        throw new RangeError(`Brown 003 pulley track ${spec.pulley} has invalid travel sense`);
+      }
       const length = integrateTrackLength(track);
       if (!finitePositive(length)) {
         throw new RangeError(`Brown 003 pulley track ${spec.pulley} has invalid length`);
@@ -304,6 +329,10 @@ export function buildBrown003MaterialPath(
         startArclength: cursor,
         length,
         track,
+      });
+      contactProfile.push({
+        pulley: track.pulley,
+        sense: track.signedWrapAngle > 0 ? 1 : -1,
       });
       cursor += length;
     }
@@ -330,6 +359,7 @@ export function buildBrown003MaterialPath(
     path: {
       model: route.model,
       loop: BROWN_003_LOOP_ID,
+      contactProfile,
       totalLength: cursor,
       segments,
     },
