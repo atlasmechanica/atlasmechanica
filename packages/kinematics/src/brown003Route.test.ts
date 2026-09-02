@@ -119,11 +119,24 @@ describe('Brown 003 routed geometry', () => {
     }
   });
 
+  it('rejects non-finite track sample parameters before interpolation', () => {
+    const route = solveBrown003Route(canonicalQuarterTurnBeltModel);
+    expect(route.diagnostics).toEqual([]);
+    const track = route.tracks[0];
+    if (track === undefined) throw new Error('Missing Brown 003 track');
+
+    for (const t of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(() => sampleBrown003PulleyTrack(track, t)).toThrow(
+        'Brown 003 pulley track sample parameter must be finite',
+      );
+    }
+  });
+
   it('makes lateral tracking slip explicit and keeps the ratio law lumped', () => {
     const route = solveBrown003Route(canonicalQuarterTurnBeltModel);
     expect(route.diagnostics).toEqual([]);
     expect(route.tracks.every(
-      (track) => track.contactKinematics === 'circumferential-traction-with-lateral-tracking-slip',
+      (track) => track.kinematicBoundary === 'lumped-pitch-speed-ratio-with-lateral-tracking-slip',
     )).toBe(true);
     expect(route.tracks.some((track) => track.lateralSlipDistance > 0)).toBe(true);
 
