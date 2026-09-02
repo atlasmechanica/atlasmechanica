@@ -119,7 +119,7 @@ describe('Brown 003 routed geometry', () => {
     }
   });
 
-  it('makes lateral tracking slip explicit instead of claiming full no-slip contact', () => {
+  it('makes lateral tracking slip explicit and keeps the ratio law lumped', () => {
     const route = solveBrown003Route(canonicalQuarterTurnBeltModel);
     expect(route.diagnostics).toEqual([]);
     expect(route.tracks.every(
@@ -130,7 +130,7 @@ describe('Brown 003 routed geometry', () => {
     const assumptions = new Map(
       canonicalQuarterTurnBeltModel.assumptions.map((assumption) => [assumption.id, assumption.text]),
     );
-    expect(assumptions.get('ideal-circumferential-traction')).toContain('no circumferential slip');
+    expect(assumptions.get('ideal-pitch-speed-ratio')).toContain('not a pointwise no-slip contact solution');
     expect(assumptions.get('lateral-tracking-slip')).toContain('lateral tracking slip');
   });
 
