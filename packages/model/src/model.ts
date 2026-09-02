@@ -145,16 +145,20 @@ export interface FixedAxisPulleyDefinition {
   /** Fixed shaft-axis direction. It must be finite and non-zero. */
   axis: readonly [number, number, number];
   pitchRadius: ScalarSource;
-  /** Physical pulley-face width measured along the shaft axis. */
-  faceWidth: QuantityValue;
+  /**
+   * Optional physical pulley-face width measured along the shaft axis.
+   * Route-capable models may require it, but it remains optional in schema 0.1
+   * so earlier fixed-axis model JSON continues to validate safely.
+   */
+  faceWidth?: QuantityValue;
   coordinate: CoordinateId;
 }
 
 /**
  * One contact in loop-travel order. `sense` declares whether positive pulley
- * rotation moves its pitch surface with (+1) or against (-1) that loop travel.
- * It is an authored routing/assembly semantic, analogous to open/crossed
- * routing; it does not by itself prove that a realizable tangent/contact path
+ * rotation moves the pitch surface's circumferential velocity with (+1) or
+ * against (-1) loop travel. It does not prohibit lateral tracking slip across
+ * a pulley face and does not by itself prove that a realizable contact path
  * exists for the authored centers, axes, radii, and pulley widths.
  */
 export interface FixedAxisBeltContactDefinition {
@@ -165,8 +169,11 @@ export interface FixedAxisBeltContactDefinition {
 export interface FixedAxisBeltLoopDefinition {
   id: BeltLoopId;
   label?: string;
-  /** Physical belt width used to validate axial tracking across pulley faces. */
-  beltWidth: QuantityValue;
+  /**
+   * Optional physical belt width used by route-capable models to validate
+   * pulley-face containment. Optional for schema-0.1 compatibility.
+   */
+  beltWidth?: QuantityValue;
   contacts: readonly FixedAxisBeltContactDefinition[];
 }
 
