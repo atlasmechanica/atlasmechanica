@@ -23,6 +23,12 @@ function pulley(id: 'driver' | 'guide-a' | 'driven' | 'guide-b') {
   return value;
 }
 
+function faceWidth(id: 'driver' | 'guide-a' | 'driven' | 'guide-b') {
+  const value = pulley(id).faceWidth;
+  if (value === undefined) throw new Error(`Missing ${id} face width`);
+  return value;
+}
+
 function expectPointClose(actual: readonly number[], expected: readonly number[]) {
   expect(actual).toHaveLength(3);
   expect(expected).toHaveLength(3);
@@ -111,6 +117,21 @@ describe('Brown 003 routed geometry', () => {
         expect(Math.hypot(...radial)).toBeCloseTo(track.radius, 10);
       }
     }
+  });
+
+  it('makes lateral tracking slip explicit instead of claiming full no-slip contact', () => {
+    const route = solveBrown003Route(canonicalQuarterTurnBeltModel);
+    expect(route.diagnostics).toEqual([]);
+    expect(route.tracks.every(
+      (track) => track.contactKinematics === 'circumferential-traction-with-lateral-tracking-slip',
+    )).toBe(true);
+    expect(route.tracks.some((track) => track.lateralSlipDistance > 0)).toBe(true);
+
+    const assumptions = new Map(
+      canonicalQuarterTurnBeltModel.assumptions.map((assumption) => [assumption.id, assumption.text]),
+    );
+    expect(assumptions.get('ideal-circumferential-traction')).toContain('no circumferential slip');
+    expect(assumptions.get('lateral-tracking-slip')).toContain('lateral tracking slip');
   });
 
   it('derives the guide-b travel sense from the realizable tangent branch', () => {
@@ -218,6 +239,20 @@ describe('Brown 003 routed geometry', () => {
     expect(route.diagnostics[0]?.message).toContain('straddle the driver center plane');
   });
 
+  it('rejects unknown parameter overrides in route and continuity requests', () => {
+    const route = solveBrown003Route(canonicalQuarterTurnBeltModel, {
+      parameters: { 'driver-raduis': quantity(30, 'mm') },
+    });
+    expect(route.diagnostics[0]?.code).toBe('invalid-input');
+    expect(route.diagnostics[0]?.message).toContain('Unknown parameter override driver-raduis');
+
+    const continuity = evaluateFixedAxisBeltContinuity(canonicalQuarterTurnBeltModel, {
+      parameters: { 'driver-raduis': quantity(30, 'mm') },
+    });
+    expect(continuity.diagnostics[0]?.code).toBe('invalid-input');
+    expect(continuity.diagnostics[0]?.message).toContain('Unknown parameter override driver-raduis');
+  });
+
   it('rejects invalid pulley face widths at shared model validation', () => {
     const driver = pulley('driver');
     const invalid = withPulley('driver', {
@@ -253,6 +288,32 @@ describe('Brown 003 routed geometry', () => {
     expect(solveBrown003Route(invalid).diagnostics[0]?.code).toBe('invalid-model');
   });
 
+  it('keeps schema-0.1 fixed-axis models without width fields validation-safe', () => {
+    const fixedAxisBelt = system();
+    const loop = fixedAxisBelt.loops['main-belt'];
+    const driver = fixedAxisBelt.pulleys.driver;
+    if (loop === undefined || driver === undefined) throw new Error('Missing canonical route data');
+
+    const { faceWidth: _faceWidth, ...legacyDriver } = driver;
+    const { beltWidth: _beltWidth, ...legacyLoop } = loop;
+    const legacy: SimulationModel = {
+      ...canonicalQuarterTurnBeltModel,
+      systems: {
+        fixedAxisBelt: {
+          ...fixedAxisBelt,
+          pulleys: { ...fixedAxisBelt.pulleys, driver: legacyDriver },
+          loops: { ...fixedAxisBelt.loops, 'main-belt': legacyLoop },
+        },
+      },
+    };
+
+    expect(() => validateSimulationModel(legacy)).not.toThrow();
+    expect(validateSimulationModel(legacy)).toEqual([]);
+    const route = solveBrown003Route(legacy);
+    expect(route.diagnostics[0]?.code).toBe('invalid-input');
+    expect(route.diagnostics[0]?.message).toContain('face width is required');
+  });
+
   it('normalizes every nonzero axis magnitude accepted by model validation', () => {
     const fixedAxisBelt = system();
     const driver = pulley('driver');
@@ -278,9 +339,9 @@ describe('Brown 003 routed geometry', () => {
   });
 
   it('keeps the reference face dimensions explicitly editorial rather than inferred from Brown', () => {
-    expect(canonicalNumber(pulley('driver').faceWidth, 'length')).toBeCloseTo(0.1, 12);
-    expect(canonicalNumber(pulley('guide-a').faceWidth, 'length')).toBeCloseTo(0.11, 12);
-    expect(canonicalNumber(pulley('driven').faceWidth, 'length')).toBeCloseTo(0.11, 12);
-    expect(canonicalNumber(pulley('guide-b').faceWidth, 'length')).toBeCloseTo(0.03, 12);
+    expect(canonicalNumber(faceWidth('driver'), 'length')).toBeCloseTo(0.1, 12);
+    expect(canonicalNumber(faceWidth('guide-a'), 'length')).toBeCloseTo(0.11, 12);
+    expect(canonicalNumber(faceWidth('driven'), 'length')).toBeCloseTo(0.11, 12);
+    expect(canonicalNumber(faceWidth('guide-b'), 'length')).toBeCloseTo(0.03, 12);
   });
 });
