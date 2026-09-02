@@ -445,6 +445,10 @@ export function resolveBrown003MaterialPhase(
  * traction, adhesion-zone, pressure, or elastic-creep solution. Negative rates
  * are evaluated algebraically but do not certify that reverse operation is
  * physically self-tracking.
+ *
+ * The replay model contributes identity only. Pulley-to-coordinate bindings
+ * come from the successful continuity result so another same-id model cannot
+ * redirect the surface-velocity lookup.
  */
 export function sampleBrown003MaterialMotion(
   model: SimulationModel,
@@ -470,12 +474,15 @@ export function sampleBrown003MaterialMotion(
     return { ...sample, materialVelocity };
   }
 
-  const system = model.systems.fixedAxisBelt;
-  const pulley = system?.pulleys[segment.track.pulley];
-  if (pulley === undefined) {
-    throw new TypeError(`Missing Brown 003 pulley ${segment.track.pulley}`);
+  const contact = continuity.contactProfile.find(
+    (item) => item.pulley === segment.track.pulley,
+  );
+  if (contact === undefined) {
+    throw new TypeError(
+      `Missing Brown 003 coordinate provenance for ${segment.track.pulley}`,
+    );
   }
-  const angularVelocity = continuity.coordinates[pulley.coordinate]?.velocity;
+  const angularVelocity = continuity.coordinates[contact.coordinate]?.velocity;
   if (angularVelocity === undefined) {
     throw new TypeError(`Missing Brown 003 angular velocity for ${segment.track.pulley}`);
   }
