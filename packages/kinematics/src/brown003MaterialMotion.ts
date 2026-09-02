@@ -15,6 +15,7 @@ import type { FixedAxisBeltContinuityResult } from './fixedAxisBeltContinuity.js
 
 type Vec3 = readonly [number, number, number];
 
+const BROWN_003_LOOP_ID = 'main-belt';
 const TRACK_ARCLENGTH_STEPS = 64;
 const TRACK_INVERSION_STEPS = 36;
 const CONTINUITY_COMPATIBILITY_TOLERANCE = 1e-8;
@@ -37,6 +38,8 @@ export type Brown003MaterialPathSegment =
 
 export interface Brown003MaterialPath {
   model: string;
+  /** Brown fixed-axis belt loop this routed path represents. */
+  loop: string;
   /** Closed routed-centerline length in meters. */
   totalLength: number;
   /** Ordered in authored positive loop-travel direction. */
@@ -209,32 +212,28 @@ function closeEnough(a: number, b: number): boolean {
 }
 
 /**
- * Verify that the continuity ratios and routed pitch radii came from the same
- * resolved Brown parameter set. Model ids alone are not enough because two
- * requests may use different parameter overrides for the same model.
+ * Verify that the continuity oracle and routed path came from the same Brown
+ * loop and the same absolute resolved pitch radii. Angular ratios alone are not
+ * sufficient provenance because uniformly scaling every radius preserves those
+ * ratios while changing belt travel and linear speed.
  */
 function assertPathContinuityCompatibility(
   path: Brown003MaterialPath,
   continuity: FixedAxisBeltContinuityResult,
 ): void {
-  const driverSegment = path.segments.find(
-    (segment) => segment.kind === 'pulley-track' && segment.track.pulley === 'driver',
-  );
-  if (driverSegment === undefined || driverSegment.kind !== 'pulley-track') {
-    throw new TypeError('Brown 003 material path is missing its driver track');
+  if (continuity.loop !== path.loop) {
+    throw new TypeError('Brown 003 material path and continuity result use different loops');
   }
 
-  const driverRadius = driverSegment.track.radius;
   for (const segment of path.segments) {
     if (segment.kind !== 'pulley-track') continue;
-    const ratio = continuity.angularRatios[segment.track.pulley];
-    if (ratio === undefined || !Number.isFinite(ratio)) {
+    const resolvedRadius = continuity.resolvedPitchRadii[segment.track.pulley];
+    if (!finitePositive(resolvedRadius ?? Number.NaN)) {
       throw new TypeError(
-        `Brown 003 material motion is missing the lumped ratio for ${segment.track.pulley}`,
+        `Brown 003 material motion is missing resolved pitch-radius provenance for ${segment.track.pulley}`,
       );
     }
-    const impliedDriverRadius = Math.abs(ratio) * segment.track.radius;
-    if (!closeEnough(impliedDriverRadius, driverRadius)) {
+    if (!closeEnough(resolvedRadius ?? Number.NaN, segment.track.radius)) {
       throw new TypeError(
         'Brown 003 material path and continuity result use incompatible resolved pitch radii',
       );
@@ -328,7 +327,12 @@ export function buildBrown003MaterialPath(
 
   return {
     model: route.model,
-    path: { model: route.model, totalLength: cursor, segments },
+    path: {
+      model: route.model,
+      loop: BROWN_003_LOOP_ID,
+      totalLength: cursor,
+      segments,
+    },
     diagnostics: [],
   };
 }
