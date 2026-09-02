@@ -282,7 +282,7 @@ describe('Brown 003 prescribed material motion', () => {
     );
   });
 
-  it('does not consult a same-id replay model for pulley coordinate bindings', () => {
+  it('does not consult a valid same-id replay model for pulley coordinate bindings', () => {
     const path = canonicalPath();
     const continuity = evaluateFixedAxisBeltContinuity(canonicalQuarterTurnBeltModel, {
       rates: { 'driver-angle': quantity(2, 'rad/s') },
@@ -291,26 +291,46 @@ describe('Brown 003 prescribed material motion', () => {
 
     const system = canonicalQuarterTurnBeltModel.systems.fixedAxisBelt;
     const loop = system?.loops['main-belt'];
-    const driven = system?.pulleys.driven;
     const guideA = system?.pulleys['guide-a'];
+    const reference = canonicalQuarterTurnBeltModel.configurations.reference;
     if (
       system === undefined
       || loop === undefined
-      || driven === undefined
       || guideA === undefined
+      || reference === undefined
     ) {
       throw new Error('Missing Brown 003 replay topology');
     }
 
     const foreignReplayModel: SimulationModel = {
       ...canonicalQuarterTurnBeltModel,
+      coordinates: {
+        ...canonicalQuarterTurnBeltModel.coordinates,
+        'alternate-guide-a-angle': {
+          id: 'alternate-guide-a-angle',
+          label: 'Alternate Guide A angle',
+          type: 'angle',
+          role: 'internal',
+          unit: 'rad',
+          periodic: true,
+        },
+      },
+      configurations: {
+        ...canonicalQuarterTurnBeltModel.configurations,
+        reference: {
+          ...reference,
+          coordinates: {
+            ...reference.coordinates,
+            'alternate-guide-a-angle': quantity(0, 'rad'),
+          },
+        },
+      },
       systems: {
         fixedAxisBelt: {
           ...system,
           pulleys: {
             ...system.pulleys,
-            driven: { ...driven, coordinate: guideA.coordinate },
-            'guide-a': { ...guideA, coordinate: driven.coordinate },
+            'guide-a': { ...guideA, coordinate: 'alternate-guide-a-angle' },
           },
           loops: {
             ...system.loops,
@@ -324,13 +344,13 @@ describe('Brown 003 prescribed material motion', () => {
     };
     expect(validateSimulationModel(foreignReplayModel)).toEqual([]);
 
-    const drivenSegment = path.segments.find(
-      (segment) => segment.kind === 'pulley-track' && segment.track.pulley === 'driven',
+    const guideASegment = path.segments.find(
+      (segment) => segment.kind === 'pulley-track' && segment.track.pulley === 'guide-a',
     );
-    if (drivenSegment === undefined || drivenSegment.kind !== 'pulley-track') {
-      throw new Error('Missing driven material segment');
+    if (guideASegment === undefined || guideASegment.kind !== 'pulley-track') {
+      throw new Error('Missing guide A material segment');
     }
-    const arclength = drivenSegment.startArclength + drivenSegment.length / 2;
+    const arclength = guideASegment.startArclength + guideASegment.length / 2;
     const baseline = sampleBrown003MaterialMotion(
       canonicalQuarterTurnBeltModel,
       path,
