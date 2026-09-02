@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { canonicalNumber, quantity } from '@atlasmechanica/model';
+import { canonicalNumber, quantity, type SimulationModel } from '@atlasmechanica/model';
 import {
   buildBrown003MaterialPath,
   resolveBrown003MaterialPhase,
@@ -28,7 +28,7 @@ function magnitude(vector: readonly number[]): number {
   return Math.hypot(...vector);
 }
 
-function dot(a: readonly number[], b: readonly number[]): number {
+function dot(a: readonly number[], b: readonly number[]) {
   return (a[0] ?? 0) * (b[0] ?? 0)
     + (a[1] ?? 0) * (b[1] ?? 0)
     + (a[2] ?? 0) * (b[2] ?? 0);
@@ -54,6 +54,12 @@ describe('Brown 003 prescribed material motion', () => {
   it('builds one closed eight-segment route with a finite positive loop length', () => {
     const path = canonicalPath();
     expect(path.loop).toBe('main-belt');
+    expect(path.contactProfile).toEqual([
+      { pulley: 'driver', sense: 1 },
+      { pulley: 'guide-a', sense: 1 },
+      { pulley: 'driven', sense: 1 },
+      { pulley: 'guide-b', sense: 1 },
+    ]);
     expect(path.totalLength).toBeGreaterThan(0);
     expect(Number.isFinite(path.totalLength)).toBe(true);
     expect(path.segments.map((segment) => segment.id)).toEqual([
@@ -214,6 +220,60 @@ describe('Brown 003 prescribed material motion', () => {
       0,
     )).toThrow(
       'Brown 003 material path and continuity result use different loops',
+    );
+  });
+
+  it('rejects same-id continuity with reversed Brown loop contact semantics', () => {
+    const path = canonicalPath();
+    const system = canonicalQuarterTurnBeltModel.systems.fixedAxisBelt;
+    const loop = system?.loops['main-belt'];
+    if (system === undefined || loop === undefined) throw new Error('Missing Brown 003 loop');
+
+    const reversedModel: SimulationModel = {
+      ...canonicalQuarterTurnBeltModel,
+      systems: {
+        fixedAxisBelt: {
+          ...system,
+          loops: {
+            ...system.loops,
+            'main-belt': {
+              ...loop,
+              contacts: loop.contacts.map((contact) => ({ ...contact, sense: -1 as const })),
+            },
+          },
+        },
+      },
+    };
+    const continuity = evaluateFixedAxisBeltContinuity(reversedModel, {
+      coordinates: { 'driver-angle': quantity(0.5, 'rad') },
+      rates: { 'driver-angle': quantity(1, 'rad/s') },
+    });
+    const baseline = evaluateFixedAxisBeltContinuity(canonicalQuarterTurnBeltModel, {
+      coordinates: { 'driver-angle': quantity(0.5, 'rad') },
+      rates: { 'driver-angle': quantity(1, 'rad/s') },
+    });
+    expect(continuity.diagnostics).toEqual([]);
+    expect(continuity.angularRatios).toEqual(baseline.angularRatios);
+    expect(continuity.resolvedPitchRadii).toEqual(baseline.resolvedPitchRadii);
+    expect(continuity.contactProfile).toEqual([
+      { pulley: 'driver', sense: -1 },
+      { pulley: 'guide-a', sense: -1 },
+      { pulley: 'driven', sense: -1 },
+      { pulley: 'guide-b', sense: -1 },
+    ]);
+    expect(continuity.beltTravel).toBeCloseTo(-(baseline.beltTravel ?? Number.NaN), 12);
+    expect(continuity.beltLinearSpeed).toBeCloseTo(-(baseline.beltLinearSpeed ?? Number.NaN), 12);
+
+    expect(() => resolveBrown003MaterialPhase(path, continuity)).toThrow(
+      'Brown 003 material path and continuity result use incompatible loop contact semantics',
+    );
+    expect(() => sampleBrown003MaterialMotion(
+      canonicalQuarterTurnBeltModel,
+      path,
+      continuity,
+      0,
+    )).toThrow(
+      'Brown 003 material path and continuity result use incompatible loop contact semantics',
     );
   });
 
