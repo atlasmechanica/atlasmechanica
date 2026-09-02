@@ -48,6 +48,34 @@ function hasErrors(diagnostics: readonly Diagnostic[]): boolean {
   return diagnostics.some((diagnostic) => diagnostic.severity === 'error');
 }
 
+function copyOwnOverride(
+  target: Partial<Record<ParameterId, QuantityValue>>,
+  source: Partial<Record<ParameterId, QuantityValue>>,
+  key: PropertyKey,
+): void {
+  const descriptor = Object.getOwnPropertyDescriptor(source, key);
+  if (descriptor === undefined) {
+    throw new TypeError(`Missing parameter override descriptor ${String(key)}`);
+  }
+
+  if ('value' in descriptor) {
+    Object.defineProperty(target, key, {
+      value: descriptor.value,
+      enumerable: descriptor.enumerable,
+      configurable: true,
+      writable: true,
+    });
+    return;
+  }
+
+  Object.defineProperty(target, key, {
+    get: descriptor.get,
+    set: descriptor.set,
+    enumerable: descriptor.enumerable,
+    configurable: true,
+  });
+}
+
 function cloneOwnOverrides(
   source: Partial<Record<ParameterId, QuantityValue>> | undefined,
 ): Partial<Record<ParameterId, QuantityValue>> {
@@ -55,12 +83,7 @@ function cloneOwnOverrides(
   if (source === undefined) return target;
 
   for (const key of Reflect.ownKeys(source)) {
-    Object.defineProperty(target, key, {
-      value: Reflect.get(source, key),
-      enumerable: true,
-      configurable: true,
-      writable: true,
-    });
+    copyOwnOverride(target, source, key);
   }
   return target;
 }
@@ -73,12 +96,7 @@ function mergeOwnOverrides(
   if (request === undefined) return merged;
 
   for (const key of Reflect.ownKeys(request)) {
-    Object.defineProperty(merged, key, {
-      value: Reflect.get(request, key),
-      enumerable: true,
-      configurable: true,
-      writable: true,
-    });
+    copyOwnOverride(merged, request, key);
   }
   return merged;
 }
