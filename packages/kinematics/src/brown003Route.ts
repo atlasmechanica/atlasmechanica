@@ -186,14 +186,19 @@ function resolveParameters(
     ) {
       throw new RangeError(`Unknown parameter override ${String(key)}`);
     }
+    if (overrides[key] === undefined) {
+      throw new TypeError(`Parameter override ${key} must be defined`);
+    }
   }
 
   const values: ParameterValues = {};
   for (const [id, definition] of Object.entries(model.parameters)) {
-    const override = Object.prototype.hasOwnProperty.call(overrides, id)
+    const authored = Object.prototype.hasOwnProperty.call(overrides, id)
       ? overrides[id]
-      : undefined;
-    const authored = override ?? definition.default;
+      : definition.default;
+    if (authored === undefined) {
+      throw new TypeError(`Parameter override ${id} must be defined`);
+    }
     const value = assertFinite(canonicalNumber(authored, definition.kind), id);
     if (definition.domain?.min !== undefined) {
       const minimum = assertFinite(
