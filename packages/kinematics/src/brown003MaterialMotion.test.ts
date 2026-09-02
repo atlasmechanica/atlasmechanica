@@ -53,6 +53,7 @@ function segmentEnd(segment: Brown003MaterialPathSegment): Vec3 {
 describe('Brown 003 prescribed material motion', () => {
   it('builds one closed eight-segment route with a finite positive loop length', () => {
     const path = canonicalPath();
+    expect(path.loop).toBe('main-belt');
     expect(path.totalLength).toBeGreaterThan(0);
     expect(Number.isFinite(path.totalLength)).toBe(true);
     expect(path.segments.map((segment) => segment.id)).toEqual([
@@ -158,6 +159,61 @@ describe('Brown 003 prescribed material motion', () => {
       0,
     )).toThrow(
       'Brown 003 material path and continuity result use incompatible resolved pitch radii',
+    );
+  });
+
+  it('rejects uniformly scaled continuity radii even when every angular ratio is unchanged', () => {
+    const path = canonicalPath();
+    const continuity = evaluateFixedAxisBeltContinuity(canonicalQuarterTurnBeltModel, {
+      parameters: {
+        'driver-radius': quantity(22.5, 'mm'),
+        'driven-radius': quantity(30, 'mm'),
+        'guide-radius': quantity(10, 'mm'),
+      },
+      coordinates: { 'driver-angle': quantity(0.5, 'rad') },
+      rates: { 'driver-angle': quantity(1, 'rad/s') },
+    });
+    const baseline = evaluateFixedAxisBeltContinuity(canonicalQuarterTurnBeltModel, {
+      coordinates: { 'driver-angle': quantity(0.5, 'rad') },
+      rates: { 'driver-angle': quantity(1, 'rad/s') },
+    });
+    expect(continuity.diagnostics).toEqual([]);
+    expect(continuity.angularRatios).toEqual(baseline.angularRatios);
+    expect(continuity.resolvedPitchRadii.driver).toBeCloseTo(0.0225, 12);
+    expect(continuity.beltLinearSpeed).toBeCloseTo((baseline.beltLinearSpeed ?? Number.NaN) / 2, 12);
+
+    expect(() => resolveBrown003MaterialPhase(path, continuity)).toThrow(
+      'Brown 003 material path and continuity result use incompatible resolved pitch radii',
+    );
+    expect(() => sampleBrown003MaterialMotion(
+      canonicalQuarterTurnBeltModel,
+      path,
+      continuity,
+      0,
+    )).toThrow(
+      'Brown 003 material path and continuity result use incompatible resolved pitch radii',
+    );
+  });
+
+  it('rejects continuity results carrying different loop provenance', () => {
+    const path = canonicalPath();
+    const continuity = evaluateFixedAxisBeltContinuity(canonicalQuarterTurnBeltModel, {
+      coordinates: { 'driver-angle': quantity(0.5, 'rad') },
+      rates: { 'driver-angle': quantity(1, 'rad/s') },
+    });
+    expect(continuity.diagnostics).toEqual([]);
+    const wrongLoop = { ...continuity, loop: 'other-loop' };
+
+    expect(() => resolveBrown003MaterialPhase(path, wrongLoop)).toThrow(
+      'Brown 003 material path and continuity result use different loops',
+    );
+    expect(() => sampleBrown003MaterialMotion(
+      canonicalQuarterTurnBeltModel,
+      path,
+      wrongLoop,
+      0,
+    )).toThrow(
+      'Brown 003 material path and continuity result use different loops',
     );
   });
 
