@@ -179,7 +179,7 @@ function resolveParameters(
   overrides: Partial<Record<ParameterId, QuantityValue>>,
 ): ParameterValues {
   for (const id of Object.keys(overrides)) {
-    if (model.parameters[id] === undefined) {
+    if (!Object.prototype.hasOwnProperty.call(model.parameters, id)) {
       throw new RangeError(`Unknown parameter override ${id}`);
     }
   }
