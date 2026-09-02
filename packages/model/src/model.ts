@@ -151,7 +151,9 @@ export interface FixedAxisPulleyDefinition {
 /**
  * One contact in loop-travel order. `sense` declares whether positive pulley
  * rotation moves its pitch surface with (+1) or against (-1) that loop travel.
- * It is a physical routing/assembly choice, analogous to open/crossed routing.
+ * It is an authored routing/assembly semantic, analogous to open/crossed
+ * routing; it does not by itself prove that a realizable tangent/contact path
+ * exists for the authored centers, axes, radii, and pulley widths.
  */
 export interface FixedAxisBeltContactDefinition {
   pulley: FixedAxisPulleyId;
@@ -165,8 +167,9 @@ export interface FixedAxisBeltLoopDefinition {
 }
 
 /**
- * Fixed-axis spatial belt transmission. This supports routed belts such as
- * Brown 003 without widening every Atlas body/joint into a general 3D solver.
+ * Fixed-axis spatial belt transmission semantics. Geometry-capable simulation
+ * adapters must independently establish a realizable route before advertising
+ * kinematic capabilities for one of these systems.
  */
 export interface FixedAxisBeltSystemDefinition {
   dimensionality: 'spatial-fixed-axis';
