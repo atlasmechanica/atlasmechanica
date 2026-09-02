@@ -23,6 +23,7 @@ import {
 import { solveBrown003Route } from './brown003Route.js';
 import {
   evaluateFixedAxisBeltContinuity,
+  type FixedAxisBeltContinuityRequest,
   type FixedAxisBeltContinuityResult,
 } from './fixedAxisBeltContinuity.js';
 
@@ -171,13 +172,20 @@ class SpatialBeltSession implements ModelSession {
   evaluate(request: EvaluationRequest = {}): ModelState {
     const model = this.compiled.model;
     const parameters = mergeOwnOverrides(this.parameters, request.parameters);
-    const continuity = evaluateFixedAxisBeltContinuity(model, {
+    const continuityRequest: FixedAxisBeltContinuityRequest = {
       configuration: this.configuration,
-      coordinates: request.coordinates,
-      rates: request.rates,
-      accelerations: request.accelerations,
       parameters,
-    });
+    };
+    if (request.coordinates !== undefined) {
+      continuityRequest.coordinates = request.coordinates;
+    }
+    if (request.rates !== undefined) {
+      continuityRequest.rates = request.rates;
+    }
+    if (request.accelerations !== undefined) {
+      continuityRequest.accelerations = request.accelerations;
+    }
+    const continuity = evaluateFixedAxisBeltContinuity(model, continuityRequest);
 
     if (hasErrors(continuity.diagnostics)) {
       return stateFromContinuity(
@@ -276,11 +284,11 @@ class SpatialBeltCompiledModel implements CompiledModel {
 export const spatialBeltAdapter: SimulationAdapter = Object.freeze({
   id: 'atlas.spatial-belt.v0',
 
-  supports(model): boolean {
+  supports(model: SimulationModel): boolean {
     return adapterIdentityMatches(model);
   },
 
-  compile(model): CompiledModel {
+  compile(model: SimulationModel): CompiledModel {
     const diagnostics = validateSimulationModel(model);
     if (hasErrors(diagnostics)) {
       throw new TypeError(diagnostics.map((diagnostic) => diagnostic.message).join('; '));
