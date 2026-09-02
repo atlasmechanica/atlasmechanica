@@ -37,18 +37,19 @@ export interface FixedAxisBeltContinuityRequest extends EvaluationRequest {
 }
 
 /**
- * Algebraic circumferential-traction continuity result for a fixed-axis belt loop.
+ * Lumped ideal transmission-ratio result for a fixed-axis belt loop.
  *
  * This is intentionally not a SimulationAdapter and exposes no solver
- * capabilities. It answers only: if the authored loop exists and the belt has
- * no circumferential slip at the pitch surfaces, what angular continuity follows
- * from its radii and contact senses?
+ * capabilities. It applies the familiar ideal pitch-speed relation `v = rω`
+ * to derive angular continuity from radii and contact senses. That relation is
+ * a reduced transmission law, not a pointwise solution of belt/pulley contact
+ * velocity over a finite-width face.
  *
- * This does not assert zero relative velocity in every surface direction.
- * Route-capable flat-belt models may include lateral tracking/creep across a
- * pulley face while still using this ideal circumferential ωr relationship.
- * Centers and axes are validated as model data, but this function does not
- * inspect them and does not certify tangent/contact feasibility.
+ * Route-capable flat-belt models may require lateral tracking slip and other
+ * local creep that this oracle does not solve. A future adapter must therefore
+ * not treat this result plus a routed centerline as proof of locally no-slip
+ * material motion. Centers and axes are validated as model data, but this
+ * function does not inspect them or certify tangent/contact feasibility.
  */
 export interface FixedAxisBeltContinuityResult {
   model: string;
@@ -56,9 +57,9 @@ export interface FixedAxisBeltContinuityResult {
   loop?: BeltLoopId;
   coordinates: Partial<Record<CoordinateId, CoordinateState>>;
   angularRatios: Partial<Record<FixedAxisPulleyId, number>>;
-  /** Signed circumferential belt travel in meters, relative to the reference configuration. */
+  /** Signed ideal pitch-surface travel in meters, relative to the reference configuration. */
   beltTravel?: number;
-  /** Signed circumferential belt speed in meters per second when a driver rate is supplied. */
+  /** Signed ideal pitch-surface speed in meters per second when a driver rate is supplied. */
   beltLinearSpeed?: number;
   diagnostics: Diagnostic[];
 }
