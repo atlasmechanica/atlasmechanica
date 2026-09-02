@@ -40,11 +40,16 @@ function validateFiniteQuantity(
 }
 
 function validatePositiveLengthQuantity(
-  value: QuantityValue,
+  value: QuantityValue | undefined,
   location: string,
   message: string,
   diagnostics: Diagnostic[],
 ): void {
+  // faceWidth/beltWidth were introduced additively while schemaVersion remains
+  // 0.1. Their absence is therefore valid legacy data; route-capable solvers
+  // are responsible for requiring them when needed.
+  if (value === undefined) return;
+
   validateFiniteQuantity(value, location, diagnostics);
   if (quantityKind(value) !== 'length' || !(value.value > 0)) {
     diagnostics.push(
