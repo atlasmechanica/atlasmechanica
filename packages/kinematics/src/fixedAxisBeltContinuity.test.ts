@@ -26,12 +26,12 @@ function fixedAxisSystem() {
 }
 
 describe('fixed-axis belt continuity oracle', () => {
-  it('does not export a spatial SimulationAdapter before route geometry exists', () => {
+  it('keeps the spatial SimulationAdapter absent until local slip/creep material motion is defined', () => {
     expect('spatialBeltAdapter' in kinematics).toBe(false);
     expect('evaluateFixedAxisBeltContinuity' in kinematics).toBe(true);
   });
 
-  it('preserves one signed no-slip belt speed across all four Brown 003 contacts', () => {
+  it('preserves one signed lumped pitch-speed reference across all four Brown 003 contacts', () => {
     const result = evaluateFixedAxisBeltContinuity(canonicalQuarterTurnBeltModel, {
       configuration: 'reference',
       coordinates: { 'driver-angle': quantity(90, 'deg') },
@@ -191,6 +191,48 @@ describe('fixed-axis belt continuity oracle', () => {
 
     expect(validateSimulationModel(scaled)).toEqual([]);
     expect(evaluateFixedAxisBeltContinuity(scaled).diagnostics).toEqual([]);
+  });
+
+  it('rejects malformed runtime fixed-axis vector shapes before continuity evaluation', () => {
+    const system = fixedAxisSystem();
+    const driver = system.pulleys.driver;
+    if (driver === undefined) throw new Error('Missing Brown 003 driver');
+
+    const sparseAxis = new Array(3) as number[];
+    sparseAxis[0] = 1;
+    sparseAxis[2] = 0;
+    const malformedAxes: number[][] = [
+      [1],
+      [1, 0],
+      sparseAxis,
+      [1, 0, 0, 0],
+    ];
+
+    for (const runtimeAxis of malformedAxes) {
+      const invalid: SimulationModel = {
+        ...canonicalQuarterTurnBeltModel,
+        systems: {
+          fixedAxisBelt: {
+            ...system,
+            pulleys: {
+              ...system.pulleys,
+              driver: {
+                ...driver,
+                axis: runtimeAxis as unknown as readonly [number, number, number],
+              },
+            },
+          },
+        },
+      };
+
+      const diagnostics = validateSimulationModel(invalid);
+      expect(diagnostics.map((item) => item.message)).toContain(
+        'Fixed-axis pulley axis must contain exactly three finite components and be non-zero',
+      );
+      const result = evaluateFixedAxisBeltContinuity(invalid);
+      expect(result.diagnostics.some((item) => item.code === 'invalid-model')).toBe(true);
+      expect(result.coordinates).toEqual({});
+    }
   });
 
   it('rejects configuration-less models through shared validation', () => {
