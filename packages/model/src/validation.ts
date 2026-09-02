@@ -211,7 +211,7 @@ function validateFixedAxisBeltSystem(
         (index) => Object.prototype.hasOwnProperty.call(runtimeAxis, index)
           && Number.isFinite(runtimeAxis[index]),
       )
-      && Math.hypot(runtimeAxis[0], runtimeAxis[1], runtimeAxis[2]) > 1e-12;
+      && runtimeAxis.some((component) => component !== 0);
     if (!validAxis) {
       diagnostics.push(
         invalidModel(
