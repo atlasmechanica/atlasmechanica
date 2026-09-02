@@ -16,6 +16,10 @@ function inheritedNameOverride(): Record<string, QuantityValue> {
   return overrides;
 }
 
+function inheritedValidOverride(): Record<string, QuantityValue> {
+  return Object.create({ 'driver-radius': quantity(30, 'mm') }) as Record<string, QuantityValue>;
+}
+
 describe('fixed-axis parameter override safety', () => {
   it('rejects own override keys that collide with Object.prototype names', () => {
     const route = solveBrown003Route(canonicalQuarterTurnBeltModel, {
@@ -31,5 +35,22 @@ describe('fixed-axis parameter override safety', () => {
     expect(continuity.diagnostics[0]?.code).toBe('invalid-input');
     expect(continuity.diagnostics[0]?.message).toContain('Unknown parameter override toString');
     expect(continuity.coordinates).toEqual({});
+  });
+
+  it('ignores inherited values for declared parameter ids', () => {
+    const baselineRoute = solveBrown003Route(canonicalQuarterTurnBeltModel);
+    const inheritedRoute = solveBrown003Route(canonicalQuarterTurnBeltModel, {
+      parameters: inheritedValidOverride(),
+    });
+    expect(inheritedRoute).toEqual(baselineRoute);
+
+    const baselineContinuity = evaluateFixedAxisBeltContinuity(canonicalQuarterTurnBeltModel, {
+      rates: { 'driver-angle': quantity(1, 'rad/s') },
+    });
+    const inheritedContinuity = evaluateFixedAxisBeltContinuity(canonicalQuarterTurnBeltModel, {
+      parameters: inheritedValidOverride(),
+      rates: { 'driver-angle': quantity(1, 'rad/s') },
+    });
+    expect(inheritedContinuity).toEqual(baselineContinuity);
   });
 });
