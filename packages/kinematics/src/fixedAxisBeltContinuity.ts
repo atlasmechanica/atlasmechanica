@@ -100,9 +100,12 @@ function resolveParameters(
   model: SimulationModel,
   overrides: Partial<Record<ParameterId, QuantityValue>>,
 ): ParameterValues {
-  for (const id of Object.keys(overrides)) {
-    if (!Object.prototype.hasOwnProperty.call(model.parameters, id)) {
-      throw new RangeError(`Unknown parameter override ${id}`);
+  for (const key of Reflect.ownKeys(overrides)) {
+    if (
+      typeof key !== 'string'
+      || !Object.prototype.hasOwnProperty.call(model.parameters, key)
+    ) {
+      throw new RangeError(`Unknown parameter override ${String(key)}`);
     }
   }
 
