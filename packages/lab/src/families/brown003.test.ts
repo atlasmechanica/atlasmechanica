@@ -57,10 +57,12 @@ describe('Brown 003 mechanism lab binding', () => {
 
   it('advertises only the truthful 2D projection until a real spatial renderer exists', () => {
     expect(brown003QuarterTurnLab.views).toEqual(['2d']);
-    expect(brown003QuarterTurnLab.threeRendererId).toBeUndefined();
-    expect(brown003QuarterTurnLab.controls.find(
+    expect('threeRendererId' in brown003QuarterTurnLab).toBe(false);
+    const driverControl = brown003QuarterTurnLab.controls.find(
       (control) => control.id === 'driver-angle',
-    )?.interaction).toBeUndefined();
+    );
+    expect(driverControl).toBeDefined();
+    expect(driverControl !== undefined && 'interaction' in driverControl).toBe(false);
   });
 
   it('leaves the established open and crossed belt presentations unchanged', () => {
