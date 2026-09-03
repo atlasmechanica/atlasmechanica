@@ -1,10 +1,15 @@
 import {
   analyticBeltAdapter,
+  canonicalQuarterTurnBeltModel,
   crossedBeltDriveModel,
   openBeltDriveModel,
+  spatialBeltAdapter,
 } from '@atlasmechanica/kinematics';
 import { quantity, type SimulationModel } from '@atlasmechanica/model';
-import { brownBeltSceneCompiler } from '@atlasmechanica/scene/compilers';
+import {
+  brown003SpatialSceneCompiler,
+  brownBeltSceneCompiler,
+} from '@atlasmechanica/scene/compilers';
 import type { MechanismLabFamily } from '../family.js';
 import {
   MECHANISM_LAB_SCHEMA_VERSION,
@@ -137,6 +142,75 @@ function beltDriveLab(modelId: 'foundation:belt-drive:open' | 'foundation:belt-d
 export const openBeltDriveLab = beltDriveLab('foundation:belt-drive:open');
 export const crossedBeltDriveLab = beltDriveLab('foundation:belt-drive:crossed');
 
+export const brown003QuarterTurnLab = defineMechanismLab({
+  schemaVersion: MECHANISM_LAB_SCHEMA_VERSION,
+  id: 'lab:foundation:belt-drive:quarter-turn-guided:brown-003',
+  modelId: 'foundation:belt-drive:quarter-turn-guided',
+  defaultForModel: true,
+  subtitle: 'spatial · prescribed routed slip',
+  sceneCompilerId: 'atlas.scene.brown-003-spatial.v0',
+  sessionConfiguration: 'reference',
+  views: ['2d'],
+  controls: [
+    {
+      id: 'driver-angle',
+      kind: 'coordinate',
+      coordinate: 'driver-angle',
+      label: 'Input angle',
+      unit: 'deg',
+      min: 0,
+      max: 360,
+      step: 1,
+      initial: 0,
+      queryKey: 'angle',
+    },
+    {
+      id: 'driver-speed',
+      kind: 'rate',
+      coordinate: 'driver-angle',
+      label: 'Driver speed',
+      unit: 'rpm',
+      min: 10,
+      max: 120,
+      step: 1,
+      initial: 30,
+      queryKey: 'rpm',
+    },
+  ],
+  readouts: [
+    {
+      id: 'speed-ratio',
+      label: 'Output speed ratio',
+      source: { kind: 'signal', signal: 'output-angular-ratio' },
+      absolute: true,
+      digits: 3,
+    },
+    {
+      id: 'output-speed',
+      label: 'Output speed',
+      source: { kind: 'coordinate-rate', coordinate: 'driven-angle' },
+      absolute: true,
+      scale: 1 / RPM_TO_RAD_PER_SECOND,
+      digits: 1,
+      suffix: ' rpm',
+    },
+    {
+      id: 'belt-speed',
+      label: 'Prescribed belt speed',
+      source: { kind: 'signal', signal: 'belt-linear-speed' },
+      digits: 3,
+      suffix: ' m/s',
+    },
+  ],
+  animation: {
+    coordinateControlId: 'driver-angle',
+    rateControlId: 'driver-speed',
+  },
+  renderer2d: {
+    responsiveStrokeReferenceWidth: 1180,
+  },
+});
+
 function verticalBeltReference(model: SimulationModel): SimulationModel {
   const mechanical = model.systems.mechanical;
   const ground = mechanical?.bodies.ground;
@@ -182,10 +256,21 @@ function verticalBeltReference(model: SimulationModel): SimulationModel {
 }
 
 export const beltLabFamily: MechanismLabFamily = Object.freeze({
-  definitions: Object.freeze([openBeltDriveLab, crossedBeltDriveLab]),
-  models: Object.freeze([openBeltDriveModel, crossedBeltDriveModel]),
-  adapters: Object.freeze([analyticBeltAdapter]),
-  sceneCompilers: Object.freeze([brownBeltSceneCompiler]),
+  definitions: Object.freeze([
+    openBeltDriveLab,
+    crossedBeltDriveLab,
+    brown003QuarterTurnLab,
+  ]),
+  models: Object.freeze([
+    openBeltDriveModel,
+    crossedBeltDriveModel,
+    canonicalQuarterTurnBeltModel,
+  ]),
+  adapters: Object.freeze([analyticBeltAdapter, spatialBeltAdapter]),
+  sceneCompilers: Object.freeze([
+    brownBeltSceneCompiler,
+    brown003SpatialSceneCompiler,
+  ]),
   modelTransforms: Object.freeze({
     'atlas.lab.vertical-belt.v0': verticalBeltReference,
   }),
