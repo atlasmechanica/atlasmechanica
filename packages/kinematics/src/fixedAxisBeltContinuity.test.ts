@@ -26,9 +26,10 @@ function fixedAxisSystem() {
 }
 
 describe('fixed-axis belt continuity oracle', () => {
-  it('keeps the spatial SimulationAdapter absent until local slip/creep material motion is defined', () => {
-    expect('spatialBeltAdapter' in kinematics).toBe(false);
+  it('keeps the lumped continuity oracle separate from the spatial adapter', () => {
     expect('evaluateFixedAxisBeltContinuity' in kinematics).toBe(true);
+    expect('spatialBeltAdapter' in kinematics).toBe(true);
+    expect(kinematics.spatialBeltAdapter.id).toBe('atlas.spatial-belt.v0');
   });
 
   it('preserves one signed lumped pitch-speed reference across all four Brown 003 contacts', () => {
