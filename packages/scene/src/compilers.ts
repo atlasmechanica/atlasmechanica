@@ -19,13 +19,20 @@ function assertSubject(model: SimulationModel, expected: string, compilerId: str
   }
 }
 
+function isPlanarBrownBelt(model: SimulationModel): boolean {
+  return model.id === 'foundation:belt-drive:open'
+    || model.id === 'foundation:belt-drive:crossed';
+}
+
 export const brownBeltSceneCompiler: MechanismSceneCompiler = {
   id: 'atlas.scene.brown-belt.v0',
   supports(model): boolean {
-    return model.subject === 'belt-drive';
+    return isPlanarBrownBelt(model);
   },
   build(options): MechanismScene {
-    assertSubject(options.model, 'belt-drive', this.id);
+    if (!this.supports(options.model)) {
+      throw new TypeError(`${this.id} does not support model ${options.model.id}`);
+    }
     return buildProductionMechanismScene(options);
   },
 };
