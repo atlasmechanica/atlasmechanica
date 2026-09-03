@@ -10,6 +10,7 @@ import {
 const FAMILIES_BY_MODEL: Readonly<Record<string, MechanismLabFamily>> = Object.freeze({
   'foundation:belt-drive:open': beltLabFamily,
   'foundation:belt-drive:crossed': beltLabFamily,
+  'foundation:belt-drive:quarter-turn-guided': beltLabFamily,
   'foundation:four-bar:crank-rocker': fourBarLabFamily,
 });
 
