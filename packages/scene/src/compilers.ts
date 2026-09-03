@@ -1,4 +1,5 @@
 import type { SimulationModel } from '@atlasmechanica/model';
+import { buildBrown003ProjectionScene } from './brown003Projection.js';
 import {
   buildMechanismScene as buildSchematicMechanismScene,
   type SceneBuildOptions,
@@ -18,14 +19,34 @@ function assertSubject(model: SimulationModel, expected: string, compilerId: str
   }
 }
 
+function isPlanarBrownBelt(model: SimulationModel): boolean {
+  return model.id === 'foundation:belt-drive:open'
+    || model.id === 'foundation:belt-drive:crossed';
+}
+
 export const brownBeltSceneCompiler: MechanismSceneCompiler = {
   id: 'atlas.scene.brown-belt.v0',
   supports(model): boolean {
-    return model.subject === 'belt-drive';
+    return isPlanarBrownBelt(model);
   },
   build(options): MechanismScene {
-    assertSubject(options.model, 'belt-drive', this.id);
+    if (!this.supports(options.model)) {
+      throw new TypeError(`${this.id} does not support model ${options.model.id}`);
+    }
     return buildProductionMechanismScene(options);
+  },
+};
+
+export const brown003SpatialSceneCompiler: MechanismSceneCompiler = {
+  id: 'atlas.scene.brown-003-spatial.v0',
+  supports(model): boolean {
+    return model.id === 'foundation:belt-drive:quarter-turn-guided';
+  },
+  build(options): MechanismScene {
+    if (!this.supports(options.model)) {
+      throw new TypeError(`${this.id} does not support model ${options.model.id}`);
+    }
+    return buildBrown003ProjectionScene(options);
   },
 };
 
