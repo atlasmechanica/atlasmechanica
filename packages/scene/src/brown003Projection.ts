@@ -178,7 +178,9 @@ export function buildBrown003ProjectionScene(options: SceneBuildOptions): Mechan
     throw new TypeError(`Brown 003 projection requires a successful adapter state: ${stateError.message}`);
   }
 
-  const route = solveBrown003Route(options.model, { parameters: options.parameters });
+  const route = options.parameters === undefined
+    ? solveBrown003Route(options.model)
+    : solveBrown003Route(options.model, { parameters: options.parameters });
   const routeError = route.diagnostics.find((diagnostic) => diagnostic.severity === 'error');
   if (routeError !== undefined) {
     throw new TypeError(`Brown 003 projection route failed: ${routeError.message}`);
