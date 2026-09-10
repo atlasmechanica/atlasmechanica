@@ -38,13 +38,28 @@ test('Brown 003 Three.js harness supports orbit and fit without losing spatial s
   const host = page.locator(HOST);
   await expect(host).toHaveAttribute('data-renderer', 'three-brown003-spatial');
   const canvas = host.locator('canvas');
+  await canvas.scrollIntoViewIfNeeded();
   const box = await canvas.boundingBox();
   if (box === null) throw new Error('Missing Brown 003 WebGL canvas bounds');
 
+  const start = {
+    x: box.x + box.width * 0.55,
+    y: box.y + box.height * 0.50,
+  };
+  const end = {
+    x: box.x + box.width * 0.72,
+    y: box.y + box.height * 0.62,
+  };
+  const hitTag = await page.evaluate(
+    ({ x, y }) => document.elementFromPoint(x, y)?.tagName,
+    start,
+  );
+  expect(hitTag).toBe('CANVAS');
+
   const initialCamera = await host.getAttribute('data-camera-position');
-  await page.mouse.move(box.x + box.width * 0.55, box.y + box.height * 0.50);
+  await page.mouse.move(start.x, start.y);
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.72, box.y + box.height * 0.62, { steps: 8 });
+  await page.mouse.move(end.x, end.y, { steps: 8 });
   await page.mouse.up();
 
   await expect.poll(() => host.getAttribute('data-camera-position')).not.toBe(initialCamera);
