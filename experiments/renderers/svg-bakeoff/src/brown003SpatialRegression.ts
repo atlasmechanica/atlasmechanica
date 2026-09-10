@@ -18,6 +18,7 @@ const renderer = createBrown003SpatialRenderer(host, {
   ariaLabel: 'Brown 003 true spatial Three.js regression view',
 });
 let currentState: ModelState;
+let verifiedMissingRuntime = false;
 
 function evaluate(angleDeg: number): ModelState {
   const state = session.evaluate({
@@ -38,6 +39,22 @@ function render(): void {
     state: currentState,
     parameters,
   });
+
+  if (!verifiedMissingRuntime) {
+    let rejected = false;
+    try {
+      renderer.update(scene);
+    } catch (error) {
+      rejected = error instanceof Error
+        && error.message.includes('requires Atlas runtime context');
+    }
+    if (!rejected) {
+      throw new TypeError('Brown 003 spatial renderer accepted projected scene geometry without runtime context');
+    }
+    verifiedMissingRuntime = true;
+    host.dataset.missingRuntimeRejected = 'true';
+  }
+
   renderer.update(scene, {
     model: canonicalQuarterTurnBeltModel,
     state: currentState,
@@ -62,6 +79,7 @@ declare global {
         materialArclength: string | undefined;
         spatialDepth: string | undefined;
         cameraPosition: string | undefined;
+        missingRuntimeRejected: string | undefined;
       };
     };
   }
@@ -77,6 +95,7 @@ window.__atlasBrown003Spatial = {
     materialArclength: host.dataset.materialArclength,
     spatialDepth: host.dataset.spatialDepth,
     cameraPosition: host.dataset.cameraPosition,
+    missingRuntimeRejected: host.dataset.missingRuntimeRejected,
   }),
 };
 
