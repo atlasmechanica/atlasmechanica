@@ -149,8 +149,9 @@ export const brown003QuarterTurnLab = defineMechanismLab({
   defaultForModel: true,
   subtitle: 'spatial · prescribed routed slip',
   sceneCompilerId: 'atlas.scene.brown-003-spatial.v0',
+  threeRendererId: 'atlas.renderer-three.brown-003-spatial.v0',
   sessionConfiguration: 'reference',
-  views: ['2d'],
+  views: ['2d', '3d'],
   controls: [
     {
       id: 'driver-angle',
