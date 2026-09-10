@@ -26,7 +26,7 @@ jobs:
       - name: Generate development-only typings lock
         run: |
           npm install --global npm@11.6.0
-          npm install --package-lock-only --ignore-scripts --save-dev --save-exact @types/node@22
+          npm install --package-lock-only --ignore-scripts --save-dev --save-exact @types/node@22.20.2
           git diff --stat
           git diff -- package.json
       - name: Verify narrow dependency delta and upload immutable blobs only
@@ -34,7 +34,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           node --input-type=module <<'NODE'
-          import { readFileSync } from 'node:fs';
+          import { readFileSync, writeFileSync } from 'node:fs';
           import { execFileSync } from 'node:child_process';
           import { isDeepStrictEqual } from 'node:util';
           const previous = JSON.parse(execFileSync('git', ['show', 'HEAD:package-lock.json'], { encoding: 'utf8' }));
@@ -43,11 +43,16 @@ jobs:
           for (const key of new Set([...Object.keys(previous.packages), ...Object.keys(next.packages)])) {
             if (!isDeepStrictEqual(previous.packages[key], next.packages[key])) changes.push(key);
           }
-          console.log('Changed lock entries:', JSON.stringify(changes));
+          console.log('Generated lock changes:', JSON.stringify(changes));
           for (const key of changes) {
-            if (!['', 'node_modules/@types/node', 'node_modules/undici-types'].includes(key)) {
-              throw new Error(`Unexpected dependency change: ${key}`);
+            if (['', 'node_modules/@types/node', 'node_modules/undici-types'].includes(key)) continue;
+            // npm prunes these pre-existing optional records on this Linux runner.
+            // Preserve them instead of mixing unrelated platform churn into this PR.
+            if (['node_modules/@emnapi/core', 'node_modules/@emnapi/wasi-threads'].includes(key) && next.packages[key] === undefined) {
+              next.packages[key] = previous.packages[key];
+              continue;
             }
+            throw new Error(`Unexpected dependency change: ${key}`);
           }
           const oldRoot = structuredClone(previous.packages['']);
           oldRoot.devDependencies['@types/node'] = next.packages[''].devDependencies['@types/node'];
@@ -56,6 +61,12 @@ jobs:
           const nextPackage = JSON.parse(readFileSync('package.json', 'utf8'));
           oldPackage.devDependencies['@types/node'] = nextPackage.devDependencies['@types/node'];
           if (!isDeepStrictEqual(oldPackage, nextPackage)) throw new Error('Unexpected package metadata change');
+          // Keep original key order and all unrelated lock metadata exactly as authored.
+          const narrowed = structuredClone(previous);
+          for (const key of ['', 'node_modules/@types/node', 'node_modules/undici-types']) narrowed.packages[key] = next.packages[key];
+          if (!isDeepStrictEqual(narrowed, next)) throw new Error('Unexpected top-level lock change');
+          writeFileSync('package-lock.json', JSON.stringify(narrowed, null, 2) + '\n');
+          console.log(execFileSync('git', ['diff', '--', 'package.json', 'package-lock.json'], { encoding: 'utf8' }));
           for (const path of ['package.json', 'package-lock.json']) {
             const response = await fetch('https://api.github.com/repos/atlasmechanica/atlasmechanica/git/blobs', {
               method: 'POST',
