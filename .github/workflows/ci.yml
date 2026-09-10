@@ -7,7 +7,7 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   check:
@@ -29,40 +29,3 @@ jobs:
 
       - name: Typecheck and test
         run: npm run check
-
-      - name: Add lockfile workflow triggers
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        env:
-          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
-        run: |
-          git fetch origin "$HEAD_BRANCH"
-          git checkout -B "$HEAD_BRANCH" "origin/$HEAD_BRANCH"
-          python - <<'PY'
-          from pathlib import Path
-
-          replacements = {
-              Path('.github/workflows/renderer-bakeoff.yml'): (
-                  "      - 'package.json'\n      - '.github/workflows/renderer-bakeoff.yml'",
-                  "      - 'package.json'\n      - 'package-lock.json'\n      - '.github/workflows/renderer-bakeoff.yml'",
-              ),
-              Path('.github/workflows/pages.yml'): (
-                  "      - 'package.json'\n      - '.github/workflows/pages.yml'",
-                  "      - 'package.json'\n      - 'package-lock.json'\n      - '.github/workflows/pages.yml'",
-              ),
-          }
-
-          for path, (old, new) in replacements.items():
-              text = path.read_text()
-              if new in text:
-                  continue
-              if old not in text:
-                  raise SystemExit(f'Expected workflow path-filter anchor missing in {path}')
-              path.write_text(text.replace(old, new, 1))
-          PY
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/workflows/renderer-bakeoff.yml .github/workflows/pages.yml
-          if ! git diff --cached --quiet; then
-            git commit -m "fix(ci): trigger dependency workflows on lockfile changes"
-            git push origin "HEAD:$HEAD_BRANCH"
-          fi
