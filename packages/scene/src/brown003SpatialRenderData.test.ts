@@ -9,6 +9,7 @@ import {
   quantity,
   type ParameterId,
   type QuantityValue,
+  type SimulationModel,
 } from '@atlasmechanica/model';
 
 import {
@@ -95,6 +96,19 @@ describe('Brown 003 spatial render data', () => {
     const baseline = resolveBrown003SpatialRenderData(canonical);
     expect(pulley(overridden, 'driven').pitchRadius).toBeCloseTo(0.055, 12);
     expect(overridden.geometryKey).not.toBe(baseline.geometryKey);
+  });
+
+  it('rejects a foreign model identity even when its spatial topology is cloned from Brown 003', () => {
+    const canonical = runtime(30);
+    const foreignModel: SimulationModel = {
+      ...canonicalQuarterTurnBeltModel,
+      id: 'foundation:belt-drive:quarter-turn-guided-foreign',
+    };
+
+    expect(() => resolveBrown003SpatialRenderData({
+      ...canonical,
+      model: foreignModel,
+    })).toThrow('canonical Brown 003 model');
   });
 
   it('fails closed when the adapter state itself rejects the spatial route', () => {
