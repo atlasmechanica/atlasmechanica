@@ -13,11 +13,12 @@ import {
 import { loadMechanismLab } from '@atlasmechanica/lab/lazy-runtime';
 import { hasErrors, type EvaluationRequest, type ModelState } from '@atlasmechanica/model';
 import { createSvgMechanismRenderer } from '@atlasmechanica/renderer-svg';
-import type { ThreeMechanismRenderer } from '@atlasmechanica/renderer-three';
 import type { MechanismScene, Vec2 } from '@atlasmechanica/scene';
 import {
   loadRegisteredThreeRenderer,
   type LoadedThreeRendererModule,
+  type RuntimeAwareThreeMechanismRenderer,
+  type ThreeRendererRuntimeContext,
 } from './threeRendererRegistry.js';
 
 const desktopBreakpoint = '(min-width: 641px)';
@@ -173,8 +174,8 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
   let zoom = 1;
   let viewMode: LabView = '2d';
   let requestedViewMode: LabView = '2d';
-  let threeRenderer: ThreeMechanismRenderer | undefined;
-  let threeRendererPromise: Promise<ThreeMechanismRenderer> | undefined;
+  let threeRenderer: RuntimeAwareThreeMechanismRenderer | undefined;
+  let threeRendererPromise: Promise<RuntimeAwareThreeMechanismRenderer> | undefined;
   let threeRendererLoadAttempt = 0;
   let invalidParameterHandle: Vec2 | undefined;
   let selectedId: string | undefined;
@@ -182,6 +183,17 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
   let animationFrame = 0;
   let previousTime = 0;
   let fitFrame = 0;
+
+  function threeRuntimeContext(): ThreeRendererRuntimeContext {
+    const context: ThreeRendererRuntimeContext = {
+      model,
+      state: currentState,
+    };
+    if (currentRequest.parameters !== undefined) {
+      context.parameters = currentRequest.parameters;
+    }
+    return context;
+  }
 
   function syncControlOutputs(): void {
     for (const control of definition.controls) {
@@ -287,7 +299,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
       invalidParameterHandle,
     });
     renderer2d.update(currentScene);
-    if (viewMode === '3d') threeRenderer?.update(currentScene);
+    if (viewMode === '3d') threeRenderer?.update(currentScene, threeRuntimeContext());
     syncControlOutputs();
     syncReadouts();
   }
@@ -369,19 +381,19 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
     return loadRegisteredThreeRenderer(rendererId, attempt);
   }
 
-  async function ensureThreeRenderer(): Promise<ThreeMechanismRenderer> {
+  async function ensureThreeRenderer(): Promise<RuntimeAwareThreeMechanismRenderer> {
     if (threeRenderer !== undefined) return threeRenderer;
     if (threeRendererPromise !== undefined) return threeRendererPromise;
     if (host3d === undefined) throw new TypeError('Mechanism lab has no 3D renderer host');
 
     const pending = loadThreeRendererModule().then(({ createThreeMechanismRenderer, loaderVariant }) => {
       root.dataset.threeLoaderVariant = loaderVariant;
-      let created: ThreeMechanismRenderer | undefined;
+      let created: RuntimeAwareThreeMechanismRenderer | undefined;
       try {
         created = createThreeMechanismRenderer(host3d, {
           ariaLabel: root.getAttribute('aria-label') ?? 'Interactive 3D mechanism',
         });
-        created.update(currentScene);
+        created.update(currentScene, threeRuntimeContext());
         threeRenderer = created;
         return created;
       } catch (error) {
@@ -431,7 +443,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
       viewMode = '3d';
       host2d.hidden = true;
       host3d.hidden = false;
-      renderer3d.update(currentScene);
+      renderer3d.update(currentScene, threeRuntimeContext());
       syncViewControls();
       status.textContent = '3D view. Drag to orbit, scroll or pinch to zoom, and right-drag to pan.';
     } catch (error) {
