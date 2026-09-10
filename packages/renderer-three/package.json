@@ -8,8 +8,8 @@
     "./brown003-spatial": "./src/brown003Spatial.ts"
   },
   "dependencies": {
-    "@atlasmechanica/kinematics": "file:../kinematics",
-    "@atlasmechanica/model": "file:../model",
+    "@atlasmechanica/kinematics": "0.0.0",
+    "@atlasmechanica/model": "0.0.0",
     "@atlasmechanica/scene": "file:../scene",
     "three": ">=0.180.0 <0.200.0"
   },
