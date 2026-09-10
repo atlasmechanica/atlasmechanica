@@ -7,5 +7,8 @@
     ".": "./src/index.ts",
     "./authoring": "./src/authoring.ts",
     "./authoring/node": "./src/discoverDocuments.ts"
+  },
+  "dependencies": {
+    "@atlasmechanica/model": "file:../model"
   }
 }
