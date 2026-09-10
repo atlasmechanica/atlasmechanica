@@ -21,8 +21,11 @@ jobs:
         with:
           node-version: 22
 
+      - name: Pin npm
+        run: npm install --global npm@11.6.0
+
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Typecheck and test
         run: npm run check
