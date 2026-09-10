@@ -1,0 +1,73 @@
+name: catalog typing lock generation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/catalog-types-lock.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    if: github.event.pull_request.number == 93 && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feat/json-catalog-discovery'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generate development-only typings lock
+        run: |
+          npm install --global npm@11.6.0
+          npm install --package-lock-only --ignore-scripts --save-dev --save-exact @types/node@22
+          git diff --stat
+          git diff -- package.json
+      - name: Verify narrow dependency delta and upload immutable blobs only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          import { isDeepStrictEqual } from 'node:util';
+          const previous = JSON.parse(execFileSync('git', ['show', 'HEAD:package-lock.json'], { encoding: 'utf8' }));
+          const next = JSON.parse(readFileSync('package-lock.json', 'utf8'));
+          const changes = [];
+          for (const key of new Set([...Object.keys(previous.packages), ...Object.keys(next.packages)])) {
+            if (!isDeepStrictEqual(previous.packages[key], next.packages[key])) changes.push(key);
+          }
+          console.log('Changed lock entries:', JSON.stringify(changes));
+          for (const key of changes) {
+            if (!['', 'node_modules/@types/node', 'node_modules/undici-types'].includes(key)) {
+              throw new Error(`Unexpected dependency change: ${key}`);
+            }
+          }
+          const oldRoot = structuredClone(previous.packages['']);
+          oldRoot.devDependencies['@types/node'] = next.packages[''].devDependencies['@types/node'];
+          if (!isDeepStrictEqual(oldRoot, next.packages[''])) throw new Error('Unexpected root lock metadata change');
+          const oldPackage = JSON.parse(execFileSync('git', ['show', 'HEAD:package.json'], { encoding: 'utf8' }));
+          const nextPackage = JSON.parse(readFileSync('package.json', 'utf8'));
+          oldPackage.devDependencies['@types/node'] = nextPackage.devDependencies['@types/node'];
+          if (!isDeepStrictEqual(oldPackage, nextPackage)) throw new Error('Unexpected package metadata change');
+          for (const path of ['package.json', 'package-lock.json']) {
+            const response = await fetch('https://api.github.com/repos/atlasmechanica/atlasmechanica/git/blobs', {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${process.env.GH_TOKEN}`,
+                Accept: 'application/vnd.github+json',
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ content: readFileSync(path).toString('base64'), encoding: 'base64' }),
+            });
+            if (!response.ok) throw new Error(`Blob upload failed: ${response.status}`);
+            const result = await response.json();
+            console.log(JSON.stringify({ path, sha: result.sha }));
+          }
+          NODE
