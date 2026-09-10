@@ -55,9 +55,11 @@ describe('Brown 003 mechanism lab binding', () => {
     expect(resolved.sceneCompiler.id).toBe('atlas.scene.brown-003-spatial.v0');
   });
 
-  it('advertises only the truthful 2D projection until a real spatial renderer exists', () => {
-    expect(brown003QuarterTurnLab.views).toEqual(['2d']);
-    expect('threeRendererId' in brown003QuarterTurnLab).toBe(false);
+  it('advertises the true spatial renderer without inventing projected direct manipulation', () => {
+    expect(brown003QuarterTurnLab.views).toEqual(['2d', '3d']);
+    expect(brown003QuarterTurnLab.threeRendererId).toBe(
+      'atlas.renderer-three.brown-003-spatial.v0',
+    );
     const driverControl = brown003QuarterTurnLab.controls.find(
       (control) => control.id === 'driver-angle',
     );
