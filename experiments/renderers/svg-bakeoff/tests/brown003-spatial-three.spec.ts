@@ -7,6 +7,7 @@ test('Brown 003 Three.js harness renders true spatial geometry and caches it acr
   const host = page.locator(HOST);
 
   await expect(host).toHaveAttribute('data-renderer', 'three-brown003-spatial');
+  await expect(host).toHaveAttribute('data-missing-runtime-rejected', 'true');
   await expect(host.locator('canvas')).toHaveCount(1);
   await expect(host).toHaveAttribute('data-spatial-pulley-count', '4');
   await expect(host).toHaveAttribute('data-spatial-route-point-count', '385');
