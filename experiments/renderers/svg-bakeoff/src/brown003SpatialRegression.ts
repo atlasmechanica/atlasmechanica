@@ -6,11 +6,21 @@ import { hasErrors, quantity, type ModelState } from '@atlasmechanica/model';
 import { createBrown003SpatialRenderer } from '@atlasmechanica/renderer-three/brown003-spatial';
 import { brown003SpatialSceneCompiler } from '@atlasmechanica/scene/compilers';
 
-const angleInput = document.querySelector<HTMLInputElement>('#angle');
-const host = document.querySelector<HTMLElement>('#brown003-spatial-three-host');
-if (angleInput === null || host === null) {
-  throw new TypeError('Brown 003 spatial regression harness is missing its controls or host');
+function required<T extends Element>(element: T | null, label: string): T {
+  if (element === null) {
+    throw new TypeError(`Brown 003 spatial regression harness is missing ${label}`);
+  }
+  return element;
 }
+
+const angleInput = required(
+  document.querySelector<HTMLInputElement>('#angle'),
+  'its angle control',
+);
+const host = required(
+  document.querySelector<HTMLElement>('#brown003-spatial-three-host'),
+  'its renderer host',
+);
 
 const compiled = spatialBeltAdapter.compile(canonicalQuarterTurnBeltModel);
 const session = compiled.createSession({ configuration: 'reference' });
