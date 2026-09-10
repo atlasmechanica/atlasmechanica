@@ -1,22 +1,11 @@
-import {
-  buildBrown003MaterialPath,
-  evaluateFixedAxisBeltContinuity,
-  resolveBrown003MaterialPhase,
-  sampleBrown003MaterialPath,
-  solveBrown003Route,
-  type Brown003MaterialPath,
-  type Brown003PulleyTrack,
-  type FixedAxisBeltContinuityRequest,
-  type FixedAxisBeltContinuityResult,
-} from '@atlasmechanica/kinematics';
-import type {
-  FixedAxisPulleyId,
-  ModelState,
-  ParameterId,
-  QuantityValue,
-  SimulationModel,
-} from '@atlasmechanica/model';
 import type { MechanismScene } from '@atlasmechanica/scene';
+import {
+  resolveBrown003SpatialRenderData,
+  type Brown003SpatialPulleyRenderData,
+  type Brown003SpatialRenderData,
+  type Brown003SpatialRendererRuntimeContext,
+  type Brown003SpatialVec3,
+} from '@atlasmechanica/scene/brown003-spatial';
 import {
   AmbientLight,
   BoxGeometry,
@@ -44,48 +33,21 @@ import type {
   ThreeMechanismRendererOptions,
 } from './index.js';
 
-const BROWN_003_MODEL_ID = 'foundation:belt-drive:quarter-turn-guided';
+export type {
+  Brown003SpatialPulleyRenderData,
+  Brown003SpatialRenderData,
+  Brown003SpatialRendererRuntimeContext,
+} from '@atlasmechanica/scene/brown003-spatial';
+export { resolveBrown003SpatialRenderData } from '@atlasmechanica/scene/brown003-spatial';
+
 const BROWN_003_SCENE_ID = 'brown003-spatial-projection';
-const PATH_SAMPLES = 384;
-const PULLEY_BOUND_SAMPLES = 32;
 const PAPER = 0xfbfaf6;
 const RUST = 0xc45a35;
 const ROUTE_BLUE = 0x2f668e;
 const DARK_METAL = 0x444846;
 const MARKER = 0xd8a13b;
-const CONSISTENCY_TOLERANCE = 1e-9;
 
-type Vec3 = readonly [number, number, number];
-
-export interface Brown003SpatialRendererRuntimeContext {
-  readonly model: SimulationModel;
-  readonly state: ModelState;
-  readonly parameters?: Partial<Record<ParameterId, QuantityValue>>;
-}
-
-export interface Brown003SpatialPulleyRenderData {
-  readonly pulley: FixedAxisPulleyId;
-  readonly center: Vec3;
-  readonly axis: Vec3;
-  readonly referenceRadial: Vec3;
-  readonly pitchRadius: number;
-  readonly faceWidth: number;
-  readonly phaseAngle: number;
-}
-
-export interface Brown003SpatialRenderData {
-  readonly model: string;
-  readonly geometryKey: string;
-  readonly path: Brown003MaterialPath;
-  readonly beltPoints: readonly Vec3[];
-  readonly pulleys: readonly Brown003SpatialPulleyRenderData[];
-  readonly materialArclength: number;
-  readonly materialPoint: Vec3;
-  readonly bounds: Readonly<{
-    min: Vec3;
-    max: Vec3;
-  }>;
-}
+type PulleyId = Brown003SpatialPulleyRenderData['pulley'];
 
 export interface Brown003SpatialRenderer extends Omit<ThreeMechanismRenderer, 'update'> {
   update(
@@ -94,290 +56,12 @@ export interface Brown003SpatialRenderer extends Omit<ThreeMechanismRenderer, 'u
   ): void;
 }
 
-function add(a: Vec3, b: Vec3): Vec3 {
-  return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
-}
-
-function subtract(a: Vec3, b: Vec3): Vec3 {
-  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-}
-
-function scale(vector: Vec3, factor: number): Vec3 {
-  return [vector[0] * factor, vector[1] * factor, vector[2] * factor];
-}
-
-function dot(a: Vec3, b: Vec3): number {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-}
-
-function cross(a: Vec3, b: Vec3): Vec3 {
-  return [
-    a[1] * b[2] - a[2] * b[1],
-    a[2] * b[0] - a[0] * b[2],
-    a[0] * b[1] - a[1] * b[0],
-  ];
-}
-
-function magnitude(vector: Vec3): number {
-  return Math.hypot(vector[0], vector[1], vector[2]);
-}
-
-function normalize(vector: Vec3, label: string): Vec3 {
-  const length = magnitude(vector);
-  if (!(length > 0) || !Number.isFinite(length)) {
-    throw new TypeError(`${label} must be a finite nonzero direction`);
-  }
-  return scale(vector, 1 / length);
-}
-
-function reject(vector: Vec3, axis: Vec3): Vec3 {
-  return subtract(vector, scale(axis, dot(vector, axis)));
-}
-
-function near(a: number, b: number): boolean {
-  const scaleValue = Math.max(1, Math.abs(a), Math.abs(b));
-  return Math.abs(a - b) <= CONSISTENCY_TOLERANCE * scaleValue;
-}
-
-function assertStateValue(
-  actual: { value: number; unit: string } | undefined,
-  expected: { value: number; unit: string } | undefined,
-  label: string,
-): void {
-  if (actual === undefined || expected === undefined) {
-    if (actual !== expected) {
-      throw new TypeError(`Brown 003 spatial renderer runtime mismatch for ${label}`);
-    }
-    return;
-  }
-  if (actual.unit !== expected.unit || !near(actual.value, expected.value)) {
-    throw new TypeError(`Brown 003 spatial renderer runtime mismatch for ${label}`);
-  }
-}
-
-function successfulContinuityForRuntime(
-  runtime: Brown003SpatialRendererRuntimeContext,
-): FixedAxisBeltContinuityResult {
-  const system = runtime.model.systems.fixedAxisBelt;
-  const driver = system?.pulleys.driver;
-  if (system === undefined || driver === undefined) {
-    throw new TypeError('Brown 003 spatial renderer requires the fixed-axis belt system');
-  }
-  const driverState = runtime.state.coordinates[driver.coordinate];
-  if (driverState === undefined) {
-    throw new TypeError(`Brown 003 spatial renderer is missing ${driver.coordinate}`);
-  }
-
-  const request: FixedAxisBeltContinuityRequest = {
-    coordinates: { [driver.coordinate]: driverState.position },
-  };
-  if (runtime.state.configuration !== undefined) {
-    request.configuration = runtime.state.configuration;
-  }
-  if (runtime.parameters !== undefined) request.parameters = runtime.parameters;
-  if (driverState.velocity !== undefined) {
-    request.rates = { [driver.coordinate]: driverState.velocity };
-  }
-  if (driverState.acceleration !== undefined) {
-    request.accelerations = { [driver.coordinate]: driverState.acceleration };
-  }
-
-  const continuity = evaluateFixedAxisBeltContinuity(runtime.model, request);
-  const continuityError = continuity.diagnostics.find((item) => item.severity === 'error');
-  if (continuityError !== undefined) {
-    throw new TypeError(`Brown 003 spatial renderer continuity failed: ${continuityError.message}`);
-  }
-
-  for (const contact of continuity.contactProfile) {
-    const actual = runtime.state.coordinates[contact.coordinate];
-    const expected = continuity.coordinates[contact.coordinate];
-    if (actual === undefined || expected === undefined) {
-      throw new TypeError(`Brown 003 spatial renderer is missing ${contact.coordinate}`);
-    }
-    assertStateValue(actual.position, expected.position, `${contact.coordinate} position`);
-    assertStateValue(actual.velocity, expected.velocity, `${contact.coordinate} velocity`);
-    assertStateValue(actual.acceleration, expected.acceleration, `${contact.coordinate} acceleration`);
-  }
-
-  const ratioSignal = runtime.state.signals['output-angular-ratio'];
-  const expectedRatio = continuity.angularRatios.driven;
-  if (ratioSignal?.type !== 'scalar' || expectedRatio === undefined || !near(ratioSignal.value.value, expectedRatio)) {
-    throw new TypeError('Brown 003 spatial renderer runtime mismatch for output-angular-ratio');
-  }
-
-  const travelSignal = runtime.state.signals['belt-travel'];
-  if (
-    travelSignal?.type !== 'scalar'
-    || travelSignal.value.unit !== 'm'
-    || continuity.beltTravel === undefined
-    || !near(travelSignal.value.value, continuity.beltTravel)
-  ) {
-    throw new TypeError('Brown 003 spatial renderer runtime mismatch for belt-travel');
-  }
-
-  if (continuity.beltLinearSpeed !== undefined) {
-    const speedSignal = runtime.state.signals['belt-linear-speed'];
-    if (
-      speedSignal?.type !== 'scalar'
-      || speedSignal.value.unit !== 'm/s'
-      || !near(speedSignal.value.value, continuity.beltLinearSpeed)
-    ) {
-      throw new TypeError('Brown 003 spatial renderer runtime mismatch for belt-linear-speed');
-    }
-  }
-
-  return continuity;
-}
-
-function radialBasis(track: Brown003PulleyTrack): readonly [Vec3, Vec3] {
-  const axis = normalize(track.axis, `${track.pulley} axis`);
-  const radial = normalize(
-    reject(subtract(track.arrival, track.center), axis),
-    `${track.pulley} reference radial`,
-  );
-  return [radial, normalize(cross(axis, radial), `${track.pulley} tangent`)];
-}
-
-function geometryKey(
-  path: Brown003MaterialPath,
-  tracks: readonly Brown003PulleyTrack[],
-): string {
-  const values: number[] = [path.totalLength];
-  for (const track of tracks) {
-    values.push(
-      ...track.center,
-      ...track.axis,
-      track.radius,
-      track.faceWidth,
-      ...track.arrival,
-      ...track.departure,
-    );
-  }
-  return values.map((value) => value.toPrecision(15)).join('|');
-}
-
-function boundsFor(
-  beltPoints: readonly Vec3[],
-  tracks: readonly Brown003PulleyTrack[],
-): { min: Vec3; max: Vec3 } {
-  const points: Vec3[] = [...beltPoints];
-  for (const track of tracks) {
-    const [radial, tangent] = radialBasis(track);
-    const axis = normalize(track.axis, `${track.pulley} axis`);
-    for (const side of [-1, 1] as const) {
-      const faceCenter = add(track.center, scale(axis, side * track.faceWidth / 2));
-      for (let index = 0; index < PULLEY_BOUND_SAMPLES; index += 1) {
-        const angle = index / PULLEY_BOUND_SAMPLES * Math.PI * 2;
-        points.push(add(
-          faceCenter,
-          add(
-            scale(radial, Math.cos(angle) * track.radius),
-            scale(tangent, Math.sin(angle) * track.radius),
-          ),
-        ));
-      }
-    }
-  }
-
-  let minX = Number.POSITIVE_INFINITY;
-  let minY = Number.POSITIVE_INFINITY;
-  let minZ = Number.POSITIVE_INFINITY;
-  let maxX = Number.NEGATIVE_INFINITY;
-  let maxY = Number.NEGATIVE_INFINITY;
-  let maxZ = Number.NEGATIVE_INFINITY;
-  for (const point of points) {
-    if (!point.every(Number.isFinite)) {
-      throw new TypeError('Brown 003 spatial renderer bounds contain a non-finite point');
-    }
-    minX = Math.min(minX, point[0]);
-    minY = Math.min(minY, point[1]);
-    minZ = Math.min(minZ, point[2]);
-    maxX = Math.max(maxX, point[0]);
-    maxY = Math.max(maxY, point[1]);
-    maxZ = Math.max(maxZ, point[2]);
-  }
-  return { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
-}
-
-/**
- * Resolve the exact spatial geometry and pose that Brown 003's Three.js view is
- * allowed to render. The supplied adapter state is rechecked against the same
- * parameter set before route/material geometry is accepted, so a same-model
- * state cannot be replayed against a different spatial route.
- */
-export function resolveBrown003SpatialRenderData(
-  runtime: Brown003SpatialRendererRuntimeContext,
-): Brown003SpatialRenderData {
-  if (runtime.model.id !== BROWN_003_MODEL_ID || runtime.state.model !== runtime.model.id) {
-    throw new TypeError('Brown 003 spatial renderer requires the canonical model and matching state');
-  }
-  const stateError = runtime.state.diagnostics.find((item) => item.severity === 'error');
-  if (stateError !== undefined) {
-    throw new TypeError(`Brown 003 spatial renderer requires a successful adapter state: ${stateError.message}`);
-  }
-
-  const continuity = successfulContinuityForRuntime(runtime);
-  const routeRequest = runtime.parameters === undefined ? {} : { parameters: runtime.parameters };
-  const route = solveBrown003Route(runtime.model, routeRequest);
-  const routeError = route.diagnostics.find((item) => item.severity === 'error');
-  if (routeError !== undefined) {
-    throw new TypeError(`Brown 003 spatial renderer route failed: ${routeError.message}`);
-  }
-  const material = buildBrown003MaterialPath(route);
-  const materialError = material.diagnostics.find((item) => item.severity === 'error');
-  if (materialError !== undefined || material.path === undefined) {
-    throw new TypeError(
-      `Brown 003 spatial renderer material path failed: ${materialError?.message ?? 'missing path'}`,
-    );
-  }
-
-  const materialPath = material.path;
-  const materialArclength = resolveBrown003MaterialPhase(materialPath, continuity);
-  const materialPoint = sampleBrown003MaterialPath(materialPath, materialArclength).position;
-  const beltPoints = Array.from({ length: PATH_SAMPLES + 1 }, (_, index) => {
-    return sampleBrown003MaterialPath(
-      materialPath,
-      materialPath.totalLength * (index / PATH_SAMPLES),
-    ).position;
-  });
-
-  const pulleys = route.tracks.map((track): Brown003SpatialPulleyRenderData => {
-    const pulley = runtime.model.systems.fixedAxisBelt?.pulleys[track.pulley];
-    if (pulley === undefined) throw new TypeError(`Missing Brown 003 pulley ${track.pulley}`);
-    const coordinate = runtime.state.coordinates[pulley.coordinate];
-    if (coordinate === undefined || !Number.isFinite(coordinate.position.value)) {
-      throw new TypeError(`Missing finite Brown 003 phase ${pulley.coordinate}`);
-    }
-    const [referenceRadial] = radialBasis(track);
-    return {
-      pulley: track.pulley,
-      center: track.center,
-      axis: normalize(track.axis, `${track.pulley} axis`),
-      referenceRadial,
-      pitchRadius: track.radius,
-      faceWidth: track.faceWidth,
-      phaseAngle: coordinate.position.value,
-    };
-  });
-
-  return {
-    model: runtime.model.id,
-    geometryKey: geometryKey(materialPath, route.tracks),
-    path: materialPath,
-    beltPoints,
-    pulleys,
-    materialArclength,
-    materialPoint,
-    bounds: boundsFor(beltPoints, route.tracks),
-  };
-}
-
 class PolylineCurve3 extends Curve<Vector3> {
   private readonly points: Vector3[];
   private readonly cumulative: number[];
   private readonly totalLength: number;
 
-  constructor(points: readonly Vec3[], closed: boolean) {
+  constructor(points: readonly Brown003SpatialVec3[], closed: boolean) {
     super();
     const normalized = points.map((point) => new Vector3(...point));
     if (closed && normalized.length > 2) {
@@ -414,7 +98,10 @@ class PolylineCurve3 extends Curve<Vector3> {
       const b = this.points[index + 1];
       if (a === undefined || b === undefined) break;
       const span = end - start;
-      return target.copy(a).lerp(b, span > 0 ? MathUtils.clamp((distance - start) / span, 0, 1) : 0);
+      return target.copy(a).lerp(
+        b,
+        span > 0 ? MathUtils.clamp((distance - start) / span, 0, 1) : 0,
+      );
     }
     return target.copy(this.points.at(-1) ?? new Vector3());
   }
@@ -461,6 +148,8 @@ function buildPulleyGroup(
   hub.castShadow = true;
   group.add(hub);
 
+  // The phase bar is a presentation cue only. It lies just beyond the positive
+  // face so its rotation is readable without altering pulley/contact geometry.
   const phaseLength = data.pitchRadius * 0.80;
   const phaseThickness = Math.max(data.pitchRadius * 0.035, 0.0012);
   const phase = new Mesh(
@@ -504,9 +193,10 @@ function dataSpan(data: Brown003SpatialRenderData): number {
 }
 
 /**
- * Brown-003-specific Three.js renderer. Geometry comes directly from the solved
- * XYZ route and fixed-axis pulley semantics; the projected 2D scene is used only
- * as the matching presentation identity required by the shared lab renderer API.
+ * Brown-003-specific Three.js renderer. Atlas scene semantics resolve the true
+ * XYZ route, finite pulley faces, and runtime provenance before this adapter
+ * creates any Three.js object. The projected 2D MechanismScene is used only as
+ * the matching presentation identity required by the shared lab renderer API.
  */
 export function createBrown003SpatialRenderer(
   host: HTMLElement,
@@ -517,12 +207,19 @@ export function createBrown003SpatialRenderer(
 
   const camera = new OrthographicCamera(-1, 1, 1, -1, 0.001, 50);
   camera.up.set(0, 1, 0);
-  const renderer = new WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+  const renderer = new WebGLRenderer({
+    antialias: true,
+    alpha: true,
+    powerPreference: 'high-performance',
+  });
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.setClearColor(PAPER, 0);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.domElement.setAttribute('role', 'img');
-  renderer.domElement.setAttribute('aria-label', options.ariaLabel ?? 'Interactive Brown 003 spatial mechanism view');
+  renderer.domElement.setAttribute(
+    'aria-label',
+    options.ariaLabel ?? 'Interactive Brown 003 spatial mechanism view',
+  );
   renderer.domElement.style.width = '100%';
   renderer.domElement.style.height = '100%';
   renderer.domElement.style.display = 'block';
@@ -547,10 +244,26 @@ export function createBrown003SpatialRenderer(
   controls.minZoom = 0.55;
   controls.maxZoom = 4;
 
-  const pulleyMaterial = new MeshStandardMaterial({ color: RUST, metalness: 0.18, roughness: 0.58 });
-  const beltMaterial = new MeshStandardMaterial({ color: ROUTE_BLUE, metalness: 0.02, roughness: 0.82 });
-  const axleMaterial = new MeshStandardMaterial({ color: DARK_METAL, metalness: 0.45, roughness: 0.46 });
-  const markerMaterial = new MeshStandardMaterial({ color: MARKER, metalness: 0.04, roughness: 0.62 });
+  const pulleyMaterial = new MeshStandardMaterial({
+    color: RUST,
+    metalness: 0.18,
+    roughness: 0.58,
+  });
+  const beltMaterial = new MeshStandardMaterial({
+    color: ROUTE_BLUE,
+    metalness: 0.02,
+    roughness: 0.82,
+  });
+  const axleMaterial = new MeshStandardMaterial({
+    color: DARK_METAL,
+    metalness: 0.45,
+    roughness: 0.46,
+  });
+  const markerMaterial = new MeshStandardMaterial({
+    color: MARKER,
+    metalness: 0.04,
+    roughness: 0.62,
+  });
 
   threeScene.add(new AmbientLight(0xffffff, 1.8));
   const key = new DirectionalLight(0xffffff, 2.4);
@@ -565,7 +278,7 @@ export function createBrown003SpatialRenderer(
 
   let currentData: Brown003SpatialRenderData | undefined;
   let currentGeometryKey: string | undefined;
-  let pulleyCaches = new Map<FixedAxisPulleyId, PulleyCache>();
+  let pulleyCaches = new Map<PulleyId, PulleyCache>();
   let markerMesh: Mesh | undefined;
   let geometryBuildCount = 0;
   let poseUpdateCount = 0;
@@ -583,7 +296,9 @@ export function createBrown003SpatialRenderer(
       host.dataset.spatialPulleyCount = String(currentData.pulleys.length);
       host.dataset.spatialRoutePointCount = String(currentData.beltPoints.length);
       host.dataset.materialArclength = currentData.materialArclength.toFixed(6);
-      host.dataset.spatialDepth = (currentData.bounds.max[2] - currentData.bounds.min[2]).toFixed(6);
+      host.dataset.spatialDepth = (
+        currentData.bounds.max[2] - currentData.bounds.min[2]
+      ).toFixed(6);
     }
   }
 
@@ -614,6 +329,8 @@ export function createBrown003SpatialRenderer(
     pulleyCaches = new Map();
     markerMesh = undefined;
 
+    // Tube radius is a legibility cue only. The physical model still carries a
+    // flat-belt centerline/width contract rather than a circular rope section.
     const span = Math.max(dataSpan(data), 0.1);
     const routeRadius = Math.max(span * 0.004, 0.0012);
     const route = new Mesh(
@@ -670,7 +387,9 @@ export function createBrown003SpatialRenderer(
     const center = dataCenter(currentData);
     const span = Math.max(dataSpan(currentData), 0.1);
     camera.zoom = 1;
-    camera.position.copy(center).add(new Vector3(span * 1.65, span * 1.20, span * 1.75));
+    camera.position.copy(center).add(
+      new Vector3(span * 1.65, span * 1.20, span * 1.75),
+    );
     controls.target.copy(center);
     controls.update();
     draw();
@@ -678,7 +397,11 @@ export function createBrown003SpatialRenderer(
 
   function resize(): void {
     if (destroyed) return;
-    renderer.setSize(Math.max(1, host.clientWidth), Math.max(1, host.clientHeight), false);
+    renderer.setSize(
+      Math.max(1, host.clientWidth),
+      Math.max(1, host.clientHeight),
+      false,
+    );
     if (currentData !== undefined) configureFrustum(currentData);
     draw();
   }
@@ -689,7 +412,9 @@ export function createBrown003SpatialRenderer(
 
   return {
     update(scene, runtime) {
-      if (destroyed) throw new TypeError('Cannot update a destroyed Brown 003 spatial renderer');
+      if (destroyed) {
+        throw new TypeError('Cannot update a destroyed Brown 003 spatial renderer');
+      }
       if (scene.id !== BROWN_003_SCENE_ID) {
         throw new TypeError(`Brown 003 spatial renderer does not support scene ${scene.id}`);
       }
@@ -709,12 +434,19 @@ export function createBrown003SpatialRenderer(
     fitView,
 
     resetMotionPhase() {
+      // Material phase is absolute in current Atlas state; the subsequent lab
+      // render after reset supplies the reset state rather than mutating local
+      // renderer-owned phase.
       draw();
     },
 
     zoomBy(factor) {
       if (destroyed || !(factor > 0)) return;
-      camera.zoom = MathUtils.clamp(camera.zoom * factor, controls.minZoom, controls.maxZoom);
+      camera.zoom = MathUtils.clamp(
+        camera.zoom * factor,
+        controls.minZoom,
+        controls.maxZoom,
+      );
       camera.updateProjectionMatrix();
       controls.update();
       draw();
