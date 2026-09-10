@@ -169,9 +169,11 @@ function successfulContinuityForRuntime(
   }
 
   const request: FixedAxisBeltContinuityRequest = {
-    configuration: runtime.state.configuration,
     coordinates: { [driver.coordinate]: driverState.position },
   };
+  if (runtime.state.configuration !== undefined) {
+    request.configuration = runtime.state.configuration;
+  }
   if (runtime.parameters !== undefined) request.parameters = runtime.parameters;
   if (driverState.velocity !== undefined) {
     request.rates = { [driver.coordinate]: driverState.velocity };
@@ -329,12 +331,13 @@ export function resolveBrown003SpatialRenderData(
     );
   }
 
-  const materialArclength = resolveBrown003MaterialPhase(material.path, continuity);
-  const materialPoint = sampleBrown003MaterialPath(material.path, materialArclength).position;
+  const materialPath = material.path;
+  const materialArclength = resolveBrown003MaterialPhase(materialPath, continuity);
+  const materialPoint = sampleBrown003MaterialPath(materialPath, materialArclength).position;
   const beltPoints = Array.from({ length: PATH_SAMPLES + 1 }, (_, index) => {
     return sampleBrown003MaterialPath(
-      material.path as Brown003MaterialPath,
-      material.path.totalLength * (index / PATH_SAMPLES),
+      materialPath,
+      materialPath.totalLength * (index / PATH_SAMPLES),
     ).position;
   });
 
@@ -359,8 +362,8 @@ export function resolveBrown003SpatialRenderData(
 
   return {
     model: runtime.model.id,
-    geometryKey: geometryKey(material.path, route.tracks),
-    path: material.path,
+    geometryKey: geometryKey(materialPath, route.tracks),
+    path: materialPath,
     beltPoints,
     pulleys,
     materialArclength,
