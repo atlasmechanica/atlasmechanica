@@ -15,6 +15,10 @@ import { hasErrors, type EvaluationRequest, type ModelState } from '@atlasmechan
 import { createSvgMechanismRenderer } from '@atlasmechanica/renderer-svg';
 import type { MechanismScene, Vec2 } from '@atlasmechanica/scene';
 import {
+  advancePeriodicAnimation,
+  wrapPeriodicValue,
+} from './animationPhase.js';
+import {
   loadRegisteredThreeRenderer,
   type LoadedThreeRendererModule,
   type RuntimeAwareThreeMechanismRenderer,
@@ -37,12 +41,6 @@ function required<T extends Element>(element: T | null, name: string): T {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
-}
-
-function wrapRange(value: number, min: number, max: number): number {
-  const span = max - min;
-  if (!(span > 0)) return value;
-  return ((value - min) % span + span) % span + min;
 }
 
 function precisionForStep(step: number): number {
@@ -86,9 +84,9 @@ function interactionValue(
 
   const [originX, originY] = interaction.mapping.origin;
   const radians = Math.atan2(point.y - originY, point.x - originX);
-  if (control.unit === 'rad') return wrapRange(radians, control.min, control.max);
+  if (control.unit === 'rad') return wrapPeriodicValue(radians, control.min, control.max);
   if (control.unit === 'deg') {
-    return wrapRange(radians * 180 / Math.PI, control.min, control.max);
+    return wrapPeriodicValue(radians * 180 / Math.PI, control.min, control.max);
   }
   throw new TypeError(`Polar-angle interaction ${control.id} requires angle units`);
 }
@@ -153,6 +151,16 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
     : { configuration: definition.sessionConfiguration };
   const session = compiled.createSession(sessionOptions);
 
+  function presentationValue(control: LabControlDefinition, value: number): number {
+    if (
+      control.kind === 'coordinate'
+      && model.coordinates[control.coordinate]?.periodic === true
+    ) {
+      return wrapPeriodicValue(value, control.min, control.max);
+    }
+    return value;
+  }
+
   function evaluate(nextValues: Readonly<Record<string, number>> = values): {
     state: ModelState;
     request: EvaluationRequest;
@@ -197,7 +205,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
 
   function syncControlOutputs(): void {
     for (const control of definition.controls) {
-      const value = values[control.id] ?? control.initial;
+      const value = presentationValue(control, values[control.id] ?? control.initial);
       const input = controlInputs.get(control.id);
       const output = controlOutputs.get(control.id);
       if (input !== undefined) input.value = String(value);
@@ -216,7 +224,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
     const query = new URLSearchParams();
     for (const control of definition.controls) {
       if (control.queryKey === undefined) continue;
-      const value = values[control.id] ?? control.initial;
+      const value = presentationValue(control, values[control.id] ?? control.initial);
       if (Math.abs(value - control.initial) <= Math.max(control.step * 1e-6, 1e-9)) continue;
       query.set(control.queryKey, String(Number(value.toFixed(6))));
     }
@@ -365,7 +373,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
         if (control.kind !== 'coordinate') return;
         const delta = control.unit === 'rad' ? deltaDegrees * Math.PI / 180 : deltaDegrees;
         const current = values[control.id] ?? control.initial;
-        const value = wrapRange(current + delta, control.min, control.max);
+        const value = wrapPeriodicValue(current + delta, control.min, control.max);
         acceptValues({ ...values, [control.id]: value });
       },
     },
@@ -488,7 +496,9 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
       const current = values[coordinate.id] ?? coordinate.initial;
       const speed = values[rate.id] ?? rate.initial;
       const delta = rateInCoordinateUnitsPerSecond(speed, rate.unit, coordinate.unit) * dt;
-      const value = wrapRange(current + delta, coordinate.min, coordinate.max);
+      const value = model.coordinates[coordinate.coordinate]?.periodic === true
+        ? advancePeriodicAnimation(current, delta, coordinate.min, coordinate.max).evaluationValue
+        : wrapPeriodicValue(current + delta, coordinate.min, coordinate.max);
       const next = { ...values, [coordinate.id]: value };
       const candidate = evaluate(next);
       if (hasErrors(candidate.state)) {
@@ -576,7 +586,7 @@ for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]'
       const previous = values[control.id] ?? control.initial;
       const next = { ...values, [control.id]: candidateValue };
       if (!acceptValues(next)) {
-        input.value = String(previous);
+        input.value = String(presentationValue(control, previous));
       }
     });
   }
