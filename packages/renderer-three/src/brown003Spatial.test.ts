@@ -24,7 +24,7 @@ function runtime(
   const state = session.evaluate({
     parameters,
     coordinates: { 'driver-angle': quantity(angleDeg, 'deg') },
-    rates: { 'driver-angle': quantity(30, 'rpm') },
+    rates: { 'driver-angle': quantity(Math.PI, 'rad/s') },
   });
   if (hasErrors(state)) {
     throw new Error(state.diagnostics.map((item) => item.message).join('; '));
