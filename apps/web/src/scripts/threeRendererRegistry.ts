@@ -1,7 +1,32 @@
-import type { createThreeMechanismRenderer } from '@atlasmechanica/renderer-three';
+import type {
+  ModelState,
+  ParameterId,
+  QuantityValue,
+  SimulationModel,
+} from '@atlasmechanica/model';
+import type {
+  ThreeMechanismRenderer,
+  ThreeMechanismRendererOptions,
+} from '@atlasmechanica/renderer-three';
+import type { MechanismScene } from '@atlasmechanica/scene';
+
+export interface ThreeRendererRuntimeContext {
+  readonly model: SimulationModel;
+  readonly state: ModelState;
+  readonly parameters?: Partial<Record<ParameterId, QuantityValue>>;
+}
+
+export interface RuntimeAwareThreeMechanismRenderer extends Omit<ThreeMechanismRenderer, 'update'> {
+  update(scene: MechanismScene, runtime?: ThreeRendererRuntimeContext): void;
+}
+
+export type CreateRegisteredThreeRenderer = (
+  host: HTMLElement,
+  options?: ThreeMechanismRendererOptions,
+) => RuntimeAwareThreeMechanismRenderer;
 
 export interface LoadedThreeRendererModule {
-  readonly createThreeMechanismRenderer: typeof createThreeMechanismRenderer;
+  readonly createThreeMechanismRenderer: CreateRegisteredThreeRenderer;
   readonly loaderVariant: string;
 }
 
@@ -11,6 +36,9 @@ const THREE_RENDERER_LOADERS: Readonly<Record<string, readonly ThreeRendererLoad
   'atlas.renderer-three.belt.v0': Object.freeze([
     () => import('./threeRendererLoaderA.js'),
     () => import('./threeRendererLoaderB.js'),
+  ]),
+  'atlas.renderer-three.brown-003-spatial.v0': Object.freeze([
+    () => import('./threeRendererBrown003.js'),
   ]),
 });
 
