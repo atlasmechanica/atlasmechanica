@@ -13,7 +13,7 @@ import type { MechanismScene } from '@atlasmechanica/scene';
 export interface ThreeRendererRuntimeContext {
   readonly model: SimulationModel;
   readonly state: ModelState;
-  readonly parameters?: Partial<Record<ParameterId, QuantityValue>>;
+  parameters?: Partial<Record<ParameterId, QuantityValue>>;
 }
 
 export interface RuntimeAwareThreeMechanismRenderer extends Omit<ThreeMechanismRenderer, 'update'> {
