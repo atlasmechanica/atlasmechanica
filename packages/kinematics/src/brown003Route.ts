@@ -70,6 +70,8 @@ export interface Brown003PulleyTrack {
   center: Vec3;
   axis: Vec3;
   radius: number;
+  /** Resolved finite pulley-face width used for route containment, in meters. */
+  faceWidth: number;
   arrival: Vec3;
   departure: Vec3;
   arrivalAxialOffset: number;
@@ -389,6 +391,7 @@ function makeTrack(
     center: pulley.center,
     axis: pulley.axis,
     radius: pulley.radius,
+    faceWidth: pulley.faceWidth,
     arrival,
     departure,
     arrivalAxialOffset,
@@ -468,7 +471,7 @@ export function solveBrown003Route(
   for (let index = 0; index < CONTACT_PROFILE.length; index += 1) {
     const expected = CONTACT_PROFILE[index];
     const contact = loop.contacts[index];
-    const pulley = contact === undefined ? undefined : system.pulleys[contact.pulley];
+    const pulley = expected === undefined ? undefined : system.pulleys[expected.pulley];
     if (
       expected === undefined
       || contact === undefined
@@ -479,293 +482,136 @@ export function solveBrown003Route(
       || pulley.coordinate !== expected.coordinate
     ) {
       return emptyRoute(model, [
-        routeDiagnostic('unsupported-model', 'Brown 003 contact order, roles, coordinates, or travel senses differ from the reference route'),
+        routeDiagnostic(
+          'unsupported-model',
+          `Brown 003 route requires ${expected?.pulley ?? 'the expected pulley'} at loop index ${index}`,
+        ),
       ]);
     }
   }
 
-  let parameters: ParameterValues;
-  let driver: ResolvedPulley;
-  let guideA: ResolvedPulley;
-  let driven: ResolvedPulley;
-  let guideB: ResolvedPulley;
-  let beltWidth: number;
   try {
-    parameters = resolveParameters(model, request.parameters ?? {});
-    const driverDefinition = system.pulleys.driver;
-    const guideADefinition = system.pulleys['guide-a'];
-    const drivenDefinition = system.pulleys.driven;
-    const guideBDefinition = system.pulleys['guide-b'];
+    const parameters = resolveParameters(model, request.parameters ?? {});
+    const beltWidth = resolveScalar(loop.beltWidth ?? { value: 0, unit: 'm' }, parameters, 'length', 'belt width');
+    if (!(beltWidth >= 0)) throw new RangeError('belt width must be non-negative');
+    const pulleys = Object.fromEntries(
+      CONTACT_PROFILE.map(({ pulley }) => [pulley, resolvePulley(system.pulleys[pulley] as FixedAxisPulleyDefinition, parameters)]),
+    ) as Record<FixedAxisPulleyId, ResolvedPulley>;
+
+    const driver = pulleys.driver;
+    const driven = pulleys.driven;
+    const guideA = pulleys['guide-a'];
+    const guideB = pulleys['guide-b'];
+
+    if (!perpendicular(driver.axis, driven.axis)) {
+      throw new TypeError('Brown 003 driver and driven axes must be perpendicular');
+    }
+    if (!parallelSameDirection(guideA.axis, guideB.axis)) {
+      throw new TypeError('Brown 003 guide axes must be parallel and codirectional');
+    }
+    if (!perpendicular(driver.axis, guideA.axis) || !perpendicular(driven.axis, guideA.axis)) {
+      throw new TypeError('Brown 003 guide axis must be perpendicular to both power axes');
+    }
+
+    const driverGuideA = ordinaryExternalTangent(
+      driver.center,
+      driver.radius,
+      guideA.center,
+      guideA.radius,
+      driver.axis,
+      1,
+    );
+    const guideADriven = ordinaryExternalTangent(
+      guideA.center,
+      guideA.radius,
+      driven.center,
+      driven.radius,
+      driven.axis,
+      -1,
+    );
+    const drivenGuideB = ordinaryExternalTangent(
+      driven.center,
+      driven.radius,
+      guideB.center,
+      guideB.radius,
+      driven.axis,
+      1,
+    );
+    const guideBDriver = ordinaryExternalTangent(
+      guideB.center,
+      guideB.radius,
+      driver.center,
+      driver.radius,
+      driver.axis,
+      -1,
+    );
     if (
-      driverDefinition === undefined
-      || guideADefinition === undefined
-      || drivenDefinition === undefined
-      || guideBDefinition === undefined
+      driverGuideA === undefined
+      || guideADriven === undefined
+      || drivenGuideB === undefined
+      || guideBDriver === undefined
     ) {
-      throw new TypeError('Brown 003 pulley definitions are incomplete');
+      throw new RangeError('Brown 003 reference centers and radii admit no external tangent route');
     }
-    driver = resolvePulley(driverDefinition, parameters);
-    guideA = resolvePulley(guideADefinition, parameters);
-    driven = resolvePulley(drivenDefinition, parameters);
-    guideB = resolvePulley(guideBDefinition, parameters);
-    if (loop.beltWidth === undefined) {
-      throw new TypeError('Brown 003 belt width is required for route geometry');
+
+    const midA = midpoint(driverGuideA.end, guideADriven.start);
+    const midB = midpoint(drivenGuideB.end, guideBDriver.start);
+    const guideARadial = radialUnit(midA, guideA);
+    const guideBRadial = radialUnit(midB, guideB);
+    if (guideARadial === undefined || guideBRadial === undefined) {
+      throw new RangeError('Brown 003 guide contact midpoint left its pitch surface');
     }
-    beltWidth = resolveScalar(loop.beltWidth, parameters, 'length', 'Brown 003 belt width');
-    if (!(beltWidth > 0)) throw new RangeError('Brown 003 belt width must be positive');
+
+    // The published plate does not dimension hidden depth. Atlas's reference
+    // geometry locates each guide leaf so its straight delivery span approaches
+    // the receiving power pulley in that pulley's middle plane. The returned
+    // track records the resulting lateral motion across the finite face rather
+    // than relabeling it as pointwise no-slip contact.
+    const guideAArrival = driverGuideA.end;
+    const guideADeparture = add(
+      guideA.center,
+      add(
+        scale(guideARadial, guideA.radius),
+        scale(guideA.axis, axisOffset(guideADriven.start, guideA)),
+      ),
+    );
+    const guideBArrival = drivenGuideB.end;
+    const guideBDeparture = add(
+      guideB.center,
+      add(
+        scale(guideBRadial, guideB.radius),
+        scale(guideB.axis, axisOffset(guideBDriver.start, guideB)),
+      ),
+    );
+
+    const spans = [
+      makeSpan('driver-guide-a', 'driver', 'guide-a', driverGuideA),
+      makeSpan('guide-a-driven', 'guide-a', 'driven', directSpan(guideADeparture, guideADriven.end) as TangentSpan),
+      makeSpan('driven-guide-b', 'driven', 'guide-b', drivenGuideB),
+      makeSpan('guide-b-driver', 'guide-b', 'driver', directSpan(guideBDeparture, guideBDriver.end) as TangentSpan),
+    ];
+    const tracksOrDiagnostics = [
+      makeTrack(driver, guideBDriver.end, driverGuideA.start, guideBDriver.direction, driverGuideA.direction, 1, beltWidth),
+      makeTrack(guideA, guideAArrival, guideADeparture, driverGuideA.direction, guideADriven.direction, 1, beltWidth),
+      makeTrack(driven, guideADriven.end, drivenGuideB.start, guideADriven.direction, drivenGuideB.direction, 1, beltWidth),
+      makeTrack(guideB, guideBArrival, guideBDeparture, drivenGuideB.direction, guideBDriver.direction, 1, beltWidth),
+    ];
+    const diagnostic = tracksOrDiagnostics.find(isDiagnostic);
+    if (diagnostic !== undefined) return emptyRoute(model, [diagnostic]);
+
+    return {
+      model: model.id,
+      beltWidth,
+      spans,
+      tracks: tracksOrDiagnostics as Brown003PulleyTrack[],
+      diagnostics: [],
+    };
   } catch (error) {
     return emptyRoute(model, [
       routeDiagnostic(
-        'invalid-input',
-        error instanceof Error ? error.message : 'Invalid Brown 003 route input',
+        error instanceof RangeError ? 'invalid-geometry' : 'invalid-input',
+        error instanceof Error ? error.message : 'Brown 003 route input is invalid',
       ),
     ]);
   }
-
-  if (
-    !perpendicular(driver.axis, driven.axis)
-    || !parallelSameDirection(guideA.axis, driven.axis)
-    || !parallelSameDirection(guideB.axis, driven.axis)
-  ) {
-    return emptyRoute(model, [
-      routeDiagnostic('invalid-geometry', 'Brown 003 requires perpendicular power axes and a parallel +axis guide pair'),
-    ]);
-  }
-
-  const guideDelta = subtract(guideB.center, guideA.center);
-  const guideRadialResidual = magnitude(reject(guideDelta, driven.axis));
-  if (guideRadialResidual > GEOMETRY_TOLERANCE) {
-    return emptyRoute(model, [routeDiagnostic('invalid-geometry', 'Brown 003 guide pulleys must be coaxial')]);
-  }
-
-  const guideMidpoint = midpoint(guideA.center, guideB.center);
-  const guideFromDriver = subtract(guideMidpoint, driver.center);
-  const guideAlongDriver = dot(guideFromDriver, driver.axis);
-  const guideAlongUpperAxis = dot(guideFromDriver, driven.axis);
-  const transverse = reject(reject(guideFromDriver, driver.axis), driven.axis);
-  const transverseDirection = normalize(transverse);
-  if (transverseDirection === undefined || !near(guideAlongUpperAxis, 0)) {
-    return emptyRoute(model, [
-      routeDiagnostic('invalid-geometry', 'Brown 003 guide midpoint must lie in the driver center plane with a nonzero riser'),
-    ]);
-  }
-
-  const guideSide: Sense = guideAlongDriver >= 0 ? 1 : -1;
-  if (!near(Math.abs(guideAlongDriver), guideA.radius) || !near(guideA.radius, guideB.radius)) {
-    return emptyRoute(model, [
-      routeDiagnostic('invalid-geometry', 'Brown 003 guide shaft must be offset from the driver axis by one guide radius'),
-    ]);
-  }
-
-  const guideAOffset = dot(subtract(guideA.center, guideMidpoint), driven.axis);
-  const guideBOffset = dot(subtract(guideB.center, guideMidpoint), driven.axis);
-  if (!near(guideAOffset, -driver.radius) || !near(guideBOffset, driver.radius)) {
-    return emptyRoute(model, [
-      routeDiagnostic(
-        'invalid-geometry',
-        'Brown 003 guide middle planes must straddle the driver center plane by one driver radius',
-      ),
-    ]);
-  }
-
-  const drivenFromGuides = subtract(driven.center, guideMidpoint);
-  const drivenAxialOffset = dot(drivenFromGuides, driven.axis);
-  const drivenRiserOffset = dot(drivenFromGuides, transverseDirection);
-  const upperCenterSpacing = dot(drivenFromGuides, driver.axis);
-  const upperResidual = reject(
-    reject(drivenFromGuides, driven.axis),
-    driver.axis,
-  );
-  if (
-    !near(drivenAxialOffset, 0)
-    || !near(drivenRiserOffset, 0)
-    || magnitude(upperResidual) > GEOMETRY_TOLERANCE
-    || !(upperCenterSpacing > guideA.radius + driven.radius + GEOMETRY_TOLERANCE)
-  ) {
-    return emptyRoute(model, [
-      routeDiagnostic('invalid-geometry', 'Brown 003 upper power pulley must share the guide riser and clear the guide pitch circles'),
-    ]);
-  }
-
-  if (!(magnitude(transverse) > driver.radius + guideA.radius + GEOMETRY_TOLERANCE)) {
-    return emptyRoute(model, [
-      routeDiagnostic('invalid-geometry', 'Brown 003 guide riser does not clear the lower power pulley'),
-    ]);
-  }
-
-  const guideAIntervalMax = guideAOffset + guideA.faceWidth / 2;
-  const guideBIntervalMin = guideBOffset - guideB.faceWidth / 2;
-  if (guideAIntervalMax > guideBIntervalMin + GEOMETRY_TOLERANCE) {
-    return emptyRoute(model, [
-      routeDiagnostic('invalid-geometry', 'Brown 003 side-by-side guide pulley faces overlap'),
-    ]);
-  }
-
-  const driverDeparture = add(
-    add(driver.center, scale(driver.axis, 2 * guideSide * guideA.radius)),
-    scale(driven.axis, -driver.radius),
-  );
-  const guideAArrival = add(guideA.center, scale(driver.axis, guideSide * guideA.radius));
-  const guideBDeparture = add(guideB.center, scale(driver.axis, -guideSide * guideB.radius));
-  const driverArrival = add(driver.center, scale(driven.axis, driver.radius));
-
-  const driverGuideA = directSpan(driverDeparture, guideAArrival);
-  const guideBDriver = directSpan(guideBDeparture, driverArrival);
-  if (driverGuideA === undefined || guideBDriver === undefined) {
-    return emptyRoute(model, [routeDiagnostic('invalid-geometry', 'Brown 003 vertical guide span collapsed')]);
-  }
-
-  const guideAInDrivenPlane = add(
-    guideA.center,
-    scale(driven.axis, dot(subtract(driven.center, guideA.center), driven.axis)),
-  );
-  const drivenInGuideBPlane = add(
-    driven.center,
-    scale(driven.axis, dot(subtract(guideB.center, driven.center), driven.axis)),
-  );
-  const tangentBranch: Sense = guideSide === 1 ? -1 : 1;
-  const guideADriven = ordinaryExternalTangent(
-    guideAInDrivenPlane,
-    guideA.radius,
-    driven.center,
-    driven.radius,
-    driven.axis,
-    tangentBranch,
-  );
-  const drivenGuideB = ordinaryExternalTangent(
-    drivenInGuideBPlane,
-    driven.radius,
-    guideB.center,
-    guideB.radius,
-    driven.axis,
-    tangentBranch,
-  );
-  if (guideADriven === undefined || drivenGuideB === undefined) {
-    return emptyRoute(model, [
-      routeDiagnostic('invalid-geometry', 'Brown 003 upper guide/driven pitch circles have no clear external tangent'),
-    ]);
-  }
-
-  const contactByPulley = new Map(loop.contacts.map((contact) => [contact.pulley, contact]));
-  const driverContact = contactByPulley.get('driver');
-  const guideAContact = contactByPulley.get('guide-a');
-  const drivenContact = contactByPulley.get('driven');
-  const guideBContact = contactByPulley.get('guide-b');
-  if (
-    driverContact === undefined
-    || guideAContact === undefined
-    || drivenContact === undefined
-    || guideBContact === undefined
-  ) {
-    return emptyRoute(model, [routeDiagnostic('invalid-model', 'Brown 003 route lost its contact semantics')]);
-  }
-
-  const trackInputs: Array<{
-    pulley: ResolvedPulley;
-    arrival: Vec3;
-    departure: Vec3;
-    incoming: Vec3;
-    outgoing: Vec3;
-    contact: FixedAxisBeltContactDefinition;
-  }> = [
-    {
-      pulley: driver,
-      arrival: driverArrival,
-      departure: driverDeparture,
-      incoming: guideBDriver.direction,
-      outgoing: driverGuideA.direction,
-      contact: driverContact,
-    },
-    {
-      pulley: guideA,
-      arrival: guideAArrival,
-      departure: guideADriven.start,
-      incoming: driverGuideA.direction,
-      outgoing: guideADriven.direction,
-      contact: guideAContact,
-    },
-    {
-      pulley: driven,
-      arrival: guideADriven.end,
-      departure: drivenGuideB.start,
-      incoming: guideADriven.direction,
-      outgoing: drivenGuideB.direction,
-      contact: drivenContact,
-    },
-    {
-      pulley: guideB,
-      arrival: drivenGuideB.end,
-      departure: guideBDeparture,
-      incoming: drivenGuideB.direction,
-      outgoing: guideBDriver.direction,
-      contact: guideBContact,
-    },
-  ];
-
-  const tracks: Brown003PulleyTrack[] = [];
-  for (const input of trackInputs) {
-    const track = makeTrack(
-      input.pulley,
-      input.arrival,
-      input.departure,
-      input.incoming,
-      input.outgoing,
-      input.contact.sense,
-      beltWidth,
-    );
-    if (isDiagnostic(track)) return emptyRoute(model, [track]);
-    tracks.push(track);
-  }
-
-  return {
-    model: model.id,
-    beltWidth,
-    spans: [
-      makeSpan('driver-guide-a', 'driver', 'guide-a', driverGuideA),
-      makeSpan('guide-a-driven', 'guide-a', 'driven', guideADriven),
-      makeSpan('driven-guide-b', 'driven', 'guide-b', drivenGuideB),
-      makeSpan('guide-b-driver', 'guide-b', 'driver', guideBDriver),
-    ],
-    tracks,
-    diagnostics: [],
-  };
-}
-
-function rotateAroundAxis(vector: Vec3, axis: Vec3, angle: number): Vec3 {
-  const cosine = Math.cos(angle);
-  const sine = Math.sin(angle);
-  return add(
-    add(scale(vector, cosine), scale(cross(axis, vector), sine)),
-    scale(axis, dot(axis, vector) * (1 - cosine)),
-  );
-}
-
-/**
- * Sample the Brown 003 belt-centerline tracking path on a pulley face. Finite
- * `t` is clamped to [0, 1]; non-finite input is rejected before interpolation.
- * Axial movement in this sampled path is explicit lateral tracking slip, not
- * no-slip rolling contact.
- */
-export function sampleBrown003PulleyTrack(track: Brown003PulleyTrack, t: number): Vec3 {
-  if (!Number.isFinite(t)) {
-    throw new RangeError('Brown 003 pulley track sample parameter must be finite');
-  }
-  const clamped = Math.max(0, Math.min(1, t));
-  const arrivalRelative = subtract(track.arrival, track.center);
-  const arrivalRadial = normalize(reject(arrivalRelative, track.axis));
-  if (arrivalRadial === undefined) return track.arrival;
-
-  const axialBlend = clamped * clamped * (3 - 2 * clamped);
-  const axialOffset =
-    track.arrivalAxialOffset
-    + (track.departureAxialOffset - track.arrivalAxialOffset) * axialBlend;
-  const radial = rotateAroundAxis(
-    arrivalRadial,
-    track.axis,
-    track.signedWrapAngle * clamped,
-  );
-  return add(
-    add(track.center, scale(track.axis, axialOffset)),
-    scale(radial, track.radius),
-  );
 }
