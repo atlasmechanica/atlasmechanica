@@ -7,7 +7,7 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   check:
@@ -27,12 +27,22 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Capture lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: generated-package-lock
-          path: package-lock.json
-          retention-days: 1
+      - name: Commit generated lockfile
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          cp package-lock.json /tmp/package-lock.json
+          git fetch origin "$HEAD_BRANCH"
+          git checkout -B "$HEAD_BRANCH" "origin/$HEAD_BRANCH"
+          cp /tmp/package-lock.json package-lock.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(ci): lock npm dependencies"
+            git push origin "HEAD:$HEAD_BRANCH"
+          fi
 
       - name: Typecheck and test
         run: npm run check
