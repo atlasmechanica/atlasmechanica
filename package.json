@@ -2,6 +2,7 @@
   "name": "atlas-mechanica",
   "private": true,
   "type": "module",
+  "packageManager": "npm@11.6.0",
   "workspaces": [
     "apps/*",
     "packages/*",
