@@ -9,12 +9,15 @@ import {
   type FixedAxisBeltContinuityRequest,
   type FixedAxisBeltContinuityResult,
 } from '@atlasmechanica/kinematics';
-import type {
-  FixedAxisPulleyId,
-  ModelState,
-  ParameterId,
-  QuantityValue,
-  SimulationModel,
+import {
+  canonicalNumber,
+  isParameterReference,
+  type FixedAxisPulleyId,
+  type ModelState,
+  type ParameterId,
+  type QuantityValue,
+  type ScalarSource,
+  type SimulationModel,
 } from '@atlasmechanica/model';
 
 const BROWN_003_MODEL_ID = 'foundation:belt-drive:quarter-turn-guided';
@@ -115,6 +118,34 @@ function assertStateValue(
   }
 }
 
+function resolvePositiveLength(
+  source: ScalarSource,
+  runtime: Brown003SpatialRendererRuntimeContext,
+  label: string,
+): number {
+  let value: number;
+  if (isParameterReference(source)) {
+    const definition = runtime.model.parameters[source.parameter];
+    if (definition === undefined || definition.kind !== 'length') {
+      throw new TypeError(`${label} references a non-length parameter ${source.parameter}`);
+    }
+    const parameters = runtime.parameters ?? {};
+    const authored = Object.prototype.hasOwnProperty.call(parameters, source.parameter)
+      ? parameters[source.parameter]
+      : definition.default;
+    if (authored === undefined) {
+      throw new TypeError(`${label} requires parameter ${source.parameter}`);
+    }
+    value = canonicalNumber(authored, 'length');
+  } else {
+    value = canonicalNumber(source, 'length');
+  }
+  if (!(value > 0) || !Number.isFinite(value)) {
+    throw new RangeError(`${label} must resolve to a finite positive length`);
+  }
+  return value;
+}
+
 function successfulContinuityForRuntime(
   runtime: Brown003SpatialRendererRuntimeContext,
 ): FixedAxisBeltContinuityResult {
@@ -203,14 +234,20 @@ function radialBasis(track: Brown003PulleyTrack): readonly [Brown003SpatialVec3,
 function geometryKey(
   path: Brown003MaterialPath,
   tracks: readonly Brown003PulleyTrack[],
+  pulleys: readonly Brown003SpatialPulleyRenderData[],
 ): string {
+  const faceWidths = new Map(pulleys.map((pulley) => [pulley.pulley, pulley.faceWidth]));
   const values: number[] = [path.totalLength];
   for (const track of tracks) {
+    const faceWidth = faceWidths.get(track.pulley);
+    if (faceWidth === undefined) {
+      throw new TypeError(`Brown 003 spatial renderer is missing face width for ${track.pulley}`);
+    }
     values.push(
       ...track.center,
       ...track.axis,
       track.radius,
-      track.faceWidth,
+      faceWidth,
       ...track.arrival,
       ...track.departure,
     );
@@ -220,21 +257,23 @@ function geometryKey(
 
 function boundsFor(
   beltPoints: readonly Brown003SpatialVec3[],
-  tracks: readonly Brown003PulleyTrack[],
+  pulleys: readonly Brown003SpatialPulleyRenderData[],
 ): { min: Brown003SpatialVec3; max: Brown003SpatialVec3 } {
   const points: Brown003SpatialVec3[] = [...beltPoints];
-  for (const track of tracks) {
-    const [radial, tangent] = radialBasis(track);
-    const axis = normalize(track.axis, `${track.pulley} axis`);
+  for (const pulley of pulleys) {
+    const tangent = normalize(
+      cross(pulley.axis, pulley.referenceRadial),
+      `${pulley.pulley} tangent`,
+    );
     for (const side of [-1, 1] as const) {
-      const faceCenter = add(track.center, scale(axis, side * track.faceWidth / 2));
+      const faceCenter = add(pulley.center, scale(pulley.axis, side * pulley.faceWidth / 2));
       for (let index = 0; index < PULLEY_BOUND_SAMPLES; index += 1) {
         const angle = index / PULLEY_BOUND_SAMPLES * Math.PI * 2;
         points.push(add(
           faceCenter,
           add(
-            scale(radial, Math.cos(angle) * track.radius),
-            scale(tangent, Math.sin(angle) * track.radius),
+            scale(pulley.referenceRadial, Math.cos(angle) * pulley.pitchRadius),
+            scale(tangent, Math.sin(angle) * pulley.pitchRadius),
           ),
         ));
       }
@@ -275,7 +314,7 @@ export function resolveBrown003SpatialRenderData(
   runtime: Brown003SpatialRendererRuntimeContext,
 ): Brown003SpatialRenderData {
   if (runtime.model.id !== BROWN_003_MODEL_ID || runtime.state.model !== runtime.model.id) {
-    throw new TypeError('Brown 003 spatial renderer requires the canonical model and matching state');
+    throw new TypeError('Brown 003 spatial renderer requires the canonical Brown 003 model and matching state');
   }
   const stateError = runtime.state.diagnostics.find((item) => item.severity === 'error');
   if (stateError !== undefined) {
@@ -312,8 +351,15 @@ export function resolveBrown003SpatialRenderData(
   const pulleys = route.tracks.map((track): Brown003SpatialPulleyRenderData => {
     const pulley = runtime.model.systems.fixedAxisBelt?.pulleys[track.pulley];
     if (pulley === undefined) throw new TypeError(`Missing Brown 003 pulley ${track.pulley}`);
+    if (pulley.faceWidth === undefined) {
+      throw new TypeError(`Brown 003 spatial renderer requires finite face width for ${track.pulley}`);
+    }
     const coordinate = runtime.state.coordinates[pulley.coordinate];
-    if (coordinate === undefined || !Number.isFinite(coordinate.position.value)) {
+    if (coordinate === undefined) {
+      throw new TypeError(`Missing finite Brown 003 phase ${pulley.coordinate}`);
+    }
+    const phaseAngle = canonicalNumber(coordinate.position, 'angle');
+    if (!Number.isFinite(phaseAngle)) {
       throw new TypeError(`Missing finite Brown 003 phase ${pulley.coordinate}`);
     }
     const [referenceRadial] = radialBasis(track);
@@ -323,19 +369,23 @@ export function resolveBrown003SpatialRenderData(
       axis: normalize(track.axis, `${track.pulley} axis`),
       referenceRadial,
       pitchRadius: track.radius,
-      faceWidth: track.faceWidth,
-      phaseAngle: coordinate.position.value,
+      faceWidth: resolvePositiveLength(
+        pulley.faceWidth,
+        runtime,
+        `${track.pulley} face width`,
+      ),
+      phaseAngle,
     };
   });
 
   return {
     model: runtime.model.id,
-    geometryKey: geometryKey(materialPath, route.tracks),
+    geometryKey: geometryKey(materialPath, route.tracks, pulleys),
     path: materialPath,
     beltPoints,
     pulleys,
     materialArclength,
     materialPoint,
-    bounds: boundsFor(beltPoints, route.tracks),
+    bounds: boundsFor(beltPoints, pulleys),
   };
 }
