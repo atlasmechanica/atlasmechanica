@@ -21,8 +21,18 @@ jobs:
         with:
           node-version: 22
 
+      - name: Pin npm
+        run: npm install --global npm@11.6.0
+
       - name: Install dependencies
         run: npm install
+
+      - name: Capture lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-package-lock
+          path: package-lock.json
+          retention-days: 1
 
       - name: Typecheck and test
         run: npm run check
