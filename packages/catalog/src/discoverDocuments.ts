@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   CatalogAuthoringError,
   compileCatalogDocuments,
+  type CatalogCompileOptions,
   type CatalogDocumentSource,
   type CompiledCatalogDocuments,
 } from './authoring.js';
@@ -71,6 +72,9 @@ export async function readCatalogDocuments(root: string | URL): Promise<readonly
 }
 
 /** Pure normalized records can be serialized for an Astro/browser build. */
-export async function discoverCatalogDocuments(root: string | URL): Promise<CompiledCatalogDocuments> {
-  return compileCatalogDocuments(await readCatalogDocuments(root));
+export async function discoverCatalogDocuments(
+  root: string | URL,
+  options: CatalogCompileOptions = {},
+): Promise<CompiledCatalogDocuments> {
+  return compileCatalogDocuments(await readCatalogDocuments(root), options);
 }

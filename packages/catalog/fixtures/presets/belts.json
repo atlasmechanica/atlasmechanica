@@ -1,0 +1,27 @@
+{
+  "format": "atlas.catalog-document",
+  "schemaVersion": "0.2",
+  "modelPresets": [
+    {
+      "id": "example:open-ratio",
+      "modelId": "foundation:belt-drive:open",
+      "parameters": { "driver-radius": { "value": 45, "unit": "mm" } }
+    },
+    {
+      "id": "example:crossed-ratio",
+      "modelId": "foundation:belt-drive:crossed",
+      "configuration": "reference",
+      "parameters": { "driven-radius": { "value": 0.08, "unit": "m" } }
+    },
+    {
+      "id": "example:guided-ratio",
+      "modelId": "foundation:belt-drive:quarter-turn-guided",
+      "parameters": { "driven-radius": { "value": 55, "unit": "mm" } }
+    }
+  ],
+  "simulationBindings": [
+    { "subject": "open-belt-drive", "preset": "example:open-ratio" },
+    { "subject": "crossed-belt-drive", "preset": "example:crossed-ratio" },
+    { "subject": "quarter-turn-belt-drive", "preset": "example:guided-ratio" }
+  ]
+}
