@@ -13,6 +13,7 @@ on:
       - 'packages/renderer-svg/**'
       - 'packages/renderer-three/**'
       - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/renderer-bakeoff.yml'
 
 concurrency:
