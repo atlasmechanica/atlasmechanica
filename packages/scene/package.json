@@ -8,9 +8,7 @@
     "./compilers": "./src/compilers.ts"
   },
   "dependencies": {
+    "@atlasmechanica/kinematics": "file:../kinematics",
     "@atlasmechanica/model": "file:../model"
-  },
-  "devDependencies": {
-    "@atlasmechanica/kinematics": "file:../kinematics"
   }
 }

@@ -10,6 +10,7 @@ type FamilyLoader = () => Promise<MechanismLabFamily>;
 const FAMILY_LOADERS: Readonly<Record<string, FamilyLoader>> = Object.freeze({
   'foundation:belt-drive:open': () => import('./families/belt.js').then((module) => module.beltLabFamily),
   'foundation:belt-drive:crossed': () => import('./families/belt.js').then((module) => module.beltLabFamily),
+  'foundation:belt-drive:quarter-turn-guided': () => import('./families/belt.js').then((module) => module.beltLabFamily),
   'foundation:four-bar:crank-rocker': () => import('./families/fourBar.js').then((module) => module.fourBarLabFamily),
 });
 
