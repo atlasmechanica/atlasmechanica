@@ -4,6 +4,7 @@ import {
   type MechanismLabFamily,
   type ResolvedMechanismLab,
 } from './family.js';
+import { snapshotLabSelection, type MechanismLabSelection } from './presentationSelection.js';
 
 /** Trusted application registrations, never module paths supplied by a manifest. */
 export interface MechanismLabFamilyRegistration {
@@ -72,9 +73,9 @@ export function createMechanismLabResolver(registrations: readonly MechanismLabF
   for (const registration of snapshots) {
     validateFamily(registration.family, registration.id, registration.adapterIds);
   }
-  return (modelId: ModelId, adapterId: string, labId?: string): ResolvedMechanismLab => {
+  return (modelId: ModelId, adapterId: string, lab?: MechanismLabSelection): ResolvedMechanismLab => {
     const { family } = requireRegistration(byAdapter, adapterId);
-    return resolveMechanismLabFromFamily(family, modelId, adapterId, labId);
+    return resolveMechanismLabFromFamily(family, modelId, adapterId, lab);
   };
 }
 
@@ -90,8 +91,9 @@ export function createLazyMechanismLabResolver(registrations: readonly LazyMecha
   });
   const byAdapter = indexByAdapter(snapshots);
   const pendingFamilies = new Map<string, Promise<MechanismLabFamily>>();
-  return async (modelId: ModelId, adapterId: string, labId?: string): Promise<ResolvedMechanismLab> => {
+  return async (modelId: ModelId, adapterId: string, lab?: MechanismLabSelection): Promise<ResolvedMechanismLab> => {
     const registration = requireRegistration(byAdapter, adapterId);
+    const selection = snapshotLabSelection(lab);
     let pending = pendingFamilies.get(registration.id);
     if (pending === undefined) {
       // Defer invocation so a synchronous loader throw is also retryable, and
@@ -106,7 +108,7 @@ export function createLazyMechanismLabResolver(registrations: readonly LazyMecha
       pendingFamilies.set(registration.id, pending);
     }
     const family = await pending;
-    // Existing lab/model/adapter/scene and interaction checks remain authoritative.
-    return resolveMechanismLabFromFamily(family, modelId, adapterId, labId);
+    // Each presentation is resolved independently; only family code is cached.
+    return resolveMechanismLabFromFamily(family, modelId, adapterId, selection);
   };
 }

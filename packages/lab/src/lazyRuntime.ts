@@ -18,3 +18,4 @@ export const loadMechanismLab = createLazyMechanismLabResolver([
 ]);
 
 export type { ResolvedMechanismLab } from './family.js';
+export type { LabPresentationSelection, MechanismLabSelection } from './presentationSelection.js';

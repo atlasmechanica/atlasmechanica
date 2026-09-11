@@ -9,3 +9,4 @@ export const resolveMechanismLab = createMechanismLabResolver([
 ]);
 
 export type { ResolvedMechanismLab } from './family.js';
+export type { LabPresentationSelection, MechanismLabSelection } from './presentationSelection.js';
