@@ -70,11 +70,42 @@ must also obey the model's scalar parameter domains. Precision is 0–12 digits 
 cannot be applied to text readouts. Array patches are matched by ID, preserve the
 template's ordering and cannot add/remove/rebind controls or readouts.
 
+Both the initial value and the maximum must lie on the slider's step grid based
+at `min`. The checks use a small floating-point tolerance so decimal steps remain
+usable. For example, `min: 0, max: 10, step: 3, initial: 3` fails: its initial
+value is reachable but its maximum is not. Template maxima are checked before
+presentation overrides, so a later override cannot hide an invalid template.
+
+Animated periodic coordinates are an exception to range narrowing. If the model
+marks the coordinate periodic and the template animation binds its control,
+presentation must retain both template endpoints. The runtime wraps display
+values using that span while evaluating an unwrapped physical angle; narrowing
+0–360 degrees to 0–180 degrees would make the displayed and physical angles disagree.
+Labels, aligned steps, and initial values remain configurable. Nonanimated periodic
+controls, animated nonperiodic controls, parameters, and rates can still narrow
+within their supported ranges. This validation does not alter continuous physical
+phase, playback, or deliberate manual rebasing.
+
 Settings cannot change units, query keys, interaction mappings, signal/coordinate
 bindings, animation pairs, readout scaling/suffixes, model transforms, scene
 compilers or renderer IDs. They cannot turn on an unsupported 3D view or remove
 the required 2D view. Templates with dependent-coordinate controls fail. Data has
 no callback, script, dynamic module path or renderer-owned motion program.
+
+## Direct API data boundary
+
+Direct presentation consumers must supply plain data just like parsed JSON.
+Arrays must have the standard array prototype, dense enumerable own data indexes,
+and no own properties other than those indexes and `length`. Validation inspects
+all own keys/descriptors, including non-enumerable and symbol keys, before array
+methods or cloning are used. Own `map`/`some` methods, getters, extra properties,
+array subclasses/custom prototypes, sparse arrays, and accessor indexes fail.
+Non-enumerable indexes also fail because cloning would omit them. Ordinary frozen
+arrays remain supported and are copied into the owned immutable output.
+
+This in-process data validator is not a sandbox for arbitrary JavaScript, proxy
+traps, or modified global intrinsics. External authoring input should enter as
+JSON text. Trusted application models/templates remain a separate boundary.
 
 ## Runtime handoff
 
