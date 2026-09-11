@@ -1,0 +1,228 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:atlasmechanica:catalog-document:0.4",
+  "title": "Atlas Mechanica catalog authoring document",
+  "description": "Data-only catalog, model presets, editorial content and lab presentations. This checks portable JSON structure, not cross-file references, model/template compatibility, URL authority parsing, unit-conversion representability, physical feasibility or publication readiness. Run the catalog compiler and actual runtime as well.",
+  "$comment": "No remote references or executable schema extensions. $schema is metadata on this schema, not an accepted field in catalog documents. See docs/architecture/json-catalog-schema.md for the tested runtime-only checks.",
+  "type": "object",
+  "required": ["format", "schemaVersion"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "atlas.catalog-document" },
+    "schemaVersion": { "type": "string", "enum": ["0.1", "0.2", "0.3", "0.4"], "description": "Envelope version, independent of the catalog record and physical-model versions." },
+    "collections": { "type": "array", "items": { "$ref": "#/definitions/collection" } },
+    "subjects": { "type": "array", "items": { "$ref": "#/definitions/subject" } },
+    "occurrences": { "type": "array", "items": { "$ref": "#/definitions/occurrence" } },
+    "modelPresets": { "type": "array", "items": { "$ref": "#/definitions/modelPreset" }, "description": "Version 0.2+. Named parameters for supplied physical models, not copied solver output." },
+    "simulationBindings": { "type": "array", "items": { "$ref": "#/definitions/simulationBinding" }, "description": "Version 0.2+. Canonical subject to preset reference." },
+    "referenceSources": { "type": "array", "items": { "$ref": "#/definitions/referenceSource" }, "description": "Version 0.3+. Authored source locators, attribution and rights claims." },
+    "assets": { "type": "array", "items": { "$ref": "#/definitions/asset" }, "description": "Version 0.3+. Raster declarations; actual files and rights must be checked before publication." },
+    "subjectContent": { "type": "array", "items": { "$ref": "#/definitions/subjectContent" }, "description": "Version 0.3+. Literal text in the shared editorial vocabulary; never HTML or executable formulas." },
+    "labPresentations": { "type": "array", "items": { "$ref": "#/definitions/labPresentation" }, "description": "Version 0.4+. References trusted templates; does not register engines, renderers or pages." }
+  },
+  "anyOf": [
+    { "required": ["collections"], "properties": { "collections": { "minItems": 1 } } },
+    { "required": ["subjects"], "properties": { "subjects": { "minItems": 1 } } },
+    { "required": ["occurrences"], "properties": { "occurrences": { "minItems": 1 } } },
+    { "required": ["modelPresets"], "properties": { "modelPresets": { "minItems": 1 } } },
+    { "required": ["simulationBindings"], "properties": { "simulationBindings": { "minItems": 1 } } },
+    { "required": ["referenceSources"], "properties": { "referenceSources": { "minItems": 1 } } },
+    { "required": ["assets"], "properties": { "assets": { "minItems": 1 } } },
+    { "required": ["subjectContent"], "properties": { "subjectContent": { "minItems": 1 } } },
+    { "required": ["labPresentations"], "properties": { "labPresentations": { "minItems": 1 } } }
+  ],
+  "allOf": [
+    {
+      "if": { "properties": { "schemaVersion": { "const": "0.1" } }, "required": ["schemaVersion"] },
+      "then": { "properties": { "modelPresets": false, "simulationBindings": false } }
+    },
+    {
+      "if": { "properties": { "schemaVersion": { "enum": ["0.1", "0.2"] } }, "required": ["schemaVersion"] },
+      "then": { "properties": { "referenceSources": false, "assets": false, "subjectContent": false } }
+    },
+    {
+      "if": { "properties": { "schemaVersion": { "enum": ["0.1", "0.2", "0.3"] } }, "required": ["schemaVersion"] },
+      "then": { "properties": { "labPresentations": false } }
+    }
+  ],
+  "definitions": {
+    "text": { "type": "string", "minLength": 1, "pattern": "\\S", "description": "Nonempty literal text. Consumers must escape it, not interpret it as markup." },
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?:[.:_-][a-z0-9]+)*$", "description": "Stable lowercase identifier. Cross-file existence and uniqueness are compiler checks." },
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "number": { "type": "number", "minimum": -1.7976931348623157e308, "maximum": 1.7976931348623157e308 },
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "recordVersion": { "const": "0.1" },
+    "rightsStatus": { "type": "string", "enum": ["public-domain", "copyrighted", "unknown"] },
+    "sourceUrl": {
+      "type": "string",
+      "pattern": "^[hH][tT][tT][pP][sS]?://",
+      "not": { "pattern": "[\u0000-\u0020\u007f\\\\]" },
+      "description": "HTTP(S) syntax without whitespace/control characters/backslashes. The compiler additionally uses URL parsing and rejects nonempty username/password credentials; this pattern is not URL authorization. No URL is fetched during compilation."
+    },
+    "quantity": {
+      "type": "object", "required": ["value", "unit"], "additionalProperties": false,
+      "properties": {
+        "value": { "$ref": "#/definitions/number" },
+        "unit": { "type": "string", "enum": ["1", "m", "mm", "rad", "deg", "rad/s", "deg/s", "rad/s^2", "deg/s^2", "m/s", "mm/s", "m/s^2", "mm/s^2"] }
+      },
+      "description": "Existing model units only. Expected dimensions, domains and canonical conversion representability are checked by the model/compiler."
+    },
+    "collection": {
+      "type": "object", "required": ["schemaVersion", "id", "shortTitle", "title", "rights"], "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "$ref": "#/definitions/recordVersion" }, "id": { "$ref": "#/definitions/id" },
+        "shortTitle": { "$ref": "#/definitions/text" }, "title": { "$ref": "#/definitions/text" },
+        "rights": {
+          "type": "object", "required": ["status"], "additionalProperties": false,
+          "properties": { "status": { "$ref": "#/definitions/rightsStatus" }, "note": { "$ref": "#/definitions/text" } }
+        },
+        "sequence": { "$ref": "#/definitions/positiveInteger" }, "author": { "$ref": "#/definitions/text" }
+      }
+    },
+    "fact": {
+      "oneOf": [
+        { "type": "object", "required": ["label", "value"], "additionalProperties": false, "properties": { "label": { "$ref": "#/definitions/text" }, "value": { "$ref": "#/definitions/text" } } },
+        { "type": "object", "required": ["label", "tags"], "additionalProperties": false, "properties": { "label": { "$ref": "#/definitions/text" }, "tags": { "type": "array", "items": { "$ref": "#/definitions/text" } } } }
+      ]
+    },
+    "subject": {
+      "type": "object", "required": ["schemaVersion", "id", "slug", "title", "seoDescription", "summary", "classification", "facts"], "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "$ref": "#/definitions/recordVersion" }, "id": { "$ref": "#/definitions/id" }, "slug": { "$ref": "#/definitions/slug" },
+        "title": { "$ref": "#/definitions/text" }, "seoDescription": { "$ref": "#/definitions/text" }, "summary": { "$ref": "#/definitions/text" },
+        "classification": {
+          "type": "object", "required": ["inputMotion", "outputMotion", "functionalSignature", "components"], "additionalProperties": false,
+          "properties": {
+            "inputMotion": { "$ref": "#/definitions/text" }, "outputMotion": { "$ref": "#/definitions/text" },
+            "functionalSignature": { "$ref": "#/definitions/text" }, "components": { "type": "array", "items": { "$ref": "#/definitions/text" } }
+          }
+        },
+        "facts": { "type": "array", "items": { "$ref": "#/definitions/fact" } },
+        "simulation": {
+          "type": "object", "required": ["status", "modelId", "adapter"], "additionalProperties": false,
+          "properties": { "status": { "enum": ["planned", "interactive"] }, "modelId": { "$ref": "#/definitions/id" }, "adapter": { "$ref": "#/definitions/id" } }
+        }
+      }
+    },
+    "occurrence": {
+      "type": "object", "required": ["schemaVersion", "id", "collection", "ordinal", "displayNumber", "status", "source"], "additionalProperties": false,
+      "properties": {
+        "schemaVersion": { "$ref": "#/definitions/recordVersion" }, "id": { "$ref": "#/definitions/id" }, "collection": { "$ref": "#/definitions/id" },
+        "ordinal": { "$ref": "#/definitions/positiveInteger" }, "displayNumber": { "$ref": "#/definitions/text" },
+        "status": { "enum": ["cataloged", "classified", "mapped", "interactive"], "description": "The compiler checks status consistency and canonical/model references. This field alone cannot certify interactivity." },
+        "source": {
+          "type": "object", "additionalProperties": false,
+          "properties": { "referenceUrl": { "$ref": "#/definitions/sourceUrl" }, "referenceLabel": { "$ref": "#/definitions/text" }, "excerpt": { "$ref": "#/definitions/text" } }
+        },
+        "classification": {
+          "type": "object", "additionalProperties": false,
+          "properties": { "inputMotion": { "$ref": "#/definitions/text" }, "outputMotion": { "$ref": "#/definitions/text" }, "components": { "type": "array", "items": { "$ref": "#/definitions/text" } }, "tags": { "type": "array", "items": { "$ref": "#/definitions/text" } } }
+        },
+        "canonicalSubject": { "$ref": "#/definitions/id" },
+        "simulation": { "type": "object", "required": ["modelId"], "additionalProperties": false, "properties": { "modelId": { "$ref": "#/definitions/id" } } },
+        "editorial": { "type": "object", "required": ["heading"], "additionalProperties": false, "properties": { "heading": { "$ref": "#/definitions/text" } } }
+      }
+    },
+    "modelPreset": {
+      "type": "object", "required": ["id", "modelId"], "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/id" }, "modelId": { "$ref": "#/definitions/id" }, "configuration": { "$ref": "#/definitions/id" },
+        "parameters": { "type": "object", "propertyNames": { "$ref": "#/definitions/id" }, "additionalProperties": { "$ref": "#/definitions/quantity" }, "description": "Model defaults < preset < session < evaluation overrides. Every layer is checked before applying later values." }
+      }
+    },
+    "simulationBinding": {
+      "type": "object", "required": ["subject", "preset"], "additionalProperties": false,
+      "properties": { "subject": { "$ref": "#/definitions/id" }, "preset": { "$ref": "#/definitions/id" } }
+    },
+    "contentRights": {
+      "type": "object", "required": ["status", "attribution"], "additionalProperties": false,
+      "properties": { "status": { "$ref": "#/definitions/rightsStatus" }, "attribution": { "$ref": "#/definitions/text" }, "note": { "$ref": "#/definitions/text" } }
+    },
+    "referenceSource": {
+      "type": "object", "required": ["id", "title", "locator", "rights"], "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/id" }, "title": { "$ref": "#/definitions/text" }, "locator": { "$ref": "#/definitions/text" },
+        "rights": { "$ref": "#/definitions/contentRights" }, "author": { "$ref": "#/definitions/text" }, "edition": { "$ref": "#/definitions/text" }, "url": { "$ref": "#/definitions/sourceUrl" }
+      }
+    },
+    "asset": {
+      "type": "object", "required": ["id", "path", "mediaType", "rights", "provenance"], "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/id" },
+        "path": { "type": "string", "pattern": "^/assets/catalog/(?:[a-zA-Z0-9_-][a-zA-Z0-9._-]*/)*[a-zA-Z0-9_-][a-zA-Z0-9._-]*$" },
+        "mediaType": { "enum": ["image/png", "image/jpeg", "image/webp"] }, "rights": { "$ref": "#/definitions/contentRights" },
+        "provenance": {
+          "oneOf": [
+            { "type": "object", "required": ["kind", "reference"], "additionalProperties": false, "properties": { "kind": { "const": "source-reproduction" }, "reference": { "$ref": "#/definitions/id" } } },
+            { "type": "object", "required": ["kind", "note"], "additionalProperties": false, "properties": { "kind": { "const": "atlas-illustration" }, "note": { "$ref": "#/definitions/text" }, "reference": { "$ref": "#/definitions/id" } } }
+          ]
+        }
+      },
+      "allOf": [
+        { "if": { "properties": { "mediaType": { "const": "image/png" } }, "required": ["mediaType"] }, "then": { "properties": { "path": { "type": "string", "pattern": "\\.png$" } } } },
+        { "if": { "properties": { "mediaType": { "const": "image/jpeg" } }, "required": ["mediaType"] }, "then": { "properties": { "path": { "type": "string", "pattern": "\\.jpe?g$" } } } },
+        { "if": { "properties": { "mediaType": { "const": "image/webp" } }, "required": ["mediaType"] }, "then": { "properties": { "path": { "type": "string", "pattern": "\\.webp$" } } } }
+      ]
+    },
+    "inline": {
+      "oneOf": [
+        { "type": "object", "required": ["type", "text"], "additionalProperties": false, "properties": { "type": { "enum": ["text", "emphasis", "strong", "code"] }, "text": { "$ref": "#/definitions/text" } } },
+        { "type": "object", "required": ["type", "text", "reference"], "additionalProperties": false, "properties": { "type": { "const": "reference-link" }, "text": { "$ref": "#/definitions/text" }, "reference": { "$ref": "#/definitions/id" } } },
+        { "type": "object", "required": ["type", "text", "subject"], "additionalProperties": false, "properties": { "type": { "const": "subject-link" }, "text": { "$ref": "#/definitions/text" }, "subject": { "$ref": "#/definitions/id" } } }
+      ]
+    },
+    "inlines": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/inline" } },
+    "editorialBlock": {
+      "oneOf": [
+        { "type": "object", "required": ["type", "content"], "additionalProperties": false, "properties": { "type": { "const": "paragraph" }, "content": { "$ref": "#/definitions/inlines" } } },
+        { "type": "object", "required": ["type", "text"], "additionalProperties": false, "properties": { "type": { "const": "heading" }, "text": { "$ref": "#/definitions/text" } } },
+        { "type": "object", "required": ["type", "items"], "additionalProperties": false, "properties": { "type": { "const": "list" }, "items": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/inlines" } }, "style": { "enum": ["ordered", "unordered"] } } },
+        { "type": "object", "required": ["type", "expression", "caption"], "additionalProperties": false, "properties": { "type": { "const": "formula" }, "expression": { "$ref": "#/definitions/text" }, "caption": { "$ref": "#/definitions/inlines" } } },
+        { "type": "object", "required": ["type", "reference", "text"], "additionalProperties": false, "properties": { "type": { "const": "quote" }, "reference": { "$ref": "#/definitions/id" }, "text": { "$ref": "#/definitions/text" } } },
+        { "type": "object", "required": ["type", "kind", "content"], "additionalProperties": false, "properties": { "type": { "const": "note" }, "kind": { "enum": ["assumption", "limitation", "reference-geometry"] }, "content": { "$ref": "#/definitions/inlines" } } },
+        { "type": "object", "required": ["type", "asset", "alt"], "additionalProperties": false, "properties": { "type": { "const": "image" }, "asset": { "$ref": "#/definitions/id" }, "alt": { "$ref": "#/definitions/text" }, "caption": { "$ref": "#/definitions/inlines" } } },
+        { "type": "object", "required": ["type", "subject", "label"], "additionalProperties": false, "properties": { "type": { "const": "related" }, "subject": { "$ref": "#/definitions/id" }, "label": { "$ref": "#/definitions/text" }, "description": { "$ref": "#/definitions/text" } } }
+      ]
+    },
+    "subjectContent": {
+      "type": "object", "required": ["subject", "sections"], "additionalProperties": false,
+      "properties": {
+        "subject": { "$ref": "#/definitions/id" },
+        "sections": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "required": ["id", "title", "blocks"], "additionalProperties": false,
+            "properties": { "id": { "$ref": "#/definitions/slug" }, "title": { "$ref": "#/definitions/text" }, "eyebrow": { "$ref": "#/definitions/text" }, "blocks": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/editorialBlock" } } }
+          }
+        }
+      }
+    },
+    "controlOverride": {
+      "type": "object", "required": ["id"], "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/text" }, "label": { "$ref": "#/definitions/text" },
+        "min": { "$ref": "#/definitions/number" }, "max": { "$ref": "#/definitions/number" }, "step": { "$ref": "#/definitions/number" }, "initial": { "$ref": "#/definitions/number" }
+      },
+      "description": "Sparse override by trusted template control ID. Resolution checks positive steps, reachable maxima/initials, domains and narrowing. Animated periodic endpoints cannot change; parameter initial values come from the model preset."
+    },
+    "readoutOverride": {
+      "type": "object", "required": ["id"], "additionalProperties": false,
+      "properties": { "id": { "$ref": "#/definitions/text" }, "label": { "$ref": "#/definitions/text" }, "digits": { "type": "integer", "minimum": 0, "maximum": 12 } },
+      "description": "Sparse override by template readout ID. Numeric precision cannot be applied to a text readout."
+    },
+    "labSettings": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "subtitle": { "$ref": "#/definitions/text" },
+        "views": { "type": "array", "items": { "enum": ["2d", "3d"] }, "uniqueItems": true, "contains": { "const": "2d" }, "description": "Must include 2d. The compiler checks the selected views against the trusted template's capabilities." },
+        "controls": { "type": "array", "items": { "$ref": "#/definitions/controlOverride" } },
+        "readouts": { "type": "array", "items": { "$ref": "#/definitions/readoutOverride" } }
+      },
+      "description": "No module paths, callbacks, physical rebinding, transforms or custom renderer/scene IDs. Override-ID uniqueness is checked by the decoder."
+    },
+    "labPresentation": {
+      "type": "object", "required": ["id", "subject", "template"], "additionalProperties": false,
+      "properties": { "id": { "$ref": "#/definitions/id" }, "subject": { "$ref": "#/definitions/id" }, "template": { "$ref": "#/definitions/id" }, "settings": { "$ref": "#/definitions/labSettings" } }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "json.schemas": [
+    {
+      "fileMatch": [
+        "/packages/catalog/fixtures/authoring/**/*.json",
+        "/packages/catalog/fixtures/presets/**/*.json",
+        "/packages/catalog/fixtures/editorial/**/*.json",
+        "/packages/catalog/fixtures/presentations/**/*.json",
+        "**/*.atlas.json"
+      ],
+      "url": "./packages/catalog/schema/catalog-document.schema.json"
+    }
+  ]
+}
