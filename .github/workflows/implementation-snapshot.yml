@@ -1,0 +1,23 @@
+name: implementation snapshot
+on:
+  pull_request:
+    paths:
+      - .github/workflows/implementation-snapshot.yml
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    if: github.head_ref == 'feat/planar-belt-structural-support'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: d8b82c071912f3dc78fa8664366e663e08fd4d97
+          persist-credentials: false
+      - name: Archive exact merged source only
+        run: git archive --format=tar HEAD -o /tmp/atlas-source.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: implementation-source
+          path: /tmp/atlas-source.tar
+          retention-days: 1
