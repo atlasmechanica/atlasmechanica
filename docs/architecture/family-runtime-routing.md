@@ -1,7 +1,8 @@
 # Family-level runtime routing
 
 First runtime-registration slice of #88 within milestone #86. Builds on the
-merged #96 lab/presentation contract. The editor-schema PR #97 is independent.
+merged #96 lab/presentation contract and #97 editor-schema/parity checks.
+The schema and runtime-routing suites run together in the repository checks.
 
 ## Capability ownership, not an item directory
 
