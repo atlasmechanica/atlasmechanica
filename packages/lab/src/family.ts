@@ -2,6 +2,7 @@ import type {
   ModelId,
   SimulationAdapter,
   SimulationModel,
+  SimulationModelInstance,
 } from '@atlasmechanica/model';
 import type { MechanismSceneCompiler } from '@atlasmechanica/scene/compilers';
 import {
@@ -10,7 +11,7 @@ import {
 } from './core.js';
 import { assertSceneInteractionBindings } from './interactionScene.js';
 import {
-  restoreLabPresentation, snapshotLabSelection, type MechanismLabSelection,
+  restoreLabPresentation, restoreModelInstance, snapshotLabSelection, type MechanismLabSelection,
 } from './presentationSelection.js';
 import type { MechanismLabDefinition } from './schema.js';
 
@@ -34,6 +35,7 @@ export interface ResolvedMechanismLab {
   readonly model: SimulationModel;
   readonly adapter: SimulationAdapter;
   readonly sceneCompiler: MechanismSceneCompiler;
+  readonly modelInstance?: SimulationModelInstance;
 }
 
 export function resolveMechanismLabFromFamily(
@@ -44,11 +46,20 @@ export function resolveMechanismLabFromFamily(
 ): ResolvedMechanismLab {
   const selection = snapshotLabSelection(lab);
   const presentation = typeof selection === 'object' ? selection : undefined;
-  const template = selectMechanismLabDefinition(
-    family.definitions, modelId, presentation?.templateLabId ?? (typeof selection === 'string' ? selection : undefined),
+  const instanceSelection = presentation?.modelInstance;
+  const templateModelId = instanceSelection?.templateModelId ?? modelId;
+  if (instanceSelection !== undefined && family.models.some((candidate) => candidate.id === modelId)) {
+    throw new TypeError(`Model instance collides with registered simulation model ${modelId}`);
+  }
+  const registeredTemplate = selectMechanismLabDefinition(
+    family.definitions, templateModelId, presentation?.templateLabId ?? (typeof selection === 'string' ? selection : undefined),
   );
-  const baseModel = family.models.find((candidate) => candidate.id === modelId);
-  if (baseModel === undefined) throw new TypeError(`No registered simulation model ${modelId}`);
+  const templateModel = family.models.find((candidate) => candidate.id === templateModelId);
+  if (templateModel === undefined) throw new TypeError(`No registered simulation model ${templateModelId}`);
+  const modelInstance = instanceSelection === undefined ? undefined
+    : restoreModelInstance(instanceSelection, templateModel, modelId);
+  const baseModel = modelInstance?.model ?? templateModel;
+  const template = modelInstance === undefined ? registeredTemplate : { ...registeredTemplate, modelId };
   const definition = presentation === undefined
     ? template : restoreLabPresentation(presentation, template, baseModel);
   validateMechanismLabDefinition(definition, baseModel);
@@ -89,5 +100,5 @@ export function resolveMechanismLabFromFamily(
     },
   });
 
-  return Object.freeze({ definition, model, adapter, sceneCompiler });
+  return Object.freeze({ definition, model, adapter, sceneCompiler, ...(modelInstance === undefined ? {} : { modelInstance }) });
 }

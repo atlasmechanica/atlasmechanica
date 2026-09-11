@@ -3,7 +3,7 @@ import {
   LabPresentationError, resolveLabPresentation, validateLabPresentationSettings,
   type LabPresentationSettings,
 } from '@atlasmechanica/lab/presentation';
-import type { SimulationModel } from '@atlasmechanica/model';
+import type { SimulationModel, SimulationModelInstance } from '@atlasmechanica/model';
 import { at, compare, fail, freeze, id, object, unique, type Check, type Located } from './authoringChecks.js';
 import type { CanonicalSubjectManifest } from './schema.js';
 import type { CatalogSimulationBinding, ResolvedCatalogModelPreset } from './modelPresets.js';
@@ -25,6 +25,7 @@ export interface ResolvedCatalogLabPresentation {
   readonly subject: string;
   readonly template: string;
   readonly preset: string;
+  readonly modelInstance?: SimulationModelInstance;
   /** Runtime family definition behind the authoring-template alias. */
   readonly templateLabId: string;
   readonly definition: MechanismLabDefinition;
@@ -45,6 +46,7 @@ export function compileCatalogLabPresentations(
   subjects: ReadonlyMap<string, CanonicalSubjectManifest>,
   presets: ReadonlyMap<string, ResolvedCatalogModelPreset>,
   bindings: readonly CatalogSimulationBinding[],
+  instances: ReadonlyMap<string, SimulationModelInstance> = new Map(),
 ): readonly ResolvedCatalogLabPresentation[] {
   unique(presentations, 'id', (value) => value.id);
   unique(presentations, 'subject', (value) => value.subject);
@@ -65,11 +67,16 @@ export function compileCatalogLabPresentations(
     const template = byTemplate.get(item.value.template);
     if (template === undefined) at(item, 'template', `Unknown supplied lab template ${item.value.template}`);
     if (template.adapterId !== canonical.simulation.adapter) at(item, 'template', 'Template adapter must match the canonical simulation');
+    const modelInstance = instances.get(model.id);
+    const templateModelId = modelInstance?.templateModelId ?? model.id;
+    if (template.definition.modelId !== templateModelId) at(item, 'template', 'Lab template must target the selected physical template');
+    const physicalTemplate = modelInstance === undefined ? template.definition : { ...template.definition, modelId: model.id };
     try {
-      const definition = resolveLabPresentation(item.value.id, item.value.settings ?? {}, template.definition, model, preset);
+      const definition = resolveLabPresentation(item.value.id, item.value.settings ?? {}, physicalTemplate, model, preset);
       return {
         id: item.value.id, subject: item.value.subject, template: item.value.template,
         preset: preset.id, templateLabId: template.definition.id, definition,
+        ...(modelInstance === undefined ? {} : { modelInstance }),
       };
     } catch (error) {
       if (!(error instanceof LabPresentationError)) {

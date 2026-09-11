@@ -20,13 +20,13 @@ independently load the standard dialect meta-schema according to its own setting
 The compiler does not fetch schemas or URLs.
 
 Do not add `$schema` to a catalog document: the existing strict envelope does not
-accept that field. Association lives in editor settings so all four document
-versions retain exactly their current parser semantics. Documents are strict JSON,
+accept that field. Association lives in editor settings so existing documents
+retain their versioned parser semantics. Documents are strict JSON,
 not JSONC; comments and trailing commas remain invalid.
 
 The schema adds completion choices and field descriptions for the existing
 vocabulary: catalog identities, source occurrences, model presets, source/assets,
-editorial blocks and trusted-template lab presentations. It intentionally does not
+editorial blocks, trusted-template lab presentations and named physical instances. It intentionally does not
 hard-code Brown numbers, model IDs, preset IDs or template IDs into enumerations.
 Those identifiers refer to records/capabilities resolved by the compiler and
 runtime, not by a global item allowlist.
@@ -44,7 +44,7 @@ production code, lab runtime, solver or renderer. It compiles only our trusted
 schema in tests, never an authored manifest or formula as code. The tests use
 strict mode with no coercion, default insertion or removal of unknown properties.
 
-## Four stable envelope versions
+## Versioned authoring envelopes
 
 | Envelope | Permitted additions |
 | --- | --- |
@@ -52,6 +52,7 @@ strict mode with no coercion, default insertion or removal of unknown properties
 | 0.2 | `modelPresets`, `simulationBindings` |
 | 0.3 | `referenceSources`, `assets`, `subjectContent` |
 | 0.4 | `labPresentations` |
+| 0.5 | `modelInstances` (new identities of supplied physical templates) |
 
 A document must contain at least one record. Declaring a later-version field in
 an older envelope is invalid even when that field contains an empty array.
@@ -122,8 +123,9 @@ Build-time discovery takes a caller-selected directory and supplied models/templ
 editor association does not itself add a directory to the production build.
 Fixtures remain test-only until #91 establishes the production source of truth.
 
-#88 still owns family-level model/template instantiation, structural capability
-checks and live lazy runtime integration. #89 removes occurrence-specific rendering;
+#88 now includes [named model instantiation](json-model-instances.md) through the
+shared runtime and web lab. Specialized belt structural capability checks remain
+required before those instances can use the belt renderers. #89 removes occurrence-specific rendering;
 #90 generates real shared pages and safely consumes content/assets; #91 migrates
 Brown 001–003 and finishes Brown 003; #92 must demonstrate a separate JSON/assets-only
 commit creating a complete interactive product entry. #86 stays open until that

@@ -27,6 +27,10 @@ import {
   compileCatalogLabPresentations, labPresentationCheck,
   type CatalogLabPresentation, type ResolvedCatalogLabPresentation,
 } from './labPresentations.js';
+import {
+  compileCatalogModelInstances, modelInstanceCheck,
+  type CatalogModelInstance, type ResolvedCatalogModelInstance,
+} from './modelInstances.js';
 export { CatalogAuthoringError } from './authoringError.js';
 export type { CatalogCompileOptions, CatalogModelPreset, CatalogSimulationBinding, ResolvedCatalogModelPreset } from './modelPresets.js';
 export type {
@@ -35,15 +39,18 @@ export type {
 } from './editorialContent.js';
 export type { CatalogLabPresentation, CatalogLabTemplate, ResolvedCatalogLabPresentation } from './labPresentations.js';
 
-export const CATALOG_DOCUMENT_SCHEMA_VERSION = '0.4' as const;
+export type { CatalogModelInstance, ResolvedCatalogModelInstance } from './modelInstances.js';
+
+export const CATALOG_DOCUMENT_SCHEMA_VERSION = '0.5' as const;
 
 /** Envelope versions are independent of the enclosed catalog/model schemas. */
 export interface CatalogDocument {
   readonly format: 'atlas.catalog-document';
-  readonly schemaVersion: '0.1' | '0.2' | '0.3' | typeof CATALOG_DOCUMENT_SCHEMA_VERSION;
+  readonly schemaVersion: '0.1' | '0.2' | '0.3' | '0.4' | typeof CATALOG_DOCUMENT_SCHEMA_VERSION;
   readonly collections?: readonly CollectionManifest[];
   readonly subjects?: readonly CanonicalSubjectManifest[];
   readonly occurrences?: readonly CollectionOccurrenceManifest[];
+  readonly modelInstances?: readonly CatalogModelInstance[];
   readonly modelPresets?: readonly CatalogModelPreset[];
   readonly simulationBindings?: readonly CatalogSimulationBinding[];
   readonly referenceSources?: readonly CatalogSourceReference[];
@@ -62,6 +69,7 @@ export interface CompiledCatalogDocuments extends CompiledCatalogContent {
   /** Serializable build output. Browser consumers do not need filesystem access. */
   readonly manifests: CatalogManifestSet;
   readonly catalog: CatalogIndex;
+  readonly modelInstances: readonly ResolvedCatalogModelInstance[];
   readonly modelPresets: readonly ResolvedCatalogModelPreset[];
   readonly simulationBindings: readonly CatalogSimulationBinding[];
   readonly labPresentations: readonly ResolvedCatalogLabPresentation[];
@@ -115,9 +123,9 @@ const contentFields = {
   referenceSources: array(sourceReferenceCheck), assets: array(assetCheck), subjectContent: array(subjectContentCheck),
 };
 const documentCheck = object({
-  format: enumeration('atlas.catalog-document'), schemaVersion: enumeration('0.1', '0.2', '0.3', CATALOG_DOCUMENT_SCHEMA_VERSION),
+  format: enumeration('atlas.catalog-document'), schemaVersion: enumeration('0.1', '0.2', '0.3', '0.4', CATALOG_DOCUMENT_SCHEMA_VERSION),
 }, {
-  ...catalogFields, modelPresets: array(preset), simulationBindings: array(simulationBinding),
+  ...catalogFields, modelInstances: array(modelInstanceCheck), modelPresets: array(preset), simulationBindings: array(simulationBinding),
   ...contentFields, labPresentations: array(labPresentationCheck),
 });
 
@@ -141,17 +149,20 @@ export function parseCatalogDocument(source: CatalogDocumentSource): CatalogDocu
       if (Object.hasOwn(document, key)) fail(source.path, child('', key), 'Field requires catalog-document version 0.3');
     }
   }
-  if (document.schemaVersion !== '0.4' && Object.hasOwn(document, 'labPresentations')) {
+  if (['0.1', '0.2', '0.3'].includes(document.schemaVersion) && Object.hasOwn(document, 'labPresentations')) {
     fail(source.path, '/labPresentations', 'Field requires catalog-document version 0.4');
   }
+  if (document.schemaVersion !== '0.5' && Object.hasOwn(document, 'modelInstances')) {
+    fail(source.path, '/modelInstances', 'Field requires catalog-document version 0.5');
+  }
   if (
-    (document.collections?.length ?? 0) + (document.subjects?.length ?? 0)
+    (document.modelInstances?.length ?? 0) + (document.collections?.length ?? 0) + (document.subjects?.length ?? 0)
     + (document.occurrences?.length ?? 0) + (document.modelPresets?.length ?? 0)
     + (document.simulationBindings?.length ?? 0) + (document.referenceSources?.length ?? 0)
     + (document.assets?.length ?? 0) + (document.subjectContent?.length ?? 0)
     + (document.labPresentations?.length ?? 0) === 0
   ) {
-    fail(source.path, '', 'Document must contain at least one catalog, preset, source, asset, content or lab record');
+    fail(source.path, '', 'Document must contain at least one catalog, model instance, preset, source, asset, content or lab record');
   }
   return freeze(document);
 }
@@ -164,6 +175,7 @@ export function compileCatalogDocuments(
   const collections: Located<CollectionManifest>[] = [];
   const subjects: Located<CanonicalSubjectManifest>[] = [];
   const occurrences: Located<CollectionOccurrenceManifest>[] = [];
+  const instances: Located<CatalogModelInstance>[] = [];
   const presets: Located<CatalogModelPreset>[] = [];
   const bindings: Located<CatalogSimulationBinding>[] = [];
   const references: Located<CatalogSourceReference>[] = [];
@@ -181,6 +193,7 @@ export function compileCatalogDocuments(
     collections.push(...locate(document.collections ?? [], 'collections'));
     subjects.push(...locate(document.subjects ?? [], 'subjects'));
     occurrences.push(...locate(document.occurrences ?? [], 'occurrences'));
+    instances.push(...locate(document.modelInstances ?? [], 'modelInstances'));
     presets.push(...locate(document.modelPresets ?? [], 'modelPresets'));
     bindings.push(...locate(document.simulationBindings ?? [], 'simulationBindings'));
     references.push(...locate(document.referenceSources ?? [], 'referenceSources'));
@@ -228,6 +241,9 @@ export function compileCatalogDocuments(
     if (models.has(model.id)) fail('<models>', '', `Duplicate supplied model ${model.id}`);
     models.set(model.id, model);
   }
+  const modelInstances = compileCatalogModelInstances(instances, models);
+  const instanceById = new Map(modelInstances.map((instance) => [instance.id, instance]));
+  for (const instance of modelInstances) models.set(instance.id, instance.model);
   const resolvedPresets = presets.map((item) => {
     const model = models.get(item.value.modelId);
     if (model === undefined) at(item, 'modelId', `Unknown supplied model ${item.value.modelId}`);
@@ -250,10 +266,10 @@ export function compileCatalogDocuments(
   const catalog = createCatalog(manifests);
   const editorial = compileCatalogContent(references, assets, content, new Set(subjectById.keys()));
   const labPresentations = compileCatalogLabPresentations(
-    presentations, options.labTemplates ?? [], models, subjectById, presetById, bindings.map(({ value }) => value),
+    presentations, options.labTemplates ?? [], models, subjectById, presetById, bindings.map(({ value }) => value), instanceById,
   );
   return Object.freeze({
-    manifests, catalog, ...editorial, labPresentations,
+    manifests, catalog, ...editorial, labPresentations, modelInstances,
     modelPresets: Object.freeze(resolvedPresets),
     simulationBindings: Object.freeze(bindings.map(({ value }) => value).sort((a, b) => compare(a.subject, b.subject))),
   });

@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "urn:atlasmechanica:catalog-document:0.4",
+  "$id": "urn:atlasmechanica:catalog-document:0.5",
   "title": "Atlas Mechanica catalog authoring document",
   "description": "Data-only catalog, model presets, editorial content and lab presentations. This checks portable JSON structure, not cross-file references, model/template compatibility, URL authority parsing, unit-conversion representability, physical feasibility or publication readiness. Run the catalog compiler and actual runtime as well.",
   "$comment": "No remote references or executable schema extensions. $schema is metadata on this schema, not an accepted field in catalog documents. See docs/architecture/json-catalog-schema.md for the tested runtime-only checks.",
@@ -20,7 +20,8 @@
         "0.1",
         "0.2",
         "0.3",
-        "0.4"
+        "0.4",
+        "0.5"
       ],
       "description": "Envelope version, independent of the catalog record and physical-model versions."
     },
@@ -83,6 +84,13 @@
         "$ref": "#/definitions/labPresentation"
       },
       "description": "Version 0.4+. References trusted templates; does not register engines, renderers or pages."
+    },
+    "modelInstances": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/modelInstance"
+      },
+      "description": "Version 0.5+. A new physical identity for a supplied template. Topology remains trusted code; dimensions use model presets."
     }
   },
   "anyOf": [
@@ -184,6 +192,17 @@
           "type": "array"
         }
       }
+    },
+    {
+      "required": [
+        "modelInstances"
+      ],
+      "properties": {
+        "modelInstances": {
+          "minItems": 1,
+          "type": "array"
+        }
+      }
     }
   ],
   "allOf": [
@@ -245,6 +264,28 @@
       "then": {
         "properties": {
           "labPresentations": false
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "schemaVersion": {
+            "enum": [
+              "0.1",
+              "0.2",
+              "0.3",
+              "0.4"
+            ]
+          }
+        },
+        "required": [
+          "schemaVersion"
+        ]
+      },
+      "then": {
+        "properties": {
+          "modelInstances": false
         }
       }
     }
@@ -1227,6 +1268,22 @@
         },
         "settings": {
           "$ref": "#/definitions/labSettings"
+        }
+      }
+    },
+    "modelInstance": {
+      "type": "object",
+      "required": [
+        "id",
+        "templateModelId"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/id"
+        },
+        "templateModelId": {
+          "$ref": "#/definitions/id"
         }
       }
     }

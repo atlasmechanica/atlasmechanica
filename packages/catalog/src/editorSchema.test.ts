@@ -18,7 +18,7 @@ const schema = JSON.parse(await readFile(new URL('../schema/catalog-document.sch
 const ajv = new Ajv({ strict: true, allErrors: true, coerceTypes: false, useDefaults: false, removeAdditional: false });
 const validate = ajv.compile(schema);
 const fixtureSources = await readCatalogDocuments(new URL('../fixtures/', import.meta.url));
-const recordFields = ['collections', 'subjects', 'occurrences', 'modelPresets', 'simulationBindings', 'referenceSources', 'assets', 'subjectContent', 'labPresentations'] as const;
+const recordFields = ['collections', 'subjects', 'occurrences', 'modelPresets', 'simulationBindings', 'referenceSources', 'assets', 'subjectContent', 'labPresentations', 'modelInstances'] as const;
 const templates: readonly CatalogLabTemplate[] = [
   { id: 'belt:open-classic', adapterId: 'atlas.analytic-belt.v0', definition: openBeltDriveLab },
   { id: 'belt:crossed-classic', adapterId: 'atlas.analytic-belt.v0', definition: crossedBeltDriveLab },
@@ -57,7 +57,8 @@ const rights = { status: 'unknown', attribution: 'Synthetic schema test; no hist
 // Exercise every grammar alternative even when the production-migration examples
 // do not need it yet. This is not another source of historical product content.
 const grammar: Document = {
-  format: 'atlas.catalog-document', schemaVersion: '0.4',
+  format: 'atlas.catalog-document', schemaVersion: '0.5',
+  modelInstances: [{ id: 'synthetic:model', templateModelId: 'foundation:belt-drive:open' }],
   collections: [{ schemaVersion: '0.1', id: 'synthetic:collection', shortTitle: 'Test', title: 'Synthetic', rights: { status: 'unknown', note: 'Test only' }, author: 'Test', sequence: 1 }],
   subjects: [{ schemaVersion: '0.1', id: 'synthetic:subject', slug: 'synthetic-subject', title: 'Test', seoDescription: 'Test', summary: 'Test', classification: { inputMotion: 'rotation', outputMotion: 'rotation', functionalSignature: 'Test', components: ['pulley'] }, facts: [{ label: 'Value', value: 'x' }, { label: 'Tags', tags: ['x'] }], simulation: { status: 'planned', modelId: 'foundation:belt-drive:open', adapter: 'atlas.analytic-belt.v0' } }],
   occurrences: [{ schemaVersion: '0.1', id: 'synthetic:001', collection: 'synthetic:collection', ordinal: 1, displayNumber: '001', status: 'cataloged', source: { referenceUrl: 'https://example.org/test', referenceLabel: 'Test', excerpt: 'Test' }, classification: { inputMotion: 'rotation', outputMotion: 'rotation', components: ['pulley'], tags: ['synthetic'] }, editorial: { heading: 'Synthetic' } }],
@@ -150,8 +151,8 @@ describe('portable editor JSON Schema', () => {
     }
     expect(checked).toBeGreaterThan(10);
   });
-  it.each(['0.1', '0.2', '0.3', '0.4'])('enforces every field gate in envelope %s, including empty new fields', (version) => {
-    const introduced = [0, 0, 0, 1, 1, 2, 2, 2, 3];
+  it.each(['0.1', '0.2', '0.3', '0.4', '0.5'])('enforces every field gate in envelope %s, including empty new fields', (version) => {
+    const introduced = [0, 0, 0, 1, 1, 2, 2, 2, 3, 4];
     recordFields.forEach((field, index) => {
       const value = { format: 'atlas.catalog-document', schemaVersion: version, collections: grammar.collections!, [field]: [] };
       if (field === 'collections') value.collections = grammar.collections!;
@@ -161,7 +162,7 @@ describe('portable editor JSON Schema', () => {
   it.each([{}, { collections: [] }, { modelPresets: [], labPresentations: [] }])('rejects an empty envelope %j', (body) => {
     assertBoth({ format: 'atlas.catalog-document', schemaVersion: '0.4', ...body }, false);
   });
-  it.each(['0.0', '0.5', '1.0'])('rejects unsupported version %s', (schemaVersion) => assertBoth({ ...grammar, schemaVersion }, false));
+  it.each(['0.0', '0.6', '1.0'])('rejects unsupported version %s', (schemaVersion) => assertBoth({ ...grammar, schemaVersion }, false));
   it('does not loosen JSON parsing for editor comments, trailing commas or a document $schema field', () => {
     expect(acceptsParser({ path: 'comments.json', text: '{/* comment */}' })).toBe(false);
     expect(acceptsParser({ path: 'comma.json', text: '{"format":"atlas.catalog-document",}' })).toBe(false);

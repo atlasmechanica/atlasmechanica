@@ -1,13 +1,14 @@
-import type { SimulationModel } from '@atlasmechanica/model';
+import { instantiateSimulationModel, type SimulationModel, type SimulationModelInstance } from '@atlasmechanica/model';
 import { validateMechanismLabDefinition } from './core.js';
 import { resolveLabPresentation, type LabPresentationSettings } from './presentation.js';
 import type { MechanismLabDefinition } from './schema.js';
 
-/** The catalog can attach additional metadata; these two fields select a lab. */
+/** Runtime selection plus an optional physical-template compatibility witness. */
 export interface LabPresentationSelection {
   /** Registered family definition, not the catalog's authoring-template alias. */
   readonly templateLabId: string;
   readonly definition: MechanismLabDefinition;
+  readonly modelInstance?: SimulationModelInstance;
 }
 export type MechanismLabSelection = string | LabPresentationSelection;
 
@@ -61,11 +62,22 @@ export function snapshotLabSelection(selection: MechanismLabSelection | undefine
     || copy.definition === null || typeof copy.definition !== 'object' || Array.isArray(copy.definition)) {
     throw new TypeError('Lab selection requires templateLabId and a compiled definition');
   }
-  // Catalog metadata is not runtime authority. Only the template and definition
-  // cross this boundary; catalog graph/reference checks remain with its compiler.
+  if (Object.hasOwn(copy, 'modelInstance')) {
+    const instance = copy.modelInstance;
+    if (instance === null || typeof instance !== 'object' || Array.isArray(instance)
+      || Object.keys(instance).some((key) => !['id', 'templateModelId', 'model'].includes(key))
+      || typeof instance.id !== 'string' || instance.id.trim() === ''
+      || typeof instance.templateModelId !== 'string' || instance.templateModelId.trim() === ''
+      || instance.model === null || typeof instance.model !== 'object' || Array.isArray(instance.model)) {
+      throw new TypeError('Lab model instance requires an id, trusted templateModelId and model data');
+    }
+  }
+  // Only the selected template, definition and physical-instance witness cross
+  // this boundary; catalog graph/reference checks remain with its compiler.
   return Object.freeze({
     templateLabId: copy.templateLabId,
     definition: copy.definition as unknown as MechanismLabDefinition,
+    ...(Object.hasOwn(copy, 'modelInstance') ? { modelInstance: copy.modelInstance as unknown as SimulationModelInstance } : {}),
   });
 }
 
@@ -79,6 +91,17 @@ function sameData(left: unknown, right: unknown): boolean {
   const a = left as Record<string, unknown>;
   const b = right as Record<string, unknown>;
   return keys.every((key) => Object.hasOwn(b, key) && sameData(a[key], b[key]));
+}
+
+/** A template ID alone is not proof that build-time and runtime physical data agree. */
+export function restoreModelInstance(
+  selection: SimulationModelInstance, template: SimulationModel, modelId: string,
+): SimulationModelInstance {
+  const expected = instantiateSimulationModel(template, modelId);
+  if (!sameData(selection, expected)) {
+    throw new TypeError(`Model instance ${modelId} is incompatible with loaded template ${template.id}`);
+  }
+  return expected;
 }
 
 /**

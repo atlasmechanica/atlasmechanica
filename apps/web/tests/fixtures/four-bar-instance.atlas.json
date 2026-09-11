@@ -1,0 +1,49 @@
+{
+  "format": "atlas.catalog-document",
+  "schemaVersion": "0.5",
+  "modelInstances": [
+    { "id": "test:four-bar:wide-ground", "templateModelId": "foundation:four-bar:crank-rocker" }
+  ],
+  "subjects": [
+    {
+      "schemaVersion": "0.1",
+      "id": "test:wide-ground",
+      "slug": "test-wide-ground",
+      "title": "Independent four-bar configuration",
+      "seoDescription": "Synthetic model-instance regression fixture, not a catalog publication.",
+      "summary": "A 105 mm ground link with the existing 30/80/70 mm moving links. Test only, with no historical attribution.",
+      "classification": {
+        "inputMotion": "rotation",
+        "outputMotion": "oscillation",
+        "functionalSignature": "Rotary input to rocker motion",
+        "components": ["four-bar linkage"]
+      },
+      "facts": [{ "label": "Purpose", "value": "Synthetic regression fixture" }],
+      "simulation": {
+        "status": "planned",
+        "modelId": "test:four-bar:wide-ground",
+        "adapter": "atlas.analytic-four-bar.v0"
+      }
+    }
+  ],
+  "modelPresets": [
+    {
+      "id": "test:wide-ground-preset",
+      "modelId": "test:four-bar:wide-ground",
+      "configuration": "open",
+      "parameters": { "ground-length": { "value": 105, "unit": "mm" } }
+    }
+  ],
+  "simulationBindings": [{ "subject": "test:wide-ground", "preset": "test:wide-ground-preset" }],
+  "labPresentations": [
+    {
+      "id": "test:web-four-bar-instance",
+      "subject": "test:wide-ground",
+      "template": "four-bar:canonical",
+      "settings": {
+        "subtitle": "JSON model instance · synthetic 105 mm ground",
+        "controls": [{ "id": "driver-angle", "initial": 25 }, { "id": "driver-speed", "initial": 45 }]
+      }
+    }
+  ]
+}
