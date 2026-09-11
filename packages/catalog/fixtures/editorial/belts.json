@@ -1,0 +1,103 @@
+{
+  "format": "atlas.catalog-document",
+  "schemaVersion": "0.3",
+  "referenceSources": [
+    {
+      "id": "brown:text:001",
+      "title": "507 Mechanical Movements",
+      "author": "Henry T. Brown",
+      "locator": "Movement 1",
+      "url": "https://507movements.com/mm_001.html",
+      "rights": {
+        "status": "public-domain",
+        "attribution": "Henry T. Brown, 507 Mechanical Movements, movement 1.",
+        "note": "Historical Brown text only; no rights claim is made for the linked site's modern material."
+      }
+    }
+  ],
+  "subjectContent": [
+    {
+      "subject": "open-belt-drive",
+      "sections": [
+        {
+          "id": "principle",
+          "eyebrow": "What it does",
+          "title": "Transmit rotation across a distance.",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "content": [{ "type": "text", "text": "An open belt lets one rotating shaft drive another without placing their axes next to one another. With no slip, every point on the belt has the same linear speed where it meets each pulley. That one constraint determines the ideal angular-speed relationship." }]
+            },
+            {
+              "type": "formula",
+              "expression": "ω₂ / ω₁ = r₁ / r₂",
+              "caption": [{ "type": "text", "text": "Ideal open belt: same rotation direction. Here r₁ and r₂ are the driver and driven pitch radii; ω₁ and ω₂ are their angular velocities." }]
+            },
+            {
+              "type": "quote",
+              "reference": "brown:text:001",
+              "text": "Illustrates the transmission of power by simple pulleys and an open belt. In this case both of the pulleys rotate in the same direction."
+            },
+            {
+              "type": "related",
+              "subject": "crossed-belt-drive",
+              "label": "Cross the belt and direction reverses."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "subject": "crossed-belt-drive",
+      "sections": [
+        {
+          "id": "principle",
+          "eyebrow": "What changed from 001?",
+          "title": "One routing change flips the output.",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "content": [{ "type": "text", "text": "The two pulleys can keep the same diameters and spacing used by an open belt. The new ingredient is the crossing itself: each straight belt span switches sides between the pulleys, so the driven pulley must rotate opposite the driver to satisfy the no-slip contact condition." }]
+            },
+            {
+              "type": "formula",
+              "expression": "ω₂ / ω₁ = −r₁ / r₂",
+              "caption": [{ "type": "text", "text": "Ideal crossed belt: the magnitude of the speed ratio still comes from the pulley pitch radii. The minus sign records the reversed output direction." }]
+            },
+            {
+              "type": "related",
+              "subject": "open-belt-drive",
+              "label": "Review the open-belt baseline."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "subject": "quarter-turn-belt-drive",
+      "sections": [
+        {
+          "id": "model-boundary",
+          "title": "Reference geometry and model limitations",
+          "blocks": [
+            {
+              "type": "note",
+              "kind": "reference-geometry",
+              "content": [{ "type": "text", "text": "These are Atlas reference dimensions, not measurements inferred from Brown." }]
+            },
+            {
+              "type": "note",
+              "kind": "limitation",
+              "content": [{ "type": "text", "text": "Angular ratios use the lumped ideal pitch-speed relation v = rω; this is a transmission reference law, not a pointwise no-slip contact solution over a finite-width pulley face." }]
+            },
+            {
+              "type": "note",
+              "kind": "limitation",
+              "content": [{ "type": "text", "text": "Where the Brown 003 route changes axial position across a pulley face, that motion is lateral tracking slip; local creep/slip is not solved by the ideal pitch-speed ratio oracle." }]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
