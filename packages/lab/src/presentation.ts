@@ -7,7 +7,7 @@ import {
 import { validateMechanismLabDefinition } from './core.js';
 import type { LabControlDefinition, LabView, MechanismLabDefinition } from './schema.js';
 
-/** Presentation can narrow a trusted control, but cannot rebind or change its units. */
+/** Presentation can narrow a trusted nonperiodic control, but cannot rebind or change its units. */
 export interface LabControlOverride {
   readonly id: string;
   readonly label?: string;
@@ -68,6 +68,24 @@ function finite(value: unknown, pointer: string): void {
 }
 function items(value: unknown, pointer: string, check: (value: unknown, pointer: string) => void): void {
   if (!Array.isArray(value)) fail(pointer, 'Expected an array');
+  // Direct callers must obey the same plain-data boundary as parsed JSON.
+  // Reject subclasses/custom prototypes before using any inherited array method.
+  if (Object.getPrototypeOf(value) !== Array.prototype) fail(pointer, 'Expected a plain data array');
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== 'string') fail(pointer, 'Symbol keys are not allowed');
+    const location = child(pointer, key);
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (key !== 'length') {
+      const index = Number(key);
+      if (!Number.isInteger(index) || index < 0 || index >= value.length || String(index) !== key) {
+        fail(location, 'Unknown presentation array field');
+      }
+    }
+    if (descriptor === undefined || !Object.hasOwn(descriptor, 'value')) fail(location, 'Accessors are not allowed');
+    // structuredClone omits non-enumerable indexes; accepting one could change
+    // validated views into a sparse array in the returned definition.
+    if (key !== 'length' && !descriptor.enumerable) fail(location, 'Expected an enumerable data array item');
+  }
   for (let index = 0; index < value.length; index += 1) {
     const location = `${pointer}/${index}`;
     const descriptor = Object.getOwnPropertyDescriptor(value, index);
@@ -146,6 +164,10 @@ function checkControl(control: LabControlDefinition, model: SimulationModel, poi
     fail(pointer, `Invalid control ${control.id}: ${error instanceof Error ? error.message : String(error)}`);
   }
   if (control.step > control.max - control.min) fail(pointer, `Control ${control.id} step exceeds its range`);
+  const maximumSlot = (control.max - control.min) / control.step;
+  if (!Number.isFinite(maximumSlot) || Math.abs(maximumSlot - Math.round(maximumSlot)) > 1e-7) {
+    fail(`${pointer}/max`, `Maximum value for ${control.id} must align with the slider step`);
+  }
 }
 
 /**
@@ -208,6 +230,13 @@ export function resolveLabPresentation(
     if (control.max > base.max) fail(`${pointer}/max`, 'Presentation may only narrow the template range');
     if (!(control.min < control.max)) fail(pointer, 'Control minimum must be below maximum');
     if (!(control.step > 0)) fail(`${pointer}/step`, 'Control step must be positive');
+    // The runtime uses this span to wrap display values while evaluating an
+    // unwrapped physical coordinate. A presentation must not shorten its period.
+    if (base.kind === 'coordinate' && template.animation?.coordinateControlId === base.id
+      && model.coordinates[base.coordinate]?.periodic === true) {
+      if (control.min !== base.min) fail(`${pointer}/min`, 'Animated periodic coordinates must preserve the template range');
+      if (control.max !== base.max) fail(`${pointer}/max`, 'Animated periodic coordinates must preserve the template range');
+    }
     if (!Number.isFinite(initial) || initial < control.min || initial > control.max) fail(pointer, `Initial value for ${base.id} is outside the presentation range`);
     const slot = (initial - control.min) / control.step;
     if (!Number.isFinite(slot) || Math.abs(slot - Math.round(slot)) > 1e-7) fail(pointer, `Initial value for ${base.id} must align with the slider step`);
