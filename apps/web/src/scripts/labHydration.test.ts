@@ -67,4 +67,11 @@ describe('shared server/browser control display', () => {
   ] as const)('formats step %s value %s consistently', (step, value, unit, expected) => {
     expect(displayControlValue({ step, unit }, value)).toBe(expected);
   });
+  it.each([
+    [95.5, 1, 200.5, '200.5 mm'],
+    [-1.125, 0.5, 0.375, '0.375 mm'],
+    [1e-7, 1, 1.0000001, '1.0000001 mm'],
+  ] as const)('preserves the offset of a grid starting at %s', (min, step, value, expected) => {
+    expect(displayControlValue({ min, step, unit: 'mm' }, value)).toBe(expected);
+  });
 });
