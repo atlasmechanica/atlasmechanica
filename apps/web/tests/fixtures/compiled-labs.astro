@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { compileCatalogDocuments } from '@atlasmechanica/catalog/authoring';
 import { readCatalogDocuments } from '@atlasmechanica/catalog/authoring/node';
 import { beltLabFamily, openBeltDriveLab, crossedBeltDriveLab, brown003QuarterTurnLab } from '../../../../packages/lab/src/families/belt.js';
+import { canonicalFourBarLab, fourBarLabFamily } from '../../../../packages/lab/src/families/fourBar.js';
 import MechanismLab from '../../src/components/MechanismLab.astro';
 import BaseLayout from '../../src/layouts/BaseLayout.astro';
 
@@ -11,8 +12,9 @@ import BaseLayout from '../../src/layouts/BaseLayout.astro';
 const sources = await readCatalogDocuments(resolve('../../packages/catalog/fixtures/authoring'));
 const presentations = await readCatalogDocuments(resolve('tests/fixtures'));
 const compiled = compileCatalogDocuments([...sources, ...presentations], {
-  models: beltLabFamily.models,
+  models: [...beltLabFamily.models, ...fourBarLabFamily.models],
   labTemplates: [
+    { id: 'four-bar:canonical', adapterId: 'atlas.analytic-four-bar.v0', definition: canonicalFourBarLab },
     { id: 'belt:open-classic', adapterId: 'atlas.analytic-belt.v0', definition: openBeltDriveLab },
     { id: 'belt:crossed-classic', adapterId: 'atlas.analytic-belt.v0', definition: crossedBeltDriveLab },
     { id: 'belt:guided-classic', adapterId: 'atlas.spatial-belt.v0', definition: brown003QuarterTurnLab },

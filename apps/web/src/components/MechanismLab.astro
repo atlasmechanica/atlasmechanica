@@ -29,6 +29,7 @@ const { definition, model, adapter } = resolved;
 const serializedPresentation = presentation === undefined ? undefined : JSON.stringify({
   templateLabId: presentation.templateLabId,
   definition,
+  ...(resolved.modelInstance === undefined ? {} : { modelInstance: resolved.modelInstance }),
 });
 const initialValues = defaultLabValues(definition);
 const initialRequest = buildLabEvaluationRequest(definition, initialValues);
