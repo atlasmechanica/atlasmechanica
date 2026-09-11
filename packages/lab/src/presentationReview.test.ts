@@ -139,7 +139,7 @@ describe('presentation slider endpoint alignment', () => {
     const error = authoringError(() => compileSettings({ controls: [{ id: 'driver-speed', min: 10, max: 20, step: 3, initial: 13 }] }));
     expect(error.source).toBe('review-presentation.json');
     expect(error.pointer).toBe('/labPresentations/0/settings/controls/0/max');
-    expect(error.detail).toContain('align');
+    expect(error.message).toContain('align');
   });
   it('rejects the exact 0..10 / step 3 / initial 3 review example independently of animation', () => {
     const error = authoringError(() => compileSettings({ controls: [{ id: 'driver-angle', min: 0, max: 10, step: 3, initial: 3 }] }, withoutAnimation()));
@@ -168,7 +168,7 @@ describe('animated periodic coordinate ranges retain their wrapping span', () =>
     for (const range of [{ max: 180, initial: 0 }, { min: 180, initial: 180 }]) {
       const error = authoringError(() => compileSettings({ controls: [{ id: 'driver-angle', ...range }] }, template, subject));
       expect(error.pointer).toBe(`/labPresentations/0/settings/controls/0/${'min' in range ? 'min' : 'max'}`);
-      expect(error.detail).toContain('periodic');
+      expect(error.message).toContain('periodic');
     }
   });
   it('preserves periodic ranges in radians as well as degrees', () => {
