@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { Ajv, type AnySchemaObject } from 'ajv';
-import { normalizeParameterQuantity, quantity, type UnitCode } from '@atlasmechanica/model';
+import { normalizeParameterQuantity, type UnitCode } from '@atlasmechanica/model';
 import {
   CATALOG_DOCUMENT_SCHEMA_VERSION, CatalogAuthoringError, compileCatalogDocuments,
   parseCatalogDocument, type CatalogDocumentSource, type CatalogLabTemplate,
@@ -176,9 +176,9 @@ describe('portable editor JSON Schema', () => {
     }
     for (const unit of ['rpm', 'cm', 'constructor']) assertBoth({ ...grammar, modelPresets: [{ id: 'test:preset', modelId: 'test:model', parameters: { x: { value: 1, unit } } }] }, false);
     const input = source({ ...grammar, modelPresets: [{ id: 'test:preset', modelId: 'test:model', parameters: { x: { value: 1234567, unit: 'm' } } }] });
-    input.text = input.text.replace('1234567', '1e999');
-    expect(validate(JSON.parse(input.text))).toBe(false);
-    expect(acceptsParser(input)).toBe(false);
+    const overflow = { ...input, text: input.text.replace('1234567', '1e999') };
+    expect(validate(JSON.parse(overflow.text))).toBe(false);
+    expect(acceptsParser(overflow)).toBe(false);
   });
   it.each(['', ' ', '\n\t', '\u00a0', '\ufeff'])('rejects whitespace-only literal text %j', (title) => {
     assertBoth({ ...grammar, referenceSources: [{ id: 'test:ref', title, locator: 'Test', rights }] }, false);
