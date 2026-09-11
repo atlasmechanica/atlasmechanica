@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./presentation": "./src/presentation.ts",
     "./runtime": "./src/runtime.ts",
     "./lazy-runtime": "./src/lazyRuntime.ts"
   },

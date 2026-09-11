@@ -9,6 +9,7 @@
     "./authoring/node": "./src/discoverDocuments.ts"
   },
   "dependencies": {
+    "@atlasmechanica/lab": "file:../lab",
     "@atlasmechanica/model": "file:../model"
   }
 }

@@ -1,0 +1,31 @@
+{
+  "format": "atlas.catalog-document",
+  "schemaVersion": "0.4",
+  "labPresentations": [
+    {
+      "id": "example:open-lab",
+      "subject": "open-belt-drive",
+      "template": "belt:open-classic",
+      "settings": {
+        "subtitle": "Synthetic preset-driven lab example",
+        "controls": [
+          { "id": "driver-speed", "min": 20, "max": 100, "initial": 40 },
+          { "id": "center-distance", "min": 120, "max": 240, "step": 2, "label": "Shaft spacing" }
+        ],
+        "readouts": [{ "id": "speed-ratio", "digits": 4 }]
+      }
+    },
+    {
+      "id": "example:crossed-lab",
+      "subject": "crossed-belt-drive",
+      "template": "belt:crossed-classic",
+      "settings": { "controls": [{ "id": "driver-speed", "initial": 60 }] }
+    },
+    {
+      "id": "example:guided-lab",
+      "subject": "quarter-turn-belt-drive",
+      "template": "belt:guided-classic",
+      "settings": { "readouts": [{ "id": "speed-ratio", "digits": 5 }] }
+    }
+  ]
+}

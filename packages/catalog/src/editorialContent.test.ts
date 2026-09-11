@@ -43,9 +43,9 @@ function errorFrom(run: () => unknown): CatalogAuthoringError {
 const blockPointer = '/subjectContent/0/sections/0/blocks/0';
 
 describe('source-aware JSON editorial authoring', () => {
-  it('keeps 0.1 and 0.2 semantics while adding the 0.3 content envelope', () => {
-    expect(CATALOG_DOCUMENT_SCHEMA_VERSION).toBe('0.3');
-    for (const schemaVersion of ['0.1', '0.2', '0.3']) {
+  it('preserves existing catalog semantics through the 0.4 presentation envelope', () => {
+    expect(CATALOG_DOCUMENT_SCHEMA_VERSION).toBe('0.4');
+    for (const schemaVersion of ['0.1', '0.2', '0.3', '0.4']) {
       const parsed = parseCatalogDocument(source({ schemaVersion, collections }));
       expect(parsed.collections).toEqual(collections);
     }

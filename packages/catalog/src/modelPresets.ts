@@ -7,6 +7,7 @@ import {
   type SimulationModel,
 } from '@atlasmechanica/model';
 import { CatalogAuthoringError } from './authoringError.js';
+import type { CatalogLabTemplate } from './labPresentations.js';
 
 /** A named parameter preset references a physical model; it is not a new model. */
 export interface CatalogModelPreset {
@@ -31,6 +32,8 @@ export interface ResolvedCatalogModelPreset {
 export interface CatalogCompileOptions {
   /** Supplied by the application/family layer. No hidden fixture registry. */
   readonly models?: readonly SimulationModel[];
+  /** Pure data definitions, not loaded engines or renderer modules. */
+  readonly labTemplates?: readonly CatalogLabTemplate[];
 }
 
 /**
