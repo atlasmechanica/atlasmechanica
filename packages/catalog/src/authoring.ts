@@ -8,7 +8,10 @@ import {
   type CollectionManifest,
   type CollectionOccurrenceManifest,
 } from './schema.js';
-import { CatalogAuthoringError } from './authoringError.js';
+import {
+  array, at, child, compare, enumeration, fail, freeze, id, object, positiveInteger,
+  record, referenceUrl, slug, text, unique, type Check, type Located,
+} from './authoringChecks.js';
 import {
   resolveCatalogModelPreset,
   type CatalogCompileOptions,
@@ -16,20 +19,31 @@ import {
   type CatalogSimulationBinding,
   type ResolvedCatalogModelPreset,
 } from './modelPresets.js';
+import {
+  assetCheck, compileCatalogContent, sourceReferenceCheck, subjectContentCheck,
+  type CatalogAsset, type CatalogSourceReference, type CatalogSubjectContent, type CompiledCatalogContent,
+} from './editorialContent.js';
 export { CatalogAuthoringError } from './authoringError.js';
 export type { CatalogCompileOptions, CatalogModelPreset, CatalogSimulationBinding, ResolvedCatalogModelPreset } from './modelPresets.js';
+export type {
+  CatalogAsset, CatalogContentRights, CatalogEditorialBlock, CatalogEditorialSection,
+  CatalogInline, CatalogSourceReference, CatalogSubjectContent, CompiledCatalogContent,
+} from './editorialContent.js';
 
-export const CATALOG_DOCUMENT_SCHEMA_VERSION = '0.2' as const;
+export const CATALOG_DOCUMENT_SCHEMA_VERSION = '0.3' as const;
 
 /** Envelope versions are independent of the enclosed catalog/model schemas. */
 export interface CatalogDocument {
   readonly format: 'atlas.catalog-document';
-  readonly schemaVersion: '0.1' | typeof CATALOG_DOCUMENT_SCHEMA_VERSION;
+  readonly schemaVersion: '0.1' | '0.2' | typeof CATALOG_DOCUMENT_SCHEMA_VERSION;
   readonly collections?: readonly CollectionManifest[];
   readonly subjects?: readonly CanonicalSubjectManifest[];
   readonly occurrences?: readonly CollectionOccurrenceManifest[];
   readonly modelPresets?: readonly CatalogModelPreset[];
   readonly simulationBindings?: readonly CatalogSimulationBinding[];
+  readonly referenceSources?: readonly CatalogSourceReference[];
+  readonly assets?: readonly CatalogAsset[];
+  readonly subjectContent?: readonly CatalogSubjectContent[];
 }
 
 export interface CatalogDocumentSource {
@@ -38,101 +52,13 @@ export interface CatalogDocumentSource {
   readonly text: string;
 }
 
-export interface CompiledCatalogDocuments {
+export interface CompiledCatalogDocuments extends CompiledCatalogContent {
   /** Serializable build output. Browser consumers do not need filesystem access. */
   readonly manifests: CatalogManifestSet;
   readonly catalog: CatalogIndex;
   readonly modelPresets: readonly ResolvedCatalogModelPreset[];
   readonly simulationBindings: readonly CatalogSimulationBinding[];
 }
-
-type Check = (value: unknown, source: string, pointer: string) => void;
-type Shape = Readonly<Record<string, Check>>;
-
-function fail(source: string, pointer: string, message: string): never {
-  throw new CatalogAuthoringError(source, pointer, message);
-}
-
-function child(pointer: string, key: string | number): string {
-  return `${pointer}/${String(key).replaceAll('~', '~0').replaceAll('/', '~1')}`;
-}
-
-function record(value: unknown, source: string, pointer: string): Record<string, unknown> {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    fail(source, pointer, 'Expected an object');
-  }
-  return value as Record<string, unknown>;
-}
-
-const text: Check = (value, source, pointer) => {
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    fail(source, pointer, 'Expected a nonempty string');
-  }
-};
-
-function matching(pattern: RegExp, description: string): Check {
-  return (value, source, pointer) => {
-    text(value, source, pointer);
-    if (!pattern.test(value as string)) fail(source, pointer, description);
-  };
-}
-
-const id = matching(/^[a-z][a-z0-9]*(?:[.:_-][a-z0-9]+)*$/, 'Expected a stable lowercase identifier');
-const slug = matching(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Expected a lowercase URL slug');
-const positiveInteger: Check = (value, source, pointer) => {
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) {
-    fail(source, pointer, 'Expected a positive safe integer');
-  }
-};
-
-function enumeration(...values: readonly string[]): Check {
-  return (value, source, pointer) => {
-    if (typeof value !== 'string' || !values.includes(value)) {
-      fail(source, pointer, `Expected one of: ${values.join(', ')}`);
-    }
-  };
-}
-
-function array(check: Check): Check {
-  return (value, source, pointer) => {
-    if (!Array.isArray(value)) fail(source, pointer, 'Expected an array');
-    value.forEach((item, index) => check(item, source, child(pointer, index)));
-  };
-}
-
-function object(required: Shape, optional: Shape = {}): Check {
-  const checks = new Map([...Object.entries(required), ...Object.entries(optional)]);
-  return (value, source, pointer) => {
-    const fields = record(value, source, pointer);
-    for (const key of Object.keys(required)) {
-      if (!Object.hasOwn(fields, key)) fail(source, child(pointer, key), 'Required field is missing');
-    }
-    for (const key of Object.keys(fields).sort()) {
-      const check = checks.get(key);
-      if (check === undefined) fail(source, child(pointer, key), 'Unknown field');
-      check(fields[key], source, child(pointer, key));
-    }
-  };
-}
-
-const referenceUrl: Check = (value, source, pointer) => {
-  text(value, source, pointer);
-  const raw = value as string;
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    fail(source, pointer, 'Expected an absolute HTTP(S) source URL');
-  }
-  if (
-    !/^https?:\/\//i.test(raw)
-    || /[\u0000-\u0020\u007f\\]/.test(raw)
-    || (url.protocol !== 'https:' && url.protocol !== 'http:')
-    || url.username !== '' || url.password !== ''
-  ) {
-    fail(source, pointer, 'Expected an absolute HTTP(S) source URL without credentials or whitespace');
-  }
-};
 
 const version = enumeration(CATALOG_SCHEMA_VERSION);
 const classification = object({}, {
@@ -178,17 +104,12 @@ const parameterMap: Check = (value, source, pointer) => {
 const preset = object({ id, modelId: id }, { configuration: id, parameters: parameterMap });
 const simulationBinding = object({ subject: id, preset: id });
 const catalogFields = { collections: array(collection), subjects: array(subject), occurrences: array(occurrence) };
+const contentFields = {
+  referenceSources: array(sourceReferenceCheck), assets: array(assetCheck), subjectContent: array(subjectContentCheck),
+};
 const documentCheck = object({
-  format: enumeration('atlas.catalog-document'), schemaVersion: enumeration('0.1', CATALOG_DOCUMENT_SCHEMA_VERSION),
-}, { ...catalogFields, modelPresets: array(preset), simulationBindings: array(simulationBinding) });
-
-function freeze<T>(value: T): T {
-  if (value !== null && typeof value === 'object') {
-    for (const nested of Object.values(value)) freeze(nested);
-    Object.freeze(value);
-  }
-  return value;
-}
+  format: enumeration('atlas.catalog-document'), schemaVersion: enumeration('0.1', '0.2', CATALOG_DOCUMENT_SCHEMA_VERSION),
+}, { ...catalogFields, modelPresets: array(preset), simulationBindings: array(simulationBinding), ...contentFields });
 
 /** Parse untrusted JSON text, validate every field, and own/freeze the result. */
 export function parseCatalogDocument(source: CatalogDocumentSource): CatalogDocument {
@@ -205,36 +126,20 @@ export function parseCatalogDocument(source: CatalogDocumentSource): CatalogDocu
       if (Object.hasOwn(document, key)) fail(source.path, child('', key), 'Field requires catalog-document version 0.2');
     }
   }
+  if (document.schemaVersion !== '0.3') {
+    for (const key of ['referenceSources', 'assets', 'subjectContent'] as const) {
+      if (Object.hasOwn(document, key)) fail(source.path, child('', key), 'Field requires catalog-document version 0.3');
+    }
+  }
   if (
     (document.collections?.length ?? 0) + (document.subjects?.length ?? 0)
     + (document.occurrences?.length ?? 0) + (document.modelPresets?.length ?? 0)
-    + (document.simulationBindings?.length ?? 0) === 0
+    + (document.simulationBindings?.length ?? 0) + (document.referenceSources?.length ?? 0)
+    + (document.assets?.length ?? 0) + (document.subjectContent?.length ?? 0) === 0
   ) {
-    fail(source.path, '', 'Document must contain at least one catalog record or model preset binding');
+    fail(source.path, '', 'Document must contain at least one catalog, preset, source, asset or content record');
   }
   return freeze(document);
-}
-
-interface Located<T> {
-  readonly value: T;
-  readonly source: string;
-  readonly pointer: string;
-}
-function at<T>(located: Located<T>, field: string, message: string): never {
-  return fail(located.source, child(located.pointer, field), message);
-}
-function unique<T>(items: readonly Located<T>[], field: string, key: (value: T) => string | undefined): void {
-  const seen = new Map<string, Located<T>>();
-  for (const item of items) {
-    const value = key(item.value);
-    if (value === undefined) continue;
-    const previous = seen.get(value);
-    if (previous !== undefined) at(item, field, `Duplicate ${field} ${value}; first declared in ${previous.source}#${previous.pointer}`);
-    seen.set(value, item);
-  }
-}
-function compare(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 /** Pure compilation. The caller supplies known models; no engine is loaded here. */
@@ -247,6 +152,9 @@ export function compileCatalogDocuments(
   const occurrences: Located<CollectionOccurrenceManifest>[] = [];
   const presets: Located<CatalogModelPreset>[] = [];
   const bindings: Located<CatalogSimulationBinding>[] = [];
+  const references: Located<CatalogSourceReference>[] = [];
+  const assets: Located<CatalogAsset>[] = [];
+  const content: Located<CatalogSubjectContent>[] = [];
   const paths = new Set<string>();
   for (const source of [...sources].sort((a, b) => compare(a.path, b.path))) {
     if (paths.has(source.path)) fail(source.path, '', 'Duplicate document path');
@@ -260,6 +168,9 @@ export function compileCatalogDocuments(
     occurrences.push(...locate(document.occurrences ?? [], 'occurrences'));
     presets.push(...locate(document.modelPresets ?? [], 'modelPresets'));
     bindings.push(...locate(document.simulationBindings ?? [], 'simulationBindings'));
+    references.push(...locate(document.referenceSources ?? [], 'referenceSources'));
+    assets.push(...locate(document.assets ?? [], 'assets'));
+    content.push(...locate(document.subjectContent ?? [], 'subjectContent'));
   }
   unique(collections, 'id', (value) => value.id);
   unique(collections, 'sequence', (value) => value.sequence?.toString());
@@ -321,8 +232,9 @@ export function compileCatalogDocuments(
     collections: ordered(collections), subjects: ordered(subjects), occurrences: ordered(occurrences),
   });
   const catalog = createCatalog(manifests);
+  const editorial = compileCatalogContent(references, assets, content, new Set(subjectById.keys()));
   return Object.freeze({
-    manifests, catalog,
+    manifests, catalog, ...editorial,
     modelPresets: Object.freeze(resolvedPresets),
     simulationBindings: Object.freeze(bindings.map(({ value }) => value).sort((a, b) => compare(a.subject, b.subject))),
   });
