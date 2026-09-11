@@ -1,0 +1,38 @@
+---
+import { resolve } from 'node:path';
+import { compileCatalogDocuments } from '@atlasmechanica/catalog/authoring';
+import { readCatalogDocuments } from '@atlasmechanica/catalog/authoring/node';
+import { beltLabFamily, openBeltDriveLab, crossedBeltDriveLab, brown003QuarterTurnLab } from '../../../../packages/lab/src/families/belt.js';
+import MechanismLab from '../../src/components/MechanismLab.astro';
+import BaseLayout from '../../src/layouts/BaseLayout.astro';
+
+// npm's web workspace is the build working directory. Discovery is build-only;
+// the browser receives only each component's validated normalized selection.
+const sources = await readCatalogDocuments(resolve('../../packages/catalog/fixtures/authoring'));
+const presentations = await readCatalogDocuments(resolve('tests/fixtures'));
+const compiled = compileCatalogDocuments([...sources, ...presentations], {
+  models: beltLabFamily.models,
+  labTemplates: [
+    { id: 'belt:open-classic', adapterId: 'atlas.analytic-belt.v0', definition: openBeltDriveLab },
+    { id: 'belt:crossed-classic', adapterId: 'atlas.analytic-belt.v0', definition: crossedBeltDriveLab },
+    { id: 'belt:guided-classic', adapterId: 'atlas.spatial-belt.v0', definition: brown003QuarterTurnLab },
+  ],
+});
+---
+<BaseLayout title="Compiled lab browser regression fixture">
+  <main class="site-shell">
+    <h1>Test configurations — not catalog publications</h1>
+    {compiled.labPresentations.map((presentation) => {
+      const subject = compiled.catalog.subjects.get(presentation.subject)!;
+      return <article data-case={presentation.id}>
+        <h2>{subject.title}</h2>
+        <MechanismLab modelId={presentation.definition.modelId} adapterId={subject.simulation!.adapter}
+          title={subject.title} presentation={presentation} />
+      </article>;
+    })}
+    <article data-case="legacy">
+      <h2>Legacy default compatibility</h2>
+      <MechanismLab modelId="foundation:belt-drive:open" adapterId="atlas.analytic-belt.v0" title="Legacy open belt" />
+    </article>
+  </main>
+</BaseLayout>

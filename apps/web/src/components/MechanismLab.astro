@@ -6,20 +6,30 @@ import {
   defaultLabValues,
   formatLabReadout,
   readoutLabel,
-  type LabControlDefinition,
 } from '@atlasmechanica/lab';
-import { resolveMechanismLab } from '@atlasmechanica/lab/runtime';
+import { resolveMechanismLab, type LabPresentationSelection } from '@atlasmechanica/lab/runtime';
+import { displayControlValue } from '../scripts/labControlDisplay.js';
 
 interface Props {
   modelId: string;
   adapterId: string;
   title: string;
   labId?: string;
+  presentation?: LabPresentationSelection;
 }
 
-const { modelId, adapterId, title, labId } = Astro.props;
-const resolved = resolveMechanismLab(modelId, adapterId, labId);
+const { modelId, adapterId, title, labId, presentation } = Astro.props;
+if (labId !== undefined && presentation !== undefined) {
+  throw new TypeError('MechanismLab accepts either labId or a compiled presentation, not both');
+}
+const resolved = resolveMechanismLab(modelId, adapterId, presentation ?? labId);
 const { definition, model, adapter } = resolved;
+// Serialize the independently owned, validated definition, not arbitrary catalog
+// metadata. Astro escapes the attribute; this is never executable script/HTML.
+const serializedPresentation = presentation === undefined ? undefined : JSON.stringify({
+  templateLabId: presentation.templateLabId,
+  definition,
+});
 const initialValues = defaultLabValues(definition);
 const initialRequest = buildLabEvaluationRequest(definition, initialValues);
 const initialSession = adapter.compile(model).createSession(
@@ -31,14 +41,6 @@ const initialState = initialSession.evaluate(initialRequest);
 assertValidInitialLabState(definition, initialState);
 const supports3d = definition.views.includes('3d');
 const componentId = definition.id.replaceAll(/[^a-zA-Z0-9_-]/g, '-');
-
-function controlValue(control: LabControlDefinition): string {
-  const value = control.initial;
-  if (control.unit === 'deg') return `${Math.round(value)}°`;
-  if (control.unit === 'mm') return `${Math.round(value)} mm`;
-  if (control.unit === 'rpm') return `${Math.round(value)} rpm`;
-  return `${value} ${control.unit}`;
-}
 ---
 
 <section
@@ -47,6 +49,7 @@ function controlValue(control: LabControlDefinition): string {
   data-model-id={modelId}
   data-adapter-id={adapterId}
   data-lab-id={definition.id}
+  data-lab-presentation={serializedPresentation}
   data-view-mode="2d"
   aria-label={`Interactive ${title} experiment`}
 >
@@ -115,7 +118,7 @@ function controlValue(control: LabControlDefinition): string {
             <output
               data-control-output-id={control.id}
               for={inputId}
-            >{controlValue(control)}</output>
+            >{displayControlValue(control, control.initial)}</output>
           </div>
         );
       })}

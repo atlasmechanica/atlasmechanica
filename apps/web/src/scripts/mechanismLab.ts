@@ -10,7 +10,8 @@ import {
   type LabInteractionDefinition,
   type LabView,
 } from '@atlasmechanica/lab';
-import { loadMechanismLab } from '@atlasmechanica/lab/lazy-runtime';
+import { loadElementMechanismLab } from './labHydration.js';
+import { displayControlValue } from './labControlDisplay.js';
 import { hasErrors, type EvaluationRequest, type ModelState } from '@atlasmechanica/model';
 import { createSvgMechanismRenderer } from '@atlasmechanica/renderer-svg';
 import type { MechanismScene, Vec2 } from '@atlasmechanica/scene';
@@ -41,20 +42,6 @@ function required<T extends Element>(element: T | null, name: string): T {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
-}
-
-function precisionForStep(step: number): number {
-  if (step >= 1) return 0;
-  const text = String(step);
-  const dot = text.indexOf('.');
-  return dot < 0 ? 0 : Math.min(6, text.length - dot - 1);
-}
-
-function displayControlValue(control: LabControlDefinition, value: number): string {
-  const body = value.toFixed(precisionForStep(control.step));
-  if (control.unit === 'deg') return `${body}°`;
-  if (control.unit === 'rpm') return `${body} rpm`;
-  return `${body} ${control.unit}`;
 }
 
 function rateInCoordinateUnitsPerSecond(
@@ -101,15 +88,8 @@ function collectByData<T extends HTMLElement>(root: HTMLElement, attribute: stri
 }
 
 for (const root of document.querySelectorAll<HTMLElement>('[data-mechanism-lab]')) {
-  const modelId = root.dataset.modelId;
-  const adapterId = root.dataset.adapterId;
-  const labId = root.dataset.labId;
-  if (modelId === undefined || adapterId === undefined) {
-    throw new TypeError('Mechanism lab requires model and adapter ids');
-  }
-
   root.setAttribute('aria-busy', 'true');
-  void loadMechanismLab(modelId, adapterId, labId).then((resolved) => {
+  void loadElementMechanismLab(root).then((resolved) => {
   const { definition, model, adapter, sceneCompiler } = resolved;
   const compiled = adapter.compile(model);
   const viewport = required(root.querySelector<HTMLElement>('[data-lab-viewport]'), 'camera viewport');

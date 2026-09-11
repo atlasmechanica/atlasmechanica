@@ -1,0 +1,28 @@
+{
+  "format": "atlas.catalog-document",
+  "schemaVersion": "0.4",
+  "modelPresets": [
+    { "id": "test:web-open-preset", "modelId": "foundation:belt-drive:open", "parameters": { "driver-radius": { "value": 45, "unit": "mm" }, "driven-radius": { "value": 60, "unit": "mm" }, "center-distance": { "value": 200, "unit": "mm" } } },
+    { "id": "test:web-crossed-preset", "modelId": "foundation:belt-drive:crossed", "parameters": { "driver-radius": { "value": 30, "unit": "mm" }, "driven-radius": { "value": 80, "unit": "mm" } } },
+    { "id": "test:web-guided-preset", "modelId": "foundation:belt-drive:quarter-turn-guided", "parameters": { "driver-radius": { "value": 45, "unit": "mm" }, "driven-radius": { "value": 55, "unit": "mm" } } }
+  ],
+  "simulationBindings": [
+    { "subject": "open-belt-drive", "preset": "test:web-open-preset" },
+    { "subject": "crossed-belt-drive", "preset": "test:web-crossed-preset" },
+    { "subject": "quarter-turn-belt-drive", "preset": "test:web-guided-preset" }
+  ],
+  "labPresentations": [
+    {
+      "id": "test:web-open", "subject": "open-belt-drive", "template": "belt:open-classic",
+      "settings": {
+        "subtitle": "Test data: \"quoted\" & </script><img src=x onerror=window.__atlasInjected=true> 日本語",
+        "controls": [
+          { "id": "driver-angle", "initial": 12.5, "step": 0.5, "label": "Input <angle> & \"phase\"" },
+          { "id": "driver-speed", "initial": 37.5, "step": 0.5 }
+        ]
+      }
+    },
+    { "id": "test:web-crossed", "subject": "crossed-belt-drive", "template": "belt:crossed-classic", "settings": { "views": ["2d"] } },
+    { "id": "test:web-guided", "subject": "quarter-turn-belt-drive", "template": "belt:guided-classic" }
+  ]
+}
