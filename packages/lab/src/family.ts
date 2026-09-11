@@ -9,6 +9,9 @@ import {
   validateMechanismLabDefinition,
 } from './core.js';
 import { assertSceneInteractionBindings } from './interactionScene.js';
+import {
+  restoreLabPresentation, snapshotLabSelection, type MechanismLabSelection,
+} from './presentationSelection.js';
 import type { MechanismLabDefinition } from './schema.js';
 
 export type ModelTransform = (model: SimulationModel) => SimulationModel;
@@ -37,11 +40,17 @@ export function resolveMechanismLabFromFamily(
   family: MechanismLabFamily,
   modelId: ModelId,
   adapterId: string,
-  labId?: string,
+  lab?: MechanismLabSelection,
 ): ResolvedMechanismLab {
-  const definition = selectMechanismLabDefinition(family.definitions, modelId, labId);
+  const selection = snapshotLabSelection(lab);
+  const presentation = typeof selection === 'object' ? selection : undefined;
+  const template = selectMechanismLabDefinition(
+    family.definitions, modelId, presentation?.templateLabId ?? (typeof selection === 'string' ? selection : undefined),
+  );
   const baseModel = family.models.find((candidate) => candidate.id === modelId);
   if (baseModel === undefined) throw new TypeError(`No registered simulation model ${modelId}`);
+  const definition = presentation === undefined
+    ? template : restoreLabPresentation(presentation, template, baseModel);
   validateMechanismLabDefinition(definition, baseModel);
 
   const transform = definition.modelTransformId === undefined

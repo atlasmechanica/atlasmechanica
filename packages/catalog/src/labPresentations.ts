@@ -25,6 +25,8 @@ export interface ResolvedCatalogLabPresentation {
   readonly subject: string;
   readonly template: string;
   readonly preset: string;
+  /** Runtime family definition behind the authoring-template alias. */
+  readonly templateLabId: string;
   readonly definition: MechanismLabDefinition;
 }
 const settingsCheck: Check = (value, source, pointer) => {
@@ -65,7 +67,10 @@ export function compileCatalogLabPresentations(
     if (template.adapterId !== canonical.simulation.adapter) at(item, 'template', 'Template adapter must match the canonical simulation');
     try {
       const definition = resolveLabPresentation(item.value.id, item.value.settings ?? {}, template.definition, model, preset);
-      return { id: item.value.id, subject: item.value.subject, template: item.value.template, preset: preset.id, definition };
+      return {
+        id: item.value.id, subject: item.value.subject, template: item.value.template,
+        preset: preset.id, templateLabId: template.definition.id, definition,
+      };
     } catch (error) {
       if (!(error instanceof LabPresentationError)) {
         at(item, 'subject', `Invalid bound preset: ${error instanceof Error ? error.message : String(error)}`);
