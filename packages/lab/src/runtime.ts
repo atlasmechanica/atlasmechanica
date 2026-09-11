@@ -1,28 +1,11 @@
-import type { ModelId } from '@atlasmechanica/model';
 import { beltLabFamily } from './families/belt.js';
 import { fourBarLabFamily } from './families/fourBar.js';
-import {
-  resolveMechanismLabFromFamily,
-  type MechanismLabFamily,
-  type ResolvedMechanismLab,
-} from './family.js';
+import { createMechanismLabResolver } from './familyRegistry.js';
 
-const FAMILIES_BY_MODEL: Readonly<Record<string, MechanismLabFamily>> = Object.freeze({
-  'foundation:belt-drive:open': beltLabFamily,
-  'foundation:belt-drive:crossed': beltLabFamily,
-  'foundation:belt-drive:quarter-turn-guided': beltLabFamily,
-  'foundation:four-bar:crank-rocker': fourBarLabFamily,
-});
-
-/** Eager resolver intended for server/build-time use. */
-export function resolveMechanismLab(
-  modelId: ModelId,
-  adapterId: string,
-  labId?: string,
-): ResolvedMechanismLab {
-  const family = FAMILIES_BY_MODEL[modelId];
-  if (family === undefined) throw new TypeError(`No mechanism lab family for model ${modelId}`);
-  return resolveMechanismLabFromFamily(family, modelId, adapterId, labId);
-}
+/** Eager server/build resolver. Register a family once, not each model or occurrence. */
+export const resolveMechanismLab = createMechanismLabResolver([
+  { id: 'atlas.lab.belt.v0', family: beltLabFamily },
+  { id: 'atlas.lab.four-bar.v0', family: fourBarLabFamily },
+]);
 
 export type { ResolvedMechanismLab } from './family.js';
