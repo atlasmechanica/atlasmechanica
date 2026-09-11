@@ -25,7 +25,7 @@ describe('component-scoped lab hydration', () => {
     const configured = await loadElementMechanismLab(element(attributes));
     expect(configured.definition).toEqual(definition);
     expect(configured.definition.parameterOverrides!['driver-radius']).toEqual({ value: 0.04, unit: 'm' });
-    const legacy = { ...attributes, 'data-lab-id': openBeltDriveLab.id };
+    const legacy: Record<string, string> = { ...attributes, 'data-lab-id': openBeltDriveLab.id };
     delete legacy['data-lab-presentation'];
     expect((await loadElementMechanismLab(element(legacy))).definition).toEqual(openBeltDriveLab);
   });

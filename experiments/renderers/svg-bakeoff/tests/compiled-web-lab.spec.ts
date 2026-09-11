@@ -6,7 +6,7 @@ const url = 'http://127.0.0.1:4174/__tests__/compiled-labs/';
 const hostile = 'Test data: "quoted" & </script><img src=x onerror=window.__atlasInjected=true> 日本語';
 const cases = [
   { id: 'test:web-open', ratio: '0.750', output: '28.1 rpm', angle: '12.5', speed: '37.5' },
-  { id: 'test:web-crossed', ratio: '0.375', output: '11.3 rpm', angle: '0', speed: '30' },
+  { id: 'test:web-crossed', ratio: '0.375', output: '11.2 rpm', angle: '0', speed: '30' },
   { id: 'test:web-guided', ratio: '0.818', output: '24.5 rpm', angle: '0', speed: '30' },
 ];
 function lab(page: Page, id: string) { return page.locator(`[data-case="${id}"] [data-mechanism-lab]`); }

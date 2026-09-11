@@ -73,7 +73,7 @@ function interactionValue(
   const radians = Math.atan2(point.y - originY, point.x - originX);
   if (control.unit === 'rad') return wrapPeriodicValue(radians, control.min, control.max);
   if (control.unit === 'deg') {
-    return wrapPeriodicValue(radians * 180 / Math.PI / 1, control.min, control.max);
+    return wrapPeriodicValue(radians * 180 / Math.PI, control.min, control.max);
   }
   throw new TypeError(`Polar-angle interaction ${control.id} requires angle units`);
 }
