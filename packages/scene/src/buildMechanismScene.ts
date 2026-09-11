@@ -15,6 +15,7 @@ import type {
   Vec2,
 } from './types.js';
 import { assertMechanismScene } from './types.js';
+import { validatePlanarBeltSceneInput } from './planarBeltSupport.js';
 
 export interface SceneBuildOptions {
   model: SimulationModel;
@@ -82,12 +83,13 @@ function pulleyGeometry(
   state: ModelState,
   parameters: Partial<Record<ParameterId, QuantityValue>>,
   bodyId: string,
+  featureId: string,
 ): { center: Vec2; radius: number } {
   const body = model.systems.mechanical?.bodies[bodyId];
-  const feature = body?.features.pulley;
+  const feature = body?.features[featureId];
   if (feature?.type !== 'pulley') throw new TypeError(`Missing ${bodyId} pulley feature`);
   return {
-    center: featurePoint(model, state, parameters, bodyId, 'pulley'),
+    center: featurePoint(model, state, parameters, bodyId, featureId),
     radius: resolveScalar(model, parameters, feature.pitchRadius, 'length'),
   };
 }
@@ -197,8 +199,9 @@ function buildFourBar(options: SceneBuildOptions): MechanismScene {
 function buildBelt(options: SceneBuildOptions): MechanismScene {
   const { model, state, selectedId, invalidParameterHandle } = options;
   const parameters = options.parameters ?? {};
-  const driver = pulleyGeometry(model, state, parameters, 'driver');
-  const driven = pulleyGeometry(model, state, parameters, 'driven');
+  const topology = validatePlanarBeltSceneInput(options);
+  const driver = pulleyGeometry(model, state, parameters, topology.driver.body.id, topology.driver.pulley.id);
+  const driven = pulleyGeometry(model, state, parameters, topology.driven.body.id, topology.driven.pulley.id);
   const driverA = signalVector(state, 'driver-contact-a');
   const drivenA = signalVector(state, 'driven-contact-a');
   const driverB = signalVector(state, 'driver-contact-b');
@@ -219,8 +222,8 @@ function buildBelt(options: SceneBuildOptions): MechanismScene {
     dB,
     ...sampleArc(driver.center, dB, dA, driverWrap as number).slice(1),
   ];
-  const driverAngle = state.bodies.driver?.pose.angle ?? 0;
-  const drivenAngle = state.bodies.driven?.pose.angle ?? 0;
+  const driverAngle = state.bodies[topology.driver.body.id]!.pose.angle;
+  const drivenAngle = state.bodies[topology.driven.body.id]!.pose.angle;
   const driverMark = {
     x: driver.center.x + driver.radius * Math.cos(driverAngle),
     y: driver.center.y + driver.radius * Math.sin(driverAngle),
@@ -233,14 +236,14 @@ function buildBelt(options: SceneBuildOptions): MechanismScene {
   const ratio = signalScalar(state, 'angular-ratio') ?? 0;
   const primitives: ScenePrimitive[] = [
     { type: 'polyline', id: 'belt-path', layer: 'mechanism', styles: ['belt'], points: beltPath, width: 4, ariaLabel: 'Ideal belt pitch path' },
-    { type: 'circle', id: 'belt-driver', layer: 'mechanism', styles: ['pulley'], center: driver.center, radius: driver.radius, width: 4, selectId: 'driver', ariaLabel: 'Driver pulley' },
-    { type: 'circle', id: 'belt-driven', layer: 'mechanism', styles: ['pulley'], center: driven.center, radius: driven.radius, width: 4, selectId: 'driven', ariaLabel: 'Driven pulley' },
-    { type: 'segment', id: 'belt-driver-mark', layer: 'mechanism', styles: ['body'], a: driver.center, b: driverMark, width: 2, selectId: 'driver', ariaLabel: 'Driver phase mark' },
-    { type: 'segment', id: 'belt-driven-mark', layer: 'mechanism', styles: ['body'], a: driven.center, b: drivenMark, width: 2, selectId: 'driven', ariaLabel: 'Driven phase mark' },
-    { type: 'dimension', id: 'belt-distance', layer: 'annotation', styles: ['dimension'], a: { x: driver.center.x, y: -0.105 }, b: { x: driven.center.x, y: -0.105 }, text: `${parameterMillimeters(model, parameters, 'center-distance').toFixed(0)} mm`, ariaLabel: 'Pulley center distance' },
+    { type: 'circle', id: 'belt-driver', layer: 'mechanism', styles: ['pulley'], center: driver.center, radius: driver.radius, width: 4, selectId: topology.driver.body.id, ariaLabel: 'Driver pulley' },
+    { type: 'circle', id: 'belt-driven', layer: 'mechanism', styles: ['pulley'], center: driven.center, radius: driven.radius, width: 4, selectId: topology.driven.body.id, ariaLabel: 'Driven pulley' },
+    { type: 'segment', id: 'belt-driver-mark', layer: 'mechanism', styles: ['body'], a: driver.center, b: driverMark, width: 2, selectId: topology.driver.body.id, ariaLabel: 'Driver phase mark' },
+    { type: 'segment', id: 'belt-driven-mark', layer: 'mechanism', styles: ['body'], a: driven.center, b: drivenMark, width: 2, selectId: topology.driven.body.id, ariaLabel: 'Driven phase mark' },
+    { type: 'dimension', id: 'belt-distance', layer: 'annotation', styles: ['dimension'], a: { x: driver.center.x, y: -0.105 }, b: { x: driven.center.x, y: -0.105 }, text: `${parameterMillimeters(model, parameters, topology.distanceParameter).toFixed(0)} mm`, ariaLabel: 'Pulley center distance' },
     { type: 'label', id: 'belt-ratio-label', layer: 'annotation', styles: ['label'], at: { x: -0.047, y: 0.107 }, text: `${direction} · ratio ${ratio.toFixed(3)}`, ariaLabel: 'Transmission direction and ratio' },
-    { type: 'handle', id: 'belt-input-handle', layer: 'interaction', styles: ['handle'], at: driverMark, handle: 'input', bindingId: 'driver-angle', shape: 'circle', ariaLabel: 'Drag driver input angle' },
-    { type: 'handle', id: 'belt-distance-handle', layer: 'interaction', styles: ['handle'], at: driven.center, handle: 'parameter', bindingId: 'center-distance', shape: 'square', ariaLabel: 'Drag pulley center distance' },
+    { type: 'handle', id: 'belt-input-handle', layer: 'interaction', styles: ['handle'], at: driverMark, handle: 'input', bindingId: topology.driver.coordinate, shape: 'circle', ariaLabel: 'Drag driver input angle' },
+    { type: 'handle', id: 'belt-distance-handle', layer: 'interaction', styles: ['handle'], at: driven.center, handle: 'parameter', bindingId: topology.distanceParameter, shape: 'square', ariaLabel: 'Drag pulley center distance' },
   ];
   if (invalidParameterHandle !== undefined) {
     primitives.push({

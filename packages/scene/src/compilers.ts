@@ -1,3 +1,4 @@
+import { supportsPlanarBeltScene } from './planarBeltSupport.js';
 import type { SimulationModel } from '@atlasmechanica/model';
 import { buildBrown003ProjectionScene } from './brown003Projection.js';
 import {
@@ -19,15 +20,10 @@ function assertSubject(model: SimulationModel, expected: string, compilerId: str
   }
 }
 
-function isPlanarBrownBelt(model: SimulationModel): boolean {
-  return model.id === 'foundation:belt-drive:open'
-    || model.id === 'foundation:belt-drive:crossed';
-}
-
 export const brownBeltSceneCompiler: MechanismSceneCompiler = {
   id: 'atlas.scene.brown-belt.v0',
   supports(model): boolean {
-    return isPlanarBrownBelt(model);
+    return supportsPlanarBeltScene(model);
   },
   build(options): MechanismScene {
     if (!this.supports(options.model)) {

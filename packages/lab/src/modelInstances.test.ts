@@ -185,7 +185,7 @@ describe('named physical models through public eager/lazy runtime', () => {
     const resolved = resolveMechanismLab(MODEL, ADAPTER, item);
     expect(() => run(resolved)).toThrow('invalid initial state');
   });
-  it('does not weaken specialized belt identity checks before their structural replacement', () => {
+  it('admits a named planar belt through the replacement structural scene check', () => {
     const doc = document();
     doc.modelInstances![0]!.templateModelId = openBeltDriveLab.modelId;
     doc.subjects![0]!.simulation!.adapter = 'atlas.analytic-belt.v0';
@@ -194,7 +194,9 @@ describe('named physical models through public eager/lazy runtime', () => {
     doc.labPresentations![0]!.template = 'belt:open';
     const item = compile(doc, { models: beltLabFamily.models,
       labTemplates: [{ id: 'belt:open', adapterId: 'atlas.analytic-belt.v0', definition: openBeltDriveLab }] }).labPresentations[0]!;
-    expect(() => resolveMechanismLab(MODEL, 'atlas.analytic-belt.v0', item)).toThrow('Scene compiler');
+    const resolved = resolveMechanismLab(MODEL, 'atlas.analytic-belt.v0', item);
+    expect(run(resolved).scene.primitives.length).toBeGreaterThan(0);
+    expect(resolved.model.id).toBe(MODEL);
   });
   it('keeps declared views bounded by the existing capability', () => {
     const doc = document(); doc.labPresentations![0]!.settings!.views = ['2d', '3d'];

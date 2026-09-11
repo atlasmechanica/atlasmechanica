@@ -1,0 +1,160 @@
+{
+  "format": "atlas.catalog-document",
+  "schemaVersion": "0.5",
+  "modelInstances": [
+    {
+      "id": "test:planar:open-unequal",
+      "templateModelId": "foundation:belt-drive:open"
+    },
+    {
+      "id": "test:planar:crossed-unequal",
+      "templateModelId": "foundation:belt-drive:crossed"
+    }
+  ],
+  "subjects": [
+    {
+      "schemaVersion": "0.1",
+      "id": "test:planar-open",
+      "slug": "test-planar-open",
+      "title": "Independent open belt",
+      "seoDescription": "Synthetic structural capability test, not a catalog publication.",
+      "summary": "Test-only 40/60 mm pulleys with 210 mm shaft spacing. No historical attribution.",
+      "classification": {
+        "inputMotion": "rotation",
+        "outputMotion": "rotation",
+        "functionalSignature": "Fixed-axis transmission",
+        "components": [
+          "pulleys",
+          "belt"
+        ]
+      },
+      "facts": [
+        {
+          "label": "Purpose",
+          "value": "Synthetic regression fixture"
+        }
+      ],
+      "simulation": {
+        "status": "planned",
+        "modelId": "test:planar:open-unequal",
+        "adapter": "atlas.analytic-belt.v0"
+      }
+    },
+    {
+      "schemaVersion": "0.1",
+      "id": "test:planar-crossed",
+      "slug": "test-planar-crossed",
+      "title": "Independent crossed belt",
+      "seoDescription": "Synthetic structural capability test, not a catalog publication.",
+      "summary": "Test-only 35/55 mm pulleys with 200 mm shaft spacing. No historical attribution.",
+      "classification": {
+        "inputMotion": "rotation",
+        "outputMotion": "rotation",
+        "functionalSignature": "Fixed-axis transmission",
+        "components": [
+          "pulleys",
+          "belt"
+        ]
+      },
+      "facts": [
+        {
+          "label": "Purpose",
+          "value": "Synthetic regression fixture"
+        }
+      ],
+      "simulation": {
+        "status": "planned",
+        "modelId": "test:planar:crossed-unequal",
+        "adapter": "atlas.analytic-belt.v0"
+      }
+    }
+  ],
+  "modelPresets": [
+    {
+      "id": "test:planar-open-preset",
+      "modelId": "test:planar:open-unequal",
+      "configuration": "reference",
+      "parameters": {
+        "driver-radius": {
+          "value": 40,
+          "unit": "mm"
+        },
+        "driven-radius": {
+          "value": 60,
+          "unit": "mm"
+        },
+        "center-distance": {
+          "value": 210,
+          "unit": "mm"
+        }
+      }
+    },
+    {
+      "id": "test:planar-crossed-preset",
+      "modelId": "test:planar:crossed-unequal",
+      "configuration": "reference",
+      "parameters": {
+        "driver-radius": {
+          "value": 35,
+          "unit": "mm"
+        },
+        "driven-radius": {
+          "value": 55,
+          "unit": "mm"
+        },
+        "center-distance": {
+          "value": 200,
+          "unit": "mm"
+        }
+      }
+    }
+  ],
+  "simulationBindings": [
+    {
+      "subject": "test:planar-open",
+      "preset": "test:planar-open-preset"
+    },
+    {
+      "subject": "test:planar-crossed",
+      "preset": "test:planar-crossed-preset"
+    }
+  ],
+  "labPresentations": [
+    {
+      "id": "test:planar-open-lab",
+      "subject": "test:planar-open",
+      "template": "belt:open-classic",
+      "settings": {
+        "subtitle": "JSON open instance \u00b7 40/60 mm pulleys",
+        "controls": [
+          {
+            "id": "driver-angle",
+            "initial": 25
+          },
+          {
+            "id": "driver-speed",
+            "initial": 45
+          }
+        ]
+      }
+    },
+    {
+      "id": "test:planar-crossed-lab",
+      "subject": "test:planar-crossed",
+      "template": "belt:crossed-classic",
+      "settings": {
+        "subtitle": "JSON crossed instance \u00b7 35/55 mm pulleys",
+        "controls": [
+          {
+            "id": "driver-angle",
+            "initial": 25
+          },
+          {
+            "id": "driver-speed",
+            "initial": 30
+          }
+        ]
+      }
+    }
+  ]
+}
