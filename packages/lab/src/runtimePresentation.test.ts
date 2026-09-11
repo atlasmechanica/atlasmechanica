@@ -13,8 +13,8 @@ import { loadMechanismLab } from './lazyRuntime.js';
 import { resolveMechanismLab, type LabPresentationSelection } from './runtime.js';
 import type { MechanismLabDefinition } from './schema.js';
 
-type Mutable<T> = T extends readonly (infer Item)[] ? Mutable<Item>[]
-  : T extends object ? { -readonly [Key in keyof T]: Mutable<T[Key]> } : T;
+// A homomorphic mapped type preserves coordinate tuples as well as array items.
+type Mutable<T> = T extends object ? { -readonly [Key in keyof T]: Mutable<T[Key]> } : T;
 const BELT = 'atlas.analytic-belt.v0';
 const SPATIAL = 'atlas.spatial-belt.v0';
 const catalogSources = await readCatalogDocuments(new URL('../../catalog/fixtures/authoring/', import.meta.url));
