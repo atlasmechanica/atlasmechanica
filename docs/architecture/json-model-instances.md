@@ -78,12 +78,13 @@ and shared 2D scene compiler. A new physical ID resolves through the unchanged
 family registration, evaluates with the declared parameters, and reaches the
 actual web controller. Its existing 2D-only capability is not upgraded to 3D.
 
-The instance compiler does not certify adapter/scene support. Specialized planar
-and spatial belt identity checks are deliberately retained until #88/#89 replace
-them with equivalent or stronger structural/provenance checks. A renamed planar
-belt currently normalizes but fails its scene capability check; a regression
-makes that limitation explicit. No new belt routing or rendering algorithm is
-introduced here.
+The instance compiler does not certify adapter/scene support. Planar open/crossed
+belt instances now pass a [structural scene boundary](planar-belt-capability.md)
+that checks bindings, geometry assumptions and state/parameter consistency. Their
+existing drawing code is reused. Spatial guided-belt identity checks remain until
+#88/#89 replace them with equivalent or stronger route/provenance checks; a
+regression explicitly retains that restriction. No new routing algorithm is
+introduced by model instantiation.
 
 Likewise, individually valid parameters can still describe an impossible linkage.
 Consumers must evaluate the exact initial request and enforce
@@ -98,7 +99,7 @@ discovery, JSON Schema/parser agreement and old-version rejection, root/identity
 errors, immutable data ownership, same-ID template drift, serialization/tampering,
 concurrent request isolation and lazy mutation protection. Real adapter and scene
 results are compared across 0, 25, 90, 179, 359, 361 and 721 degrees and reset.
-An impossible four-bar and unsupported belt/3D claims remain failures.
+An impossible four-bar and unsupported spatial-belt/3D claims remain failures.
 
 `model-instance-web.spec.ts` uses the production-built isolated Astro fixture and
 actual shared lab: server output with JavaScript disabled, hydration, parameter

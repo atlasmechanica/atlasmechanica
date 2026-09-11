@@ -124,8 +124,8 @@ editor association does not itself add a directory to the production build.
 Fixtures remain test-only until #91 establishes the production source of truth.
 
 #88 now includes [named model instantiation](json-model-instances.md) through the
-shared runtime and web lab. Specialized belt structural capability checks remain
-required before those instances can use the belt renderers. #89 removes occurrence-specific rendering;
+shared runtime and web lab. The [planar belt structural boundary](planar-belt-capability.md) now permits
+open/crossed instances; specialized spatial checks remain required. #89 removes occurrence-specific rendering;
 #90 generates real shared pages and safely consumes content/assets; #91 migrates
 Brown 001–003 and finishes Brown 003; #92 must demonstrate a separate JSON/assets-only
 commit creating a complete interactive product entry. #86 stays open until that
