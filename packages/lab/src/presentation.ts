@@ -75,6 +75,9 @@ function items(value: unknown, pointer: string, check: (value: unknown, pointer:
     check(descriptor.value, location);
   }
 }
+function own<T extends object, K extends keyof T>(value: T, key: K): T[K] | undefined {
+  return Object.hasOwn(value, key) ? value[key] : undefined;
+}
 
 /** Shared JSON boundary for catalog authoring and direct presentation consumers. */
 export function validateLabPresentationSettings(value: unknown): asserts value is LabPresentationSettings {
@@ -95,6 +98,7 @@ export function validateLabPresentationSettings(value: unknown): asserts value i
     items(settings[kind], `/${kind}`, (item, pointer) => {
       const data = fields(item, kind === 'controls'
         ? ['id', 'label', 'min', 'max', 'step', 'initial'] : ['id', 'label', 'digits'], pointer);
+      if (!Object.hasOwn(data, 'id')) fail(`${pointer}/id`, 'Required field is missing');
       text(data.id, `${pointer}/id`);
       const id = data.id as string;
       if (seen.has(id)) fail(`${pointer}/id`, `Duplicate ${kind} override ${id}`);
@@ -103,7 +107,7 @@ export function validateLabPresentationSettings(value: unknown): asserts value i
       for (const key of ['min', 'max', 'step', 'initial', 'digits']) {
         if (Object.hasOwn(data, key)) finite(data[key], `${pointer}/${key}`);
       }
-      if (Object.hasOwn(data, 'digits') && (!Number.isInteger(data.digits) || (data.digits as number) < 0 || (data.digits as number) > 12)) {
+      if (Object.hasOwn(data, 'digits') && (!Number.isInteger(data.digits as number) || (data.digits as number) < 0 || (data.digits as number) > 12)) {
         fail(`${pointer}/digits`, 'Display digits must be an integer from 0 through 12');
       }
     });
@@ -121,17 +125,20 @@ function ownFreeze<T>(value: T): T {
   return copy;
 }
 function checkControl(control: LabControlDefinition, model: SimulationModel, pointer: string): void {
-  if (control.kind !== 'parameter' && model.coordinates[control.coordinate]?.role !== 'input') {
+  if (control.kind === 'parameter') {
+    if (!Object.hasOwn(model.parameters, control.parameter)) fail(pointer, `Unknown parameter ${control.parameter}`);
+  } else if (!Object.hasOwn(model.coordinates, control.coordinate) || model.coordinates[control.coordinate]?.role !== 'input') {
     fail(pointer, `Control ${control.id} must target an independent input coordinate`);
   }
-  const kind = control.kind === 'parameter' ? model.parameters[control.parameter]?.kind
+  const kind = control.kind === 'parameter' ? model.parameters[control.parameter]!.kind
     : control.kind === 'coordinate' ? 'angle' : 'angular-velocity';
   try {
-    for (const value of [control.min, control.max, control.step, control.initial]) {
+    for (const field of ['min', 'max', 'step', 'initial'] as const) {
+      const value = control[field];
       const quantity = control.unit === 'rpm' ? { value: value * (2 * Math.PI / 60), unit: 'rad/s' }
         : { value, unit: control.unit };
       normalizeParameterQuantity(quantity, kind);
-      if (control.kind === 'parameter' && value !== control.step) {
+      if (control.kind === 'parameter' && field !== 'step') {
         resolveParameterValues(model.parameters, { [control.parameter]: quantity });
       }
     }
@@ -169,10 +176,12 @@ export function resolveLabPresentation(
   for (const readout of template.readouts) {
     if (readout.scale !== undefined && !Number.isFinite(readout.scale)) fail('/template', 'Readout scale must be finite');
   }
-  const views = settings.views ?? template.views;
+  const views = own(settings, 'views') ?? template.views;
   if (views.some((view) => !template.views.includes(view))) fail('/views', 'Presentation cannot enable an unsupported template view');
-  const parameters = resolveParameterValues(model.parameters, preset.parameters);
-  const controlPatches = new Map((settings.controls ?? []).map((patch, index) => [patch.id, { patch, index }]));
+  let parameters: ReturnType<typeof resolveParameterValues>;
+  try { parameters = resolveParameterValues(model.parameters, preset.parameters); }
+  catch (error) { fail('/preset', error instanceof Error ? error.message : String(error)); }
+  const controlPatches = new Map((own(settings, 'controls') ?? []).map((patch, index) => [patch.id, { patch, index }]));
   for (const [id, { index }] of controlPatches) {
     if (!template.controls.some((control) => control.id === id)) fail(`/controls/${index}/id`, `Unknown template control ${id}`);
   }
@@ -180,13 +189,21 @@ export function resolveLabPresentation(
     const entry = controlPatches.get(base.id);
     const patch = entry?.patch;
     const pointer = entry === undefined ? '/preset' : `/controls/${entry.index}`;
-    if (base.kind === 'parameter' && patch?.initial !== undefined) fail(`${pointer}/initial`, 'Parameter initial values belong to the bound model preset');
-    let initial = patch?.initial ?? base.initial;
+    const overrideInitial = patch === undefined ? undefined : own(patch, 'initial');
+    const label = patch === undefined ? undefined : own(patch, 'label');
+    if (base.kind === 'parameter' && overrideInitial !== undefined) fail(`${pointer}/initial`, 'Parameter initial values belong to the bound model preset');
+    let initial = overrideInitial ?? base.initial;
     if (base.kind === 'parameter') {
       const scale = normalizeParameterQuantity({ value: 1, unit: base.unit }, model.parameters[base.parameter]!.kind).value;
       initial = parameters[base.parameter]!.value / scale;
     }
-    const control: LabControlDefinition = { ...base, ...patch, initial };
+    const control: LabControlDefinition = {
+      ...base, initial,
+      min: (patch === undefined ? undefined : own(patch, 'min')) ?? base.min,
+      max: (patch === undefined ? undefined : own(patch, 'max')) ?? base.max,
+      step: (patch === undefined ? undefined : own(patch, 'step')) ?? base.step,
+      ...(label === undefined ? {} : { label }),
+    };
     if (control.min < base.min) fail(`${pointer}/min`, 'Presentation may only narrow the template range');
     if (control.max > base.max) fail(`${pointer}/max`, 'Presentation may only narrow the template range');
     if (!(control.min < control.max)) fail(pointer, 'Control minimum must be below maximum');
@@ -197,22 +214,25 @@ export function resolveLabPresentation(
     checkControl(control, model, pointer);
     return control;
   });
-  const readoutPatches = new Map((settings.readouts ?? []).map((patch, index) => [patch.id, { patch, index }]));
+  const readoutPatches = new Map((own(settings, 'readouts') ?? []).map((patch, index) => [patch.id, { patch, index }]));
   for (const [id, { index }] of readoutPatches) {
     if (!template.readouts.some((readout) => readout.id === id)) fail(`/readouts/${index}/id`, `Unknown template readout ${id}`);
   }
   const readouts = template.readouts.map((base) => {
     const entry = readoutPatches.get(base.id);
-    if (entry?.patch.digits !== undefined && base.source.kind === 'signal'
+    const digits = entry === undefined ? undefined : own(entry.patch, 'digits');
+    const label = entry === undefined ? undefined : own(entry.patch, 'label');
+    if (digits !== undefined && base.source.kind === 'signal'
       && model.signals[base.source.signal]?.valueType === 'text') {
-      fail(`/readouts/${entry.index}/digits`, 'Text readouts do not accept numeric precision');
+      fail(`/readouts/${entry!.index}/digits`, 'Text readouts do not accept numeric precision');
     }
-    return { ...base, ...entry?.patch };
+    return { ...base, ...(digits === undefined ? {} : { digits }), ...(label === undefined ? {} : { label }) };
   });
+  const subtitle = own(settings, 'subtitle');
   const definition: MechanismLabDefinition = {
     ...template, id, defaultForModel: false, views, controls, readouts,
     parameterOverrides: parameters, sessionConfiguration: preset.configuration,
-    ...(settings.subtitle === undefined ? {} : { subtitle: settings.subtitle }),
+    ...(subtitle === undefined ? {} : { subtitle }),
   };
   try { validateMechanismLabDefinition(definition, model); }
   catch (error) { fail('', error instanceof Error ? error.message : String(error)); }
